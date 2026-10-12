@@ -1,0 +1,11 @@
+.next
+node_modules
+package-lock.json
+playwright-report
+test-results
+coverage
+supabase/.temp
+public/icons
+src/app/icon.png
+src/app/apple-icon.png
+src/app/favicon.ico
