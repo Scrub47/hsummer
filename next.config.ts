@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Playwright opens the app at 127.0.0.1. The dev server allows localhost
+  // only, and without this the sign-in form never hydrates.
+  allowedDevOrigins: ["127.0.0.1"],
   // Cache Components stay off. Signed-in pages read the session cookie on
   // every request, and there is no public data worth caching yet. Turn this
   // on later for pages that can render a static shell.

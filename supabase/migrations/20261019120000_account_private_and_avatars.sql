@@ -140,10 +140,16 @@ on conflict (user_id) do nothing;
 -- rule is the before-update trigger below, so a profile cannot become a
 -- tracking pixel once co-members can read it.
 
+-- Postgres rejects a regex bound above 255 ("invalid repetition count"),
+-- so the https shape is not written as {1,500}. Week 1 already limits the
+-- column to 512 characters.
 alter table public.profiles
   add constraint profiles_avatar_path_shape check (
     avatar_path is null
-    or avatar_path ~ '^https://[^\s]{1,500}$'
+    or (
+      left(avatar_path, 8) = 'https://'
+      and avatar_path !~ '[[:space:]]'
+    )
     or avatar_path ~ (
       '^'
       || id::text

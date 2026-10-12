@@ -71,12 +71,12 @@ export async function updateProfile(
     new Uint8Array(bytes).set(image.bytes);
     const { error: uploadError } = await session.supabase.storage
       .from(AVATARS_BUCKET)
-      .upload(uploadedPath, new Blob([bytes]), {
+      .upload(uploadedPath, new Blob([bytes], { type: image.contentType }), {
         contentType: image.contentType,
         upsert: false,
       });
     if (uploadError) {
-      console.error("Avatar upload failed.");
+      console.error("Avatar upload failed.", uploadError.message);
       return { error: UPLOAD_FAILED, savedAt: null };
     }
     nextPath = uploadedPath;
@@ -99,7 +99,7 @@ export async function updateProfile(
         .from(AVATARS_BUCKET)
         .remove([uploadedPath]);
     }
-    console.error("Profile update failed.");
+    console.error("Profile update failed.", updateError?.message ?? "no row");
     return { error: SAVE_FAILED, savedAt: null };
   }
 

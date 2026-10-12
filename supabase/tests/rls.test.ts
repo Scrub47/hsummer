@@ -174,10 +174,12 @@ describe("profiles hide email and reject cross-account writes", () => {
     });
     expect(emailColumn.ok).toBe(false);
 
+    // The spec is generated for the role in the JWT. anon cannot see these
+    // tables, so this request uses the other account's session.
     const specResponse = await fetch(`${apiUrl}/rest/v1/`, {
       headers: {
         apikey: anonKey,
-        Authorization: `Bearer ${anonKey}`,
+        Authorization: `Bearer ${otherToken}`,
         Accept: "application/openapi+json",
       },
     });
