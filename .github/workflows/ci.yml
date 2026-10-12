@@ -31,3 +31,19 @@ jobs:
       - run: npm run test:e2e
         env:
           CI: true
+
+  # Row Level Security against a local Supabase stack. Docker is available on
+  # GitHub-hosted runners. Studio, analytics, and realtime are not needed to
+  # prove profile and storage policies.
+  rls:
+    name: RLS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx supabase start --yes -x realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+      - run: npm run test:rls

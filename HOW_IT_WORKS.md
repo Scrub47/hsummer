@@ -1,26 +1,28 @@
-# How Hsummer works (week 1)
+# How Hsummer works
 
-This is the map of the repository as it stands after the first week. It is written for reading the code, not as a changelog.
+This is the map of the repository as it stands after the profile week. It is written for reading the code, not as a changelog.
 
-Hsummer will be a private space shared by a Circle: a couple, a few friends, or a family. Week 1 only builds the shell that everything else hangs on. There is no Circle table yet. That is deliberate. The risky piece this week is Web Push on an iPhone, which only works from an installed PWA.
+Hsummer will be a private space shared by a Circle: a couple, a few friends, or a family. There is no Circle table yet. That is deliberate. Profiles exist first, and the rule for who may read one is already a single function so the circle check can be added later without rewriting every policy.
 
 ## Shape of the app
 
 ```
 Browser
-  landing page, sign-in form, home page
+  landing page, sign-in form, home page, profile page
   service worker (public/sw.js)  ← push events
         │
         ▼
 Next.js (App Router) on Vercel
   src/proxy.ts                     refresh the session cookie
   src/app/auth/callback            finish Google / magic link
+  src/app/profile/actions.ts       save the signed-in user's profile
   src/app/api/push/*               save a device, send a test push
         │
         ▼
 Supabase
   Auth (auth.users holds the email)
-  Postgres: profiles, push_subscriptions
+  Postgres: profiles, account_private, push_subscriptions
+  Storage: private bucket "avatars"
   Row Level Security: a signed-in user can only touch their own rows
 ```
 
@@ -31,16 +33,16 @@ Next.js serves both the UI and the server routes, so there is one TypeScript cod
 1. Every document and API request goes through `src/proxy.ts` (this used to be called middleware). The matcher skips images, the service worker, and Next's own static files.
 2. `src/lib/supabase/proxy.ts` builds a server Supabase client that reads and writes cookies on that request. It calls `auth.getClaims()`, which verifies the JWT and refreshes it when it is about to expire.
 3. Server Components cannot write cookies. If the proxy did not refresh the token, the next request would present a used refresh token and Supabase would sign the user out. That is why the refresh lives in the proxy even though each page also checks the user.
-4. The proxy redirects `/home` to `/sign-in` when there is no verified user. That redirect is a convenience. The home page and the push routes call `getClaims()` again. Do not trust `getSession()` on the server: it reads the cookie without checking the signature.
+4. The proxy redirects `/home` and `/profile` to `/sign-in` when there is no verified user. That redirect is a convenience. The pages and the push routes call `getClaims()` again. Do not trust `getSession()` on the server: it reads the cookie without checking the signature.
 
-If the Supabase URL or key is missing, or still the placeholder from `.env.example`, the proxy skips the client entirely. Public pages render. `/home` redirects to sign-in. The sign-in form explains that the project is not configured.
+If the Supabase URL or key is missing, or still the placeholder from `.env.example`, the proxy skips the client entirely. Public pages render. `/home` and `/profile` redirect to sign-in. The sign-in form explains that the project is not configured.
 
 ## Auth
 
-Sign-in is passwordless.
+Sign-in is passwordless. The profile work does not change this.
 
 - **Google** uses `signInWithOAuth`. Supabase sends the browser to Google and back to `/auth/callback?code=`.
-- **Magic link** uses `signInWithOtp`. The email either comes back with a `code` (same browser, PKCE cookie) or a `token_hash` (works across devices, after the email template change in the README). `src/app/auth/callback/route.ts` handles both.
+- **Magic link** uses `signInWithOtp`. The email either comes back with a `code` (same browser, PKCE cookie) or a `token_hash` (works across devices, after the email template change in the README). `src/app/auth/callback/route.ts` handles both. The magic-link call sends the browser's IANA timezone in user metadata so the signup trigger can store it.
 
 The callback only redirects to a path on our own origin. `safeNextPath` rejects `https://somewhere-else` and `//somewhere-else`, so a link cannot bounce a signed-in browser to another site.
 
@@ -56,9 +58,54 @@ The browser client (`src/lib/supabase/client.ts`) and the server client (`src/li
 
 The trigger never reads `new.email`. A name that contains `@` is thrown away. The table constraint repeats that rule so a later update cannot store an address either.
 
-RLS policies are owner-only (`id = auth.uid()`). When Circles exist, a new policy will let co-members read the display name, avatar, and timezone. They still must not gain access to `auth.users`. There is no insert or delete policy for profiles: the trigger inserts, and deleting the auth user cascades.
+`public.account_private` is the owner-only companion: `age_confirmed_at` (null until a later week asks the person to confirm they are 13+) and `notification_prefs`. The same trigger inserts that row. People who signed up before the week 2 migration get a row from a backfill in that migration. There is no insert or delete policy. Clients may update only `age_confirmed_at` and `notification_prefs`, not the user id. Circle members must never gain a policy on this table. Email is not a column here either.
+
+Who can read a profile is `private.can_read_profile(profile_id)`. Today that is `profile_id = auth.uid()`. The function lives in the `private` schema, which is not in the Data API. Week 3 adds the circle clause inside this function (the SQL is commented above the current expression) and leaves the policies alone:
+
+```sql
+id = auth.uid()
+or exists (
+  select 1
+  from circle_members me
+  join circle_members them on them.circle_id = me.circle_id
+  where me.user_id = auth.uid() and me.left_at is null
+    and them.user_id = profiles.id and them.left_at is null
+)
+```
+
+The update policy on `profiles` stays `id = auth.uid()` and must not start calling `can_read_profile`. Co-members will be allowed to read a name and a photo, not to change them. A before-update trigger rejects changes to `id` and `created_at`, and rejects pointing `avatar_path` at a new `https://` URL. The week 1 trigger may still store a Google profile photo URL at signup. That legacy value can stay until the person uploads or removes a photo. A client cannot replace it with a different URL, which would become a tracking pixel once co-members can read profiles.
 
 `(select auth.uid())` is the form Supabase recommends. Postgres can evaluate it once per query instead of once per row.
+
+## The profile page
+
+`/profile` is a Server Component. It requires a verified session, loads the caller's row, and renders `ProfileForm`.
+
+The form is a Client Component because it needs the browser timezone and `useActionState`. When the saved timezone is still `UTC` (what Google sign-in leaves behind), the field switches to `Intl.DateTimeFormat().resolvedOptions().timeZone` after mount. That detection cannot run during server render: the server's zone is not the person's. Saving writes the value through the server action.
+
+`updateProfile` in `src/app/profile/actions.ts` checks the session again. The user id comes from the JWT, not from the form. Display name, timezone, and the photo are checked in `src/lib/profile/fields.ts` before any request: the name is 1–80 characters and cannot contain `@`, the timezone must match the database's IANA pattern and be a real zone, and the photo's bytes must be JPEG, PNG, or WebP up to 2 MB. The filename the browser sends is ignored. The object name is `{user id}/{uuid}.jpg|png|webp`.
+
+The action uploads with the user's Supabase client, so Storage RLS applies, then updates `profiles`. If the update fails, it deletes the object it just uploaded. Replacing a photo deletes the previous object when that previous value is an object path in the caller's folder. Legacy `https://` values are not sent to Storage. `removeProfilePhoto` is a separate form so pressing Enter in the name field saves, and does not remove the picture.
+
+The page does not show the email address. It also does not read `account_private`. That table exists so the privacy boundary is in the database before any settings UI needs it.
+
+Avatar images are a plain `<img>`, not `next/image`. The optimizer would fetch and cache the signed URL.
+
+## Avatars in Storage
+
+The week 2 migration inserts a bucket named `avatars` with `public = false`, a 2 MB limit, and the three image types. Policies on `storage.objects`:
+
+| Policy                   | Who                                                                                                            |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `avatars_select_visible` | `can_read_profile` of the folder name (the user id). Week 3 widens this automatically when the function grows. |
+| `avatars_insert_own`     | The folder is `auth.uid()` and the name matches `{uid}/{uuid}.jpg\|png\|webp`.                                 |
+| `avatars_delete_own`     | The folder is `auth.uid()`.                                                                                    |
+
+There is no update policy. A new photo is a new object; the old one is deleted. Insert and delete must stay owner-only when select starts allowing co-members.
+
+`loadOwnProfile` asks Storage for a signed URL that lasts one hour. Creating that URL requires the select policy, so the user's own JWT is enough. The service-role key is not used. A path that is not the caller's object, and not an `https://` URL, is not turned into an image address.
+
+Server Actions default to a 1 MB body. `next.config.ts` raises that to 3 MB so a 2 MB photo plus the multipart wrapper fits.
 
 ## Push
 
@@ -76,13 +123,13 @@ When the push service answers **404** or **410**, the subscription is dead (expi
 
 The route is POST on purpose. A GET would run from a prefetch or an `<img>` and could buzz the phone.
 
-Week 1 does not use the Supabase secret key for this. The user's own session can read and delete their own subscriptions under RLS. The secret key bypasses RLS; it is documented and parsed so it is ready, and it should stay unused until a job truly needs it.
+The user's own session can read and delete their own subscriptions under RLS. The secret key bypasses RLS; it is documented and parsed so it is ready, and it should stay unused until a job truly needs it.
 
 ## Environment variables
 
 `src/lib/env.ts` is safe for Client Components. It only reads `NEXT_PUBLIC_` variables, and it reads them as `process.env.NEXT_PUBLIC_SOMETHING` rather than `process.env[name]`. Next.js inlines public variables into the browser bundle only for that static form. Placeholder values from `.env.example` count as "not configured", so copying the example file cannot accidentally call a fake project.
 
-`src/lib/env.server.ts` imports `server-only`. A Client Component that imported it would fail the build. The VAPID private key and the Supabase secret key are read there, inside the request, not at module scope.
+`src/lib/env.server.ts` imports `server-only`. A Client Component that imported it would fail the build. The VAPID private key and the Supabase secret key are read there, inside the request, not at module scope. Profiles do not add variables.
 
 ## PWA files
 
@@ -99,17 +146,26 @@ The icons are a small generated mark (two overlapping circles). `npm run generat
 
 ## Tests and CI
 
-Vitest covers the pieces that are easy to get wrong and expensive to test by hand: the push payload shape, which status codes delete a subscription, subscription JSON parsing, the VAPID key decoder, open-redirect filtering, and the placeholder env rules.
+Vitest covers the pieces that are easy to get wrong and expensive to test by hand: the push payload shape, which status codes delete a subscription, subscription JSON parsing, the VAPID key decoder, open-redirect filtering, the placeholder env rules, and the profile field rules (name, timezone, image bytes).
 
-Playwright loads the landing page and the sign-in page with placeholder keys forced in, clicks the magic-link button, and checks that the home page redirects when nobody is signed in. It does not create a user.
+`npm run test:rls` is a separate Vitest config (`vitest.rls.config.mts`) that talks to local Supabase. It creates two users with the Auth admin API, signs each of them in, and checks:
 
-GitHub Actions runs lint, Prettier, typecheck, Vitest, `next build`, and that smoke test.
+- the second user gets zero rows from the first user's `account_private`, and cannot update or insert one
+- profile and `account_private` payloads have no `email` property, selecting the `email` column fails, and the Data API schema lists no email column
+- a display name equal to an email is stored as "New member", and an update that tries to save an email is rejected
+- the second user cannot change the first user's display name, including with an update that is not filtered to one id
+- the first user can upload a PNG under their own folder and open it with a signed URL; the second user cannot download it, sign it, or upload into that folder
+- the service-role key can still read `auth.users.email`, which is how the test shows the address exists and is not copied into `profiles`
+
+GitHub Actions runs that job on every pull request. It starts the local stack with `npx supabase start` and does not need the hosted project's keys. `npm test` stays free of Docker.
+
+Playwright loads the landing page and the sign-in page with placeholder keys forced in, clicks the magic-link button, and checks that `/home` and `/profile` redirect when nobody is signed in. It does not create a user.
 
 ## What was left out on purpose
 
 Cache Components (the Next.js 16 default for new apps) are off. Signed-in pages depend on the request cookie, and there is no public data worth caching yet. The comment is in `next.config.ts`.
 
-`account_private`, circles, invites, letters, Storage, Realtime, QStash, and rate limits are later weeks. The migration file should stay limited to `profiles` and `push_subscriptions` so those later tables arrive with their own RLS policies and tests.
+Circles, invites, letters, memory photos, Realtime, QStash, and rate limits are later weeks. Avatar bytes are not stripped of EXIF yet; the memory-wall week does that for photos people share. The age-confirmation column is null until that screen exists.
 
 ## File map
 
@@ -117,14 +173,22 @@ Cache Components (the Next.js 16 default for new apps) are off. Signed-in pages 
 | ------------------------------------- | ---------------------------------------------------- |
 | `src/app/page.tsx`                    | Landing page                                         |
 | `src/app/sign-in/page.tsx`            | Sign-in page (server), renders the form              |
-| `src/app/home/page.tsx`               | Signed-in placeholder. Loads the profile.            |
+| `src/app/home/page.tsx`               | Signed-in home. Shows the profile and the test push. |
+| `src/app/profile/page.tsx`            | View and edit the signed-in user's profile           |
+| `src/app/profile/actions.ts`          | Save profile, remove photo                           |
+| `src/components/profile-form.tsx`     | Name, timezone, and photo fields                     |
+| `src/components/profile-avatar.tsx`   | Round photo or initial                               |
+| `src/components/signed-in-header.tsx` | Home, Profile, and sign-out                          |
 | `src/components/sign-in-form.tsx`     | Google button and magic-link form                    |
 | `src/components/push-panel.tsx`       | Enable, test, and disable notifications              |
+| `src/lib/profile/fields.ts`           | Name, timezone, and image checks                     |
+| `src/lib/profile/load.ts`             | Load the caller's profile and a signed avatar URL    |
 | `src/app/auth/callback/route.ts`      | Exchange the auth code or token hash                 |
 | `src/app/auth/sign-out/route.ts`      | Clear the session                                    |
 | `src/app/api/push/subscribe/route.ts` | Save or delete this device                           |
 | `src/app/api/push/test/route.ts`      | Send the test push and prune dead rows               |
 | `src/lib/supabase/`                   | Browser client, server client, proxy, session helper |
-| `src/lib/database.types.ts`           | Hand-written types for the two tables                |
+| `src/lib/database.types.ts`           | Hand-written types for the tables                    |
 | `supabase/migrations/`                | SQL applied to the database                          |
+| `supabase/tests/rls.test.ts`          | Two-user RLS checks                                  |
 | `supabase/config.toml`                | Local Supabase CLI config                            |

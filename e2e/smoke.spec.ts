@@ -39,3 +39,11 @@ test("the signed-in home redirects to sign-in when there is no session", async (
   await expect(page).toHaveURL(/\/sign-in$/);
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 });
+
+test("the profile page redirects to sign-in when there is no session", async ({
+  page,
+}) => {
+  await page.goto("/profile");
+  await expect(page).toHaveURL(/\/sign-in$/);
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+});

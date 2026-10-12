@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/database.types";
 import { getSupabaseBrowserConfig } from "@/lib/env";
 
-const PROTECTED_PREFIXES = ["/home"];
+const PROTECTED_PREFIXES = ["/home", "/profile"];
 
 function isProtectedPage(pathname: string): boolean {
   return PROTECTED_PREFIXES.some(
@@ -28,7 +28,8 @@ function copySessionHeaders(
 }
 
 /**
- * Refreshes the Supabase session cookie and redirects the signed-out home page.
+ * Refreshes the Supabase session cookie and redirects signed-out visitors
+ * away from home and profile.
  *
  * This is not the authorization check. Pages and route handlers call
  * `getClaims()` themselves. The proxy's job is to refresh an expiring token

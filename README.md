@@ -2,7 +2,7 @@
 
 A private shared space for people who are far apart. Made for couples, built for groups, friends, and families.
 
-Hsummer is a portfolio project. Couples are the first audience. The data model will support a Circle of any size (a couple, a friend group, a family), but this repository is only the week-1 foundation: the app shell, sign-in, a profile row, and a test push notification.
+Hsummer is a portfolio project. Couples are the first audience. The data model will support a Circle of any size (a couple, a friend group, a family). This repository has the app shell, sign-in, a test push notification, and a profile you can edit. Circles themselves come next.
 
 ## Stack
 
@@ -74,11 +74,25 @@ The default magic-link email works when you open the link in the **same browser*
 
 `{{ .SiteURL }}` is the Site URL above (your app), not the Supabase project URL. The callback route accepts both this `token_hash` form and the default `code` form.
 
-### 3. Apply the database migration
+### 3. Apply the database migrations
 
-The migration is `supabase/migrations/20261012120000_profiles_and_push_subscriptions.sql`. It creates `profiles` and `push_subscriptions`, turns on RLS, and adds a trigger that inserts a profile when someone signs up. There is no email column on `profiles`.
+Migrations live in `supabase/migrations` and run in filename order.
 
-**Hosted project (no Docker):**
+| File                                                 | What it adds                                                     |
+| ---------------------------------------------------- | ---------------------------------------------------------------- |
+| `20261012120000_profiles_and_push_subscriptions.sql` | `profiles`, `push_subscriptions`, signup trigger, owner-only RLS |
+| `20261019120000_account_private_and_avatars.sql`     | `account_private`, private `avatars` bucket, profile read helper |
+
+There is no email column on `profiles` or `account_private`. The week 2 file is additive: run it once on a database that already has week 1. Do not edit or paste the week 1 file again.
+
+**Hosted project, SQL editor (no Docker):**
+
+1. Open the Supabase dashboard → **SQL Editor** → **New query**.
+2. If week 1 is not applied yet, paste `supabase/migrations/20261012120000_profiles_and_push_subscriptions.sql` and run it once.
+3. Paste `supabase/migrations/20261019120000_account_private_and_avatars.sql` and run it once. This creates the private Storage bucket named `avatars`. Do not also click **New bucket**. If you already created an `avatars` bucket by hand, delete that bucket first or this script stops on the duplicate name.
+4. Refresh **Storage**. `avatars` should be listed with public access off. Refresh **Table Editor** and confirm `account_private` exists and has no email column.
+
+**Hosted project, CLI:** use this only if week 1 was applied with `supabase db push` (so it is in the migration history). If you pasted week 1 into the SQL editor, use the SQL editor for week 2 as well. `db push` would try to run week 1 again and fail.
 
 ```bash
 npx supabase login
@@ -86,16 +100,15 @@ npx supabase link --project-ref <your-project-ref>
 npx supabase db push
 ```
 
-Or open the SQL editor in the dashboard and run that migration file once.
-
 **Local Supabase (optional, needs Docker):**
 
 ```bash
 npx supabase start
 npx supabase db reset
+npm run test:rls
 ```
 
-`supabase start` prints a local API URL and keys. Those go in `.env.local` if you want the app pointed at the local stack. The checked-in `supabase/config.toml` already allow-lists `http://localhost:3000/auth/callback`.
+`supabase start` prints a local API URL and keys. Those go in `.env.local` if you want the app pointed at the local stack. The checked-in `supabase/config.toml` already allow-lists `http://localhost:3000/auth/callback`. `npm run test:rls` signs in as two local test users and checks that one cannot read the other's `account_private`, cannot see an email column, and cannot update the other's profile.
 
 ### 4. Generate VAPID keys
 
@@ -116,8 +129,9 @@ Restart `npm run dev` after changing any `NEXT_PUBLIC_` variable. Next.js inline
 ### 5. Try it
 
 1. Sign in with Google or a magic link.
-2. Open `/home`. You should see a display name (from Google, or "New member") and a timezone. Magic-link sign-in sends the browser timezone. Google sign-in leaves timezone at `UTC` until a later profile screen.
-3. Tap **Enable notifications**, allow the prompt, then **Send test notification**.
+2. Open `/home`. You should see a display name (from Google, or "New member") and a timezone. Magic-link sign-in sends the browser timezone. Google sign-in leaves timezone at `UTC` until you open the profile page.
+3. Open **Profile**. Change the display name, confirm the timezone (it fills in from this browser when the saved value is still UTC), and upload a JPEG, PNG, or WebP under 2 MB. Save. The photo is stored in the private `avatars` bucket and shown through a signed URL.
+4. Tap **Enable notifications**, allow the prompt, then **Send test notification**.
 
 The notification text is generic on purpose. Lock screens are visible to other people, so payloads never include names, letters, or anything else from a Circle.
 
@@ -156,15 +170,18 @@ If iOS push is still silent: confirm you opened the Home Screen icon (not the Sa
 | `npm run lint`           | ESLint                                 |
 | `npm run format`         | Prettier                               |
 | `npm run typecheck`      | `next typegen` and `tsc --noEmit`      |
-| `npm test`               | Vitest                                 |
+| `npm test`               | Vitest unit tests                      |
+| `npm run test:rls`       | RLS tests (needs `npx supabase start`) |
 | `npm run test:e2e`       | Playwright smoke test (starts the app) |
 | `npm run build`          | Production build                       |
 | `npm run generate:vapid` | Print a VAPID key pair                 |
 
-GitHub Actions runs lint, format, typecheck, unit tests, the production build, and the Playwright smoke test on pull requests and on `main`. The smoke test does not need real Supabase credentials.
+GitHub Actions runs lint, format, typecheck, unit tests, the production build, and the Playwright smoke test on pull requests and on `main`. A second job starts local Supabase and runs the RLS tests. The smoke test does not need real Supabase credentials.
+
+No new environment variables are required for profiles. Photo upload uses the same Supabase URL and publishable key as sign-in.
 
 ## What is not in this version
 
-Circles, invites, letters, the bucket list, Storage, Realtime, QStash, and rate limits are later weeks. Do not add those tables to the week-1 migration.
+Circles, invites, letters, the bucket list, memory photos, Realtime, QStash, and rate limits are later weeks. Do not add those tables to the week 1 migration. The `avatars` bucket is only for profile photos.
 
 See [HOW_IT_WORKS.md](./HOW_IT_WORKS.md) for how the code is put together.
