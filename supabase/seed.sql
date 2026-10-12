@@ -1,0 +1,2 @@
+-- Week 1 has no seed data. Later weeks can put a fake couple here.
+-- Never seed real names, photos, letters, or secrets.

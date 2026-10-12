@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f3ecdf;
+  --foreground: #1c1915;
+  --accent: #c4552a;
+  --accent-ink: #fff8f3;
+  --pine: #234237;
+  --line: #e4d8c8;
+  --card: #fffaf3;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-pine: var(--pine);
+  --color-line: var(--line);
+  --color-card: var(--card);
+  --font-sans: var(--font-outfit), sans-serif;
+  --font-serif: var(--font-fraunces), serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+a {
+  text-underline-offset: 0.18em;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--pine);
+  outline-offset: 3px;
+}

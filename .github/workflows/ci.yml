@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
+        env:
+          # Public values are inlined at build time. Placeholders keep the
+          # smoke test from ever calling a real Supabase project.
+          NEXT_PUBLIC_SUPABASE_URL: https://your-project.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: your-publishable-or-anon-key
+          NEXT_PUBLIC_VAPID_PUBLIC_KEY: your-vapid-public-key
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+        env:
+          CI: true
