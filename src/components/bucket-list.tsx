@@ -273,42 +273,61 @@ function useBucketLive(
     if (!supabase) return;
 
     let active = true;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
     const timer = setTimeout(() => {
       if (active) {
         setLive((current) => (current === "connecting" ? "off" : current));
       }
     }, 8000);
 
-    const channel = supabase
-      .channel(`bucket-items:${circleId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "bucket_items",
-          filter: `circle_id=eq.${circleId}`,
-        },
-        () => {
-          onChange();
-        },
-      )
-      .subscribe((status) => {
+    // The socket otherwise joins with the anonymous key, and row-level
+    // security drops the circle's changes before this page can refresh.
+    void supabase.auth
+      .getSession()
+      .then(async ({ data }) => {
+        const token = data.session?.access_token;
         if (!active) return;
-        if (status === "SUBSCRIBED") setLive("live");
-        if (
-          status === "CHANNEL_ERROR" ||
-          status === "TIMED_OUT" ||
-          status === "CLOSED"
-        ) {
+        if (!token) {
           setLive("off");
+          return;
         }
+        await supabase.realtime.setAuth(token);
+        if (!active) return;
+
+        channel = supabase
+          .channel(`bucket-items:${circleId}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "bucket_items",
+              filter: `circle_id=eq.${circleId}`,
+            },
+            () => {
+              onChange();
+            },
+          )
+          .subscribe((status) => {
+            if (!active) return;
+            if (status === "SUBSCRIBED") setLive("live");
+            if (
+              status === "CHANNEL_ERROR" ||
+              status === "TIMED_OUT" ||
+              status === "CLOSED"
+            ) {
+              setLive("off");
+            }
+          });
+      })
+      .catch(() => {
+        if (active) setLive("off");
       });
 
     return () => {
       active = false;
       clearTimeout(timer);
-      void supabase.removeChannel(channel);
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [circleId, configured, onChange]);
 
