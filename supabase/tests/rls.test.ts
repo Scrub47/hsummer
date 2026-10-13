@@ -1000,6 +1000,321 @@ describe("1:1 pings stay between the sender and the recipient", () => {
   }, 60_000);
 });
 
+describe("bucket list stays inside the circle", () => {
+  let partner: Client;
+  let third: Client;
+  let outsider: Client;
+  let leaver: Client;
+  let partnerId = "";
+  let thirdId = "";
+  let leaverId = "";
+  let circleId = "";
+
+  beforeAll(async () => {
+    const nonce = crypto.randomUUID();
+    partnerId = await createUser(admin, {
+      email: `rls-bucket-partner-${nonce}@example.com`,
+      displayName: "Bucket Partner",
+      timezone: "America/Los_Angeles",
+    });
+    thirdId = await createUser(admin, {
+      email: `rls-bucket-third-${nonce}@example.com`,
+      displayName: "Bucket Third",
+      timezone: "America/Chicago",
+    });
+    leaverId = await createUser(admin, {
+      email: `rls-bucket-leaver-${nonce}@example.com`,
+      displayName: "Bucket Leaver",
+      timezone: "UTC",
+    });
+    const outsiderId = await createUser(admin, {
+      email: `rls-bucket-out-${nonce}@example.com`,
+      displayName: "Bucket Outsider",
+      timezone: "UTC",
+    });
+    partner = (
+      await signIn(apiUrl, anonKey, `rls-bucket-partner-${nonce}@example.com`)
+    ).client;
+    third = (
+      await signIn(apiUrl, anonKey, `rls-bucket-third-${nonce}@example.com`)
+    ).client;
+    leaver = (
+      await signIn(apiUrl, anonKey, `rls-bucket-leaver-${nonce}@example.com`)
+    ).client;
+    outsider = (
+      await signIn(apiUrl, anonKey, `rls-bucket-out-${nonce}@example.com`)
+    ).client;
+    expect(outsiderId).toBeTruthy();
+
+    const circle = await admin
+      .from("circles")
+      .insert({
+        name: "Bucket circle",
+        circle_type: "group",
+        created_by: ownerId,
+      })
+      .select("id")
+      .single();
+    expect(circle.error).toBeNull();
+    circleId = circle.data?.id ?? "";
+    const seats = await admin.from("circle_members").insert([
+      { circle_id: circleId, user_id: ownerId },
+      { circle_id: circleId, user_id: partnerId },
+      { circle_id: circleId, user_id: thirdId },
+      { circle_id: circleId, user_id: leaverId },
+    ]);
+    expect(seats.error).toBeNull();
+  });
+
+  it("lets active members read and write, and gives an outsider nothing", async () => {
+    const inserted = await partner
+      .from("bucket_items")
+      .insert({
+        circle_id: circleId,
+        title: "Night market",
+        category: "restaurant",
+        status: "idea",
+        notes: "The one with the mango rice",
+        link: "https://example.com/menu",
+        planned_date: "2026-12-01",
+      })
+      .select("id, created_by, completed_at, title")
+      .single();
+    expect(inserted.error).toBeNull();
+    expect(inserted.data?.created_by).toBe(partnerId);
+    expect(inserted.data?.completed_at).toBeNull();
+    const itemId = inserted.data?.id ?? "";
+
+    const ownerRead = await owner
+      .from("bucket_items")
+      .select("title, notes, link, planned_date, category")
+      .eq("id", itemId)
+      .single();
+    expect(ownerRead.data).toMatchObject({
+      title: "Night market",
+      notes: "The one with the mango rice",
+      link: "https://example.com/menu",
+      planned_date: "2026-12-01",
+      category: "restaurant",
+    });
+
+    const thirdRead = await third
+      .from("bucket_items")
+      .select("id")
+      .eq("id", itemId);
+    expect(thirdRead.data).toHaveLength(1);
+
+    const renamed = await owner
+      .from("bucket_items")
+      .update({ title: "Night market, Taipei" })
+      .eq("id", itemId)
+      .select("title")
+      .single();
+    expect(renamed.error).toBeNull();
+    expect(renamed.data?.title).toBe("Night market, Taipei");
+
+    const done = await third
+      .from("bucket_items")
+      .update({ status: "done" })
+      .eq("id", itemId)
+      .select("status, completed_at")
+      .single();
+    expect(done.error).toBeNull();
+    expect(done.data?.status).toBe("done");
+    expect(done.data?.completed_at).toBeTruthy();
+
+    const reopened = await partner
+      .from("bucket_items")
+      .update({ status: "planned", planned_date: "2027-01-02" })
+      .eq("id", itemId)
+      .select("status, completed_at, planned_date")
+      .single();
+    expect(reopened.data).toMatchObject({
+      status: "planned",
+      completed_at: null,
+      planned_date: "2027-01-02",
+    });
+
+    const hidden = await outsider
+      .from("bucket_items")
+      .select("id, title")
+      .eq("circle_id", circleId);
+    expect(hidden.error).toBeNull();
+    expect(hidden.data).toEqual([]);
+
+    const planted = await outsider.from("bucket_items").insert({
+      circle_id: circleId,
+      title: "Stolen idea",
+      category: "movie",
+      status: "idea",
+    });
+    expect(planted.error).toBeTruthy();
+
+    const attacked = await outsider
+      .from("bucket_items")
+      .update({ title: "Stolen title" })
+      .eq("id", itemId)
+      .select("id");
+    expect(attacked.error).toBeNull();
+    expect(attacked.data).toEqual([]);
+
+    const removed = await outsider
+      .from("bucket_items")
+      .delete()
+      .eq("id", itemId)
+      .select("id");
+    expect(removed.error).toBeNull();
+    expect(removed.data).toEqual([]);
+
+    const still = await owner
+      .from("bucket_items")
+      .select("title")
+      .eq("id", itemId)
+      .single();
+    expect(still.data?.title).toBe("Night market, Taipei");
+
+    const script = await partner.from("bucket_items").insert({
+      circle_id: circleId,
+      title: "Bad link",
+      category: "activity",
+      link: "javascript:alert(1)",
+    });
+    expect(script.error).toBeTruthy();
+
+    const pendingCircle = await admin
+      .from("circles")
+      .insert({
+        name: "Pending list",
+        circle_type: "couple",
+        created_by: ownerId,
+      })
+      .select("id")
+      .single();
+    expect(pendingCircle.error).toBeNull();
+    const pendingId = pendingCircle.data?.id ?? "";
+    const seat = await admin
+      .from("circle_members")
+      .insert({ circle_id: pendingId, user_id: ownerId });
+    expect(seat.error).toBeNull();
+    const early = await owner
+      .from("bucket_items")
+      .insert({
+        circle_id: pendingId,
+        title: "Call on Sunday",
+        category: "ldr-idea",
+        status: "idea",
+      })
+      .select("id")
+      .single();
+    expect(early.error).toBeNull();
+
+    const gone = await third
+      .from("bucket_items")
+      .delete()
+      .eq("id", itemId)
+      .select("id");
+    expect(gone.error).toBeNull();
+    expect(gone.data).toHaveLength(1);
+    const after = await partner
+      .from("bucket_items")
+      .select("id")
+      .eq("id", itemId);
+    expect(after.data).toEqual([]);
+  });
+
+  it("drops the list the moment someone leaves", async () => {
+    const inserted = await leaver
+      .from("bucket_items")
+      .insert({
+        circle_id: circleId,
+        title: "Train to the coast",
+        category: "date-idea",
+        status: "idea",
+      })
+      .select("id")
+      .single();
+    expect(inserted.error).toBeNull();
+    const itemId = inserted.data?.id ?? "";
+
+    const goodbye = await leaver
+      .from("circle_members")
+      .update({ left_at: new Date().toISOString() })
+      .eq("circle_id", circleId)
+      .eq("user_id", leaverId);
+    expect(goodbye.error).toBeNull();
+
+    const hidden = await leaver
+      .from("bucket_items")
+      .select("id")
+      .eq("circle_id", circleId);
+    expect(hidden.data).toEqual([]);
+
+    const still = await owner
+      .from("bucket_items")
+      .select("id")
+      .eq("id", itemId);
+    expect(still.data).toHaveLength(1);
+
+    const again = await leaver.from("bucket_items").insert({
+      circle_id: circleId,
+      title: "After leaving",
+      category: "movie",
+    });
+    expect(again.error).toBeTruthy();
+  });
+});
+
+describe("invite creation is rate limited", () => {
+  it("stops the 11th new link and allows one after the window", async () => {
+    const nonce = crypto.randomUUID();
+    const userId = await createUser(admin, {
+      email: `rls-invite-limit-${nonce}@example.com`,
+      displayName: "Invite Limit",
+      timezone: "UTC",
+    });
+    const client = (
+      await signIn(apiUrl, anonKey, `rls-invite-limit-${nonce}@example.com`)
+    ).client;
+
+    let firstCircle = "";
+    for (let made = 0; made < 10; made += 1) {
+      const created = await rpc(client, "create_circle", {
+        circle_name: `Limit ${made}`,
+        circle_type: "couple",
+      });
+      if (made === 0) firstCircle = created.circle_id ?? "";
+    }
+
+    const blocked = await client.rpc("create_circle", {
+      circle_name: "One too many",
+      circle_type: "couple",
+    });
+    expect(blocked.error?.message ?? "").toContain("hsummer_rate_limited");
+    expect(blocked.data).toBeNull();
+
+    const circles = await client.from("circles").select("id");
+    expect(circles.data).toHaveLength(10);
+
+    const regenerated = await client.rpc("regenerate_invite", {
+      target_circle: firstCircle,
+    });
+    expect(regenerated.error?.message ?? "").toContain("hsummer_rate_limited");
+
+    const backdated = await admin
+      .from("circle_invites")
+      .update({
+        created_at: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
+      })
+      .eq("created_by", userId);
+    expect(backdated.error).toBeNull();
+
+    const again = await rpc(client, "regenerate_invite", {
+      target_circle: firstCircle,
+    });
+    expect(again.token).toMatch(/^[0-9a-f]{64}$/);
+  }, 60_000);
+});
+
 async function rpc(
   client: Client,
   fn:

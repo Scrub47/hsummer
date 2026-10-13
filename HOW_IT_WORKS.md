@@ -1,8 +1,8 @@
 # How Hsummer works
 
-This is the map of the repository as it stands after Thinking of You. It is written for reading the code, not as a changelog.
+This is the map of the repository as it stands after the bucket list. It is written for reading the code, not as a changelog.
 
-Hsummer is a private space shared by a Circle: a couple, a few friends, or a family. Profiles came first. Who may read one is a single function, and that function now includes people who share an active circle. Circles, memberships, invite links, and pings are in the database. A 1:1 ping is readable only by the sender and the recipient. Letters and the bucket list are not built yet.
+Hsummer is a private space shared by a Circle: a couple, a few friends, or a family. Profiles came first. Who may read one is a single function, and that function now includes people who share an active circle. Circles, memberships, invite links, pings, and a shared bucket list are in the database. A 1:1 ping is readable only by the sender and the recipient. A bucket item is readable and editable by every active member of that circle. Letters are not built yet.
 
 ## Shape of the app
 
@@ -17,6 +17,7 @@ Next.js (App Router) on Vercel
   src/app/auth/callback            finish Google / magic link
   src/app/profile/actions.ts       save the signed-in user's profile
   src/app/circles/actions.ts       create a circle, rename, new invite
+  src/app/circles/bucket-actions.ts  add, edit, remove a bucket item
   src/app/join/actions.ts          redeem an invite link
   src/app/api/push/*               save a device, send a test push
   src/app/api/pings                Thinking of You, then push the partner
@@ -25,7 +26,8 @@ Next.js (App Router) on Vercel
 Supabase
   Auth (auth.users holds the email)
   Postgres: profiles, account_private, circles, members, invites,
-            pings, push_subscriptions
+            pings, bucket_items, push_subscriptions
+  Realtime: bucket_items, so both people see edits
   Storage: private bucket "avatars"
   Row Level Security: circle rows for active members; a 1:1 ping
                       only for its sender and recipient
@@ -130,11 +132,27 @@ While a circle is pending, its page is the invite prompt. Thinking of You is not
 
 `BROADCAST_PINGS_ENABLED` is false. A whole-circle ping is a row with `to_user_id` null. The select policy lets every active member read that shape, and the insert policy allows the null, so the RLS suite can create a 3-member group directly and prove both sides: the third member sees the null row and does not see a 1:1 row between the other two. The app never writes the null. A couple cannot write it either. The insert trigger reads `circle_type` and raises `hsummer_couple_needs_recipient`. That read stays out of the policies. `circle_type` is still only a default.
 
-The same trigger stamps `sent_at` from the database clock and allows 10 pings per sender per 10 minutes, across every circle. An advisory lock makes two overlapping requests share one count. Week 5 moves the limit to Upstash. The route checks the same numbers first so a burst gets a 429 and a plain sentence, and the trigger is what a direct insert cannot skip.
+The same trigger stamps `sent_at` from the database clock and allows 10 pings per sender per 10 minutes, across every circle. An advisory lock makes two overlapping requests share one count. The route counts with `count: "exact"` and returns 429 with a plain sentence when the person is already at the cap. If that count cannot be read, the route refuses the send instead of guessing. The trigger remains the check a direct insert cannot skip.
+
+New invite rows are capped the same way: 10 per person per 15 minutes, covering both a new circle and a regenerated link. The trigger is `private.circle_invites_guard_insert`, on `circle_invites`, so `create_circle` and `regenerate_invite` share one count. It stamps `created_at` from the database clock. Redeem still allows 8 attempts per person and 20 per IP hash inside 15 minutes. A before-insert trigger on `private.join_attempts` takes an advisory lock per user and then per IP hash, so two overlapping tries cannot both pass the count. The lock order is always user, then IP, so those two locks cannot deadlock with each other.
+
+Upstash Redis is optional. When `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are both set, the server asks `@upstash/ratelimit` (sliding window, same numbers) before the database call and returns the same sentence on 429. A Redis error or a timeout falls through to Postgres. When the variables are empty, Postgres is the only limiter and nothing else changes. A person who calls Supabase directly never hits Upstash, which is why the SQL stays.
 
 `secret_variant` is the `Missing<name>` easter egg. A long-press on the button, or a visually hidden control whose name is "Missing Summer", sets the flag. The recent list then says "Missing Summer". The push body is the fixed sentence "Missing you." The display name is not in the payload.
 
 A member can set their own `left_at`. They cannot clear it; coming back is another redemption, and only `redeem_invite` is allowed to do that. The moment `left_at` is set, `is_active_member` is false, so that person gets zero rows from the circle and stops being able to read the other person's profile.
+
+## Bucket list
+
+`bucket_items` is one list per circle. The columns are title, category (`restaurant`, `movie`, `activity`, `date-idea`, `ldr-idea`), status (`idea`, `planned`, `done`), an optional planned date, optional notes, and an optional http(s) link. `created_by` is who added it. The insert trigger sets that to `auth.uid()`, so a client cannot name someone else. Deleting that account sets the column to null, and the page says "Former member". A person who left is no longer in the member list, so their name resolves the same way: the profile read rule no longer includes them.
+
+`planned_date` is a Postgres `date`. The page formats it in UTC so a viewer in the US does not see the previous calendar day. `completed_at` is stamped when status becomes `done` and cleared if the item moves back to idea or planned. The client is not granted that column. Marking an item done does not create a Memory Wall row yet. That table arrives with the memory week; `completed_at` is the record that the completion happened.
+
+Policies call `private.is_active_member`. There is no `circle_type` in them. Select, insert, update, and delete are all allowed for every active member, including an item they did not add. An outsider and a member who has set `left_at` get zero rows. The circle page shows the list while the circle is still pending. Thinking of You stays hidden until the circle is an active couple. That matches the plan: the list works before the second person joins.
+
+The form is a client component. Saves are server actions, so the user id comes from the verified session and `revalidatePath` redraws the page in the same response. A Supabase Realtime channel on `bucket_items`, filtered to this circle, calls `router.refresh()` for the other person's edits. The browser waits for the signed-in access token and passes it to the socket before subscribing, so row-level security can see the member. Joining first as the anonymous key would accept the channel and then drop every change. The migration adds the table to the `supabase_realtime` publication when that publication exists, and sets `replica identity full` so an update or delete still carries `circle_id` for the filter. If the publication was missing when the SQL ran, the dashboard toggle is the same change. Own saves still appear without Realtime, because the action revalidates the page.
+
+Changing the status submits the whole edit form, so a status tap also stores notes that were already typed. Removing an item asks once in the page, then deletes. The card's React key includes `updated_at`, so a partner's save replaces a half-finished draft with the saved row.
 
 ## Push
 
@@ -158,7 +176,7 @@ The ping is inserted before the push, with the user's client. If the secret key 
 
 `src/lib/env.ts` is safe for Client Components. It only reads `NEXT_PUBLIC_` variables, and it reads them as `process.env.NEXT_PUBLIC_SOMETHING` rather than `process.env[name]`. Next.js inlines public variables into the browser bundle only for that static form. Placeholder values from `.env.example` count as "not configured", so copying the example file cannot accidentally call a fake project.
 
-`src/lib/env.server.ts` imports `server-only`. A Client Component that imported it would fail the build. The VAPID private key and the Supabase secret key are read there, inside the request, not at module scope. Thinking of You does not add a variable. It starts using the secret key that was already required.
+`src/lib/env.server.ts` imports `server-only`. A Client Component that imported it would fail the build. The VAPID private key, the Supabase secret key, and the optional Upstash token are read there, inside the request, not at module scope. Thinking of You uses the secret key that was already required. The bucket list does not add a required variable. Upstash is read only by the rate-limit helper, and only when both of its variables are set.
 
 ## PWA files
 
@@ -175,7 +193,7 @@ The icons are a small generated mark (two overlapping circles). `npm run generat
 
 ## Tests and CI
 
-Vitest covers the pieces that are easy to get wrong and expensive to test by hand: the push payload shape (including that a ping payload has no name), which status codes delete a subscription, subscription JSON parsing, the VAPID key decoder, open-redirect filtering, the placeholder env rules, the profile field rules, and the ping request rules (no recipient field, couple partner resolution, the 10-in-10-minutes cap, `Missing<name>` copy).
+Vitest covers the pieces that are easy to get wrong and expensive to test by hand: the push payload shape (including that a ping payload has no name), which status codes delete a subscription, subscription JSON parsing, the VAPID key decoder, open-redirect filtering, the placeholder env rules (including an empty or placeholder Upstash pair), the profile field rules, the ping request rules (no recipient field, couple partner resolution, the 10-in-10-minutes cap, `Missing<name>` copy), bucket-list field checks, and the 429 responses. The ping route test feeds a fake session: ten recent sends return HTTP 429 and the sentence the button shows, and a database `hsummer_rate_limited` error does the same. The Upstash helper returns that 429 when a test double says the window is full, and it falls through to Postgres when Redis is absent, throws, or does not answer in time.
 
 `npm run test:rls` is a separate Vitest config (`vitest.rls.config.mts`) that talks to local Supabase. It creates two users with the Auth admin API, signs each of them in, and checks:
 
@@ -188,6 +206,8 @@ Vitest covers the pieces that are easy to get wrong and expensive to test by han
 - in a 3-member circle created directly in the test database, the sender and the recipient can read a 1:1 ping (including `secret_variant`) and an outsider cannot
 - the third member of that circle gets zero rows for that 1:1 ping, cannot update or spoof it, and can read a whole-circle ping (`to_user_id` null) in the same circle
 - a couple insert with a null recipient is rejected, a member who sets `left_at` immediately loses the ping, and the 11th ping inside 10 minutes is rejected
+- in a 3-member circle, every active member can read and edit a bucket item (including one they did not add), an outsider's select is empty and their insert, update, and delete do nothing, and a member who sets `left_at` immediately loses the list
+- the 11th invite row in 15 minutes raises `hsummer_rate_limited` for both a new circle and a regenerated link, and one succeeds after those rows are moved outside the window
 
 GitHub Actions runs that job on every pull request. It starts the local stack with `npx supabase start` and does not need the hosted project's keys. `npm test` stays free of Docker.
 
@@ -197,7 +217,7 @@ Playwright loads the landing page and the sign-in page with placeholder keys for
 
 Cache Components (the Next.js 16 default for new apps) are off. Signed-in pages depend on the request cookie, and there is no public data worth caching yet. The comment is in `next.config.ts`.
 
-Letters, the bucket list, memory photos, Realtime, QStash, and Upstash rate limits are later weeks. Join is limited by `private.join_attempts`. Pings are limited by the insert trigger, not Redis. Avatar bytes are not stripped of EXIF yet; the memory-wall week does that for photos people share. The age-confirmation column is null until that screen exists. The group-circle create form, recipient pickers, and whole-circle pings from the app are later. The leave screen is later too; leaving is possible through the membership column so the status rule and the access cutoff can be tested. Mood-share is a `ping_type` the table accepts and the route refuses.
+Letters, memory photos, QStash, and the Memory Wall row for a finished bucket item are later weeks. `completed_at` is set when an item is marked done, and the memory week is what turns that into a scrapbook entry. Join is limited by `private.join_attempts`, now serialized. Pings are limited by the insert trigger. Invite creation is limited by the invite insert trigger. Upstash, when its two variables are set, checks the same caps first and is not required. Avatar bytes are not stripped of EXIF yet; the memory-wall week does that for photos people share. The age-confirmation column is null until that screen exists. The group-circle create form, recipient pickers, and whole-circle pings from the app are later. The leave screen is later too; leaving is possible through the membership column so the status rule and the access cutoff can be tested. Mood-share is a `ping_type` the table accepts and the route refuses.
 
 ## File map
 
@@ -207,7 +227,13 @@ Letters, the bucket list, memory photos, Realtime, QStash, and Upstash rate limi
 | `src/app/sign-in/page.tsx`            | Sign-in page (server), renders the form                        |
 | `src/app/home/page.tsx`               | Signed-in home. Shows the profile, circles, and the test push. |
 | `src/app/circles/page.tsx`            | List circles and create a couple circle                        |
-| `src/app/circles/[id]/page.tsx`       | Invite prompt, or Thinking of You in an active couple          |
+| `src/app/circles/[id]/page.tsx`       | Bucket list, invite, and Thinking of You in an active couple   |
+| `src/app/circles/bucket-actions.ts`   | Add, edit, and remove a bucket item                            |
+| `src/components/bucket-list.tsx`      | The list, the add form, and the Realtime subscription          |
+| `src/components/bucket-item.tsx`      | One item: edit, status, and remove                             |
+| `src/lib/bucket/fields.ts`            | Categories, dates, links, and write-error sentences            |
+| `src/lib/bucket/load.ts`              | Load and sort the circle's items                               |
+| `src/lib/rate-limit/enforce.ts`       | Optional Upstash check, with a Postgres fallback               |
 | `src/app/api/pings/route.ts`          | Send Thinking of You to the partner                            |
 | `src/components/thinking-of-you.tsx`  | The button, including the hidden `Missing<name>` control       |
 | `src/components/recent-pings.tsx`     | The short list of pings this person is allowed to see          |

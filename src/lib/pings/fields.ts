@@ -3,7 +3,9 @@
  *
  * The database is the backstop. This module rejects the same shapes before a
  * request, and it is where the rate-limit numbers live so the tests can name
- * them. The SQL trigger in the week 4 migration enforces those numbers.
+ * them. The week 4 insert trigger enforces those numbers. Week 5 checks the
+ * same cap in the route (and in Upstash, when that is configured) and still
+ * leaves the trigger in place, so a direct insert cannot skip it.
  *
  * A whole-circle ping (to_user_id null) is a real row shape. The app does not
  * send one until group UX. BROADCAST_PINGS_ENABLED is that flag.

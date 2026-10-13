@@ -48,3 +48,23 @@ export function getVapidConfig(): VapidConfig | null {
 
   return { subject, publicKey, privateKey };
 }
+
+/**
+ * Optional Upstash Redis REST credentials for sliding-window rate limits.
+ * Both must be set. When either is missing, or still a placeholder, rate
+ * limits stay in Postgres. Nothing else in the app reads these.
+ */
+export function getUpstashConfig(): { url: string; token: string } | null {
+  const url = readSecret(process.env.UPSTASH_REDIS_REST_URL);
+  const token = readSecret(process.env.UPSTASH_REDIS_REST_TOKEN);
+  if (!url || !token) return null;
+
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") return null;
+  } catch {
+    return null;
+  }
+
+  return { url, token };
+}

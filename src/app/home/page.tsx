@@ -50,7 +50,7 @@ export default async function HomePage() {
             {pending.length > 0
               ? "A circle is waiting for one more person. Share the invite link. Thinking of You stays closed until you both are here."
               : activeCouple
-                ? "Your circle is active. Open it and tap Thinking of You."
+                ? "Your circle is active. Open it for the bucket list, or tap Thinking of You."
                 : "Create a circle and send one invite link. Thinking of You starts once you're both here."}
           </p>
           <p className="mt-4">
@@ -69,7 +69,7 @@ export default async function HomePage() {
               {pending.length > 0
                 ? "Share the invite"
                 : activeCouple
-                  ? "Thinking of You"
+                  ? "Open your circle"
                   : "Circles"}
             </Link>
           </p>

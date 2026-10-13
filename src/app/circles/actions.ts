@@ -3,7 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { parseCircleName, parseCircleType } from "@/lib/circles/fields";
+import {
+  INVITE_RATE_LIMIT_MESSAGE,
+  INVITE_WRITE_LIMIT,
+  INVITE_WRITE_WINDOW_MINUTES,
+  circleRpcFailure,
+  parseCircleName,
+  parseCircleType,
+} from "@/lib/circles/fields";
+import { enforceSharedLimit } from "@/lib/rate-limit/enforce";
 import { getSession } from "@/lib/supabase/session";
 
 export type CreateCircleState = {
@@ -41,6 +49,9 @@ export async function createCircle(
   const circleType = parseCircleType(formData.get("circleType") ?? "couple");
   if (!circleType.ok) return emptyCreate(circleType.error);
 
+  const limited = await limitInviteWrites(session.userId);
+  if (limited) return emptyCreate(limited);
+
   const { data, error } = await session.supabase.rpc("create_circle", {
     circle_name: name.value,
     circle_type: circleType.value,
@@ -48,7 +59,7 @@ export async function createCircle(
 
   if (error || !data?.[0]) {
     console.error("create_circle failed.", error?.message);
-    return emptyCreate(messageForRpc(error?.message) ?? UNAVAILABLE);
+    return emptyCreate(circleRpcFailure(error?.message) ?? UNAVAILABLE);
   }
 
   revalidatePath("/circles");
@@ -84,7 +95,7 @@ export async function renameCircle(
   if (error) {
     console.error("Circle rename failed.", error.message);
     return emptyAction(
-      messageForRpc(error.message) ?? "The name wasn't saved.",
+      circleRpcFailure(error.message) ?? "The name wasn't saved.",
     );
   }
   if (!data || data.length === 0) {
@@ -111,13 +122,16 @@ export async function regenerateInvite(
   const circleId = stringField(formData.get("circleId"));
   if (!circleId) return emptyAction("That circle isn't available.");
 
+  const limited = await limitInviteWrites(session.userId);
+  if (limited) return emptyAction(limited);
+
   const { data, error } = await session.supabase.rpc("regenerate_invite", {
     target_circle: circleId,
   });
 
   if (error || !data?.[0]) {
     console.error("regenerate_invite failed.", error?.message);
-    return emptyAction(messageForRpc(error?.message) ?? UNAVAILABLE);
+    return emptyAction(circleRpcFailure(error?.message) ?? UNAVAILABLE);
   }
 
   revalidatePath(`/circles/${circleId}`);
@@ -149,16 +163,14 @@ function stringField(value: FormDataEntryValue | null): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function messageForRpc(message: string | undefined): string | null {
-  if (!message) return null;
-  if (message.includes("hsummer_bad_name")) {
-    return "Use a name up to 80 characters, without an email address.";
-  }
-  if (message.includes("hsummer_bad_type")) {
-    return "Couple circles are the ones you can create.";
-  }
-  if (message.includes("hsummer_not_member")) {
-    return "You can't change this circle.";
-  }
+/** Upstash when it is configured, then the insert trigger either way. */
+async function limitInviteWrites(userId: string): Promise<string | null> {
+  const decision = await enforceSharedLimit({
+    key: `invite:${userId}`,
+    limit: INVITE_WRITE_LIMIT,
+    window: `${INVITE_WRITE_WINDOW_MINUTES} m`,
+    error: INVITE_RATE_LIMIT_MESSAGE,
+  });
+  if (!decision.ok) return decision.error;
   return null;
 }

@@ -4,8 +4,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   GROUP_CIRCLE_TYPES_ENABLED,
+  INVITE_RATE_LIMIT_MESSAGE,
   JOIN_IP_LIMIT,
   JOIN_USER_LIMIT,
+  circleRpcFailure,
   circleTitle,
   circleTypeOffered,
   hashInviteToken,
@@ -99,6 +101,10 @@ describe("invite copy", () => {
     expect(circleTitle("  ", "family")).toBe("Your family");
     expect(inviteStateMessage("full")).toMatch(/full/i);
     expect(inviteStateMessage("rate_limited")).toMatch(/wait/i);
+    expect(circleRpcFailure("hsummer_rate_limited")).toBe(
+      INVITE_RATE_LIMIT_MESSAGE,
+    );
+    expect(INVITE_RATE_LIMIT_MESSAGE).toMatch(/wait/i);
     expect(inviteStateMessage("joined")).toBeNull();
     expect(inviteStateMessage("ready")).toBeNull();
   });

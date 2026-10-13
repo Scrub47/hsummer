@@ -2,8 +2,8 @@
  * Circle and invite rules shared by the server actions and the unit tests.
  *
  * The database is the backstop. This module rejects the same shapes before
- * a request, and it is where the join rate-limit numbers live so the tests
- * can name them. The SQL in the week 3 migration enforces those numbers.
+ * a request, and it is where the join and invite-creation limits live so the
+ * tests can name them. Week 3 enforces redemption. Week 5 enforces new links.
  *
  * Group, family, and friends circles exist in the database (the RLS tests
  * create them) and stay out of the UI until the group phase.
@@ -22,6 +22,15 @@ export const JOIN_USER_LIMIT = 8;
 export const JOIN_IP_LIMIT = 20;
 export const JOIN_WINDOW_MINUTES = 15;
 export const INVITE_DAYS = 7;
+
+/**
+ * New invite rows, from creating a circle or making a new link.
+ * The week 5 trigger enforces this. Upstash uses the same numbers when set.
+ */
+export const INVITE_WRITE_LIMIT = 10;
+export const INVITE_WRITE_WINDOW_MINUTES = 15;
+export const INVITE_RATE_LIMIT_MESSAGE =
+  "You've made several invite links just now. Wait a little and try again.";
 
 export const INVITE_TOKEN_PATTERN = /^[0-9a-f]{64}$/;
 
@@ -119,7 +128,7 @@ export function inviteStateMessage(state: string): string | null {
     case "already_member":
       return "You're already in this circle.";
     case "rate_limited":
-      return "Too many tries. Wait a little and try again.";
+      return "Too many tries just now. Wait a little and try again.";
     case "missing":
       return "This invite link isn't valid.";
     default:
@@ -137,6 +146,19 @@ export function circleTitle(name: string | null, type: CircleType): string {
 
 export function inviteStorageKey(inviteId: string): string {
   return `hsummer.invite.${inviteId}`;
+}
+
+/** Maps a Postgres error from the circle RPCs onto a sentence for the form. */
+export function circleRpcFailure(message: string | undefined): string | null {
+  if (!message) return null;
+  if (message.includes("hsummer_rate_limited"))
+    return INVITE_RATE_LIMIT_MESSAGE;
+  if (message.includes("hsummer_bad_name")) return CIRCLE_NAME_ERROR;
+  if (message.includes("hsummer_bad_type")) return CIRCLE_TYPE_ERROR;
+  if (message.includes("hsummer_not_member")) {
+    return "You can't change this circle.";
+  }
+  return null;
 }
 
 export function joinPath(token: string): string {

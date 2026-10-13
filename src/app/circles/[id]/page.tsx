@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 
+import { BucketList } from "@/components/bucket-list";
 import { InvitePanel } from "@/components/invite-panel";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { RecentPings } from "@/components/recent-pings";
 import { RenameCircleForm } from "@/components/rename-circle-form";
 import { SignedInHeader } from "@/components/signed-in-header";
 import { ThinkingOfYou } from "@/components/thinking-of-you";
+import { loadBucketItems } from "@/lib/bucket/load";
 import { loadCircle } from "@/lib/circles/load";
 import { loadRecentPings } from "@/lib/pings/load";
 import { getSession } from "@/lib/supabase/session";
@@ -38,16 +40,15 @@ export default async function CirclePage({
   const self = circle.members.find(
     (member) => member.userId === session.userId,
   );
-  const pings = showThinkingOfYou
-    ? await loadRecentPings(
-        session,
-        circle.id,
-        new Map(
-          circle.members.map((member) => [member.userId, member.displayName]),
-        ),
-        self?.timezone ?? "UTC",
-      )
-    : [];
+  const names = new Map(
+    circle.members.map((member) => [member.userId, member.displayName]),
+  );
+  const [pings, bucket] = await Promise.all([
+    showThinkingOfYou
+      ? loadRecentPings(session, circle.id, names, self?.timezone ?? "UTC")
+      : Promise.resolve([]),
+    loadBucketItems(session, circle.id, names),
+  ]);
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-6 py-10">
@@ -67,7 +68,8 @@ export default async function CirclePage({
           {circle.status === "pending" ? (
             <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
               This circle is waiting for one more person. Share the invite link.
-              Until then, this screen is the invite — not letters or a ping.
+              Thinking of You stays closed until you both are here. You can
+              start the bucket list now.
             </p>
           ) : (
             <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
@@ -75,11 +77,27 @@ export default async function CirclePage({
                 ? `You're here with ${others.map((member) => member.displayName).join(", ")}.`
                 : "You're both here."}{" "}
               {showThinkingOfYou
-                ? "Tap Thinking of You. It goes to your partner."
-                : "Letters and the bucket list come in later weeks."}
+                ? "Tap Thinking of You — it goes to your partner — or add to the bucket list."
+                : "The bucket list is below. Letters come in a later week."}
             </p>
           )}
         </div>
+
+        {bucket.ok ? (
+          <BucketList
+            circleId={circle.id}
+            items={bucket.items}
+            pending={circle.status === "pending"}
+          />
+        ) : (
+          <p className="max-w-xl text-sm leading-6 text-foreground/70">
+            The bucket list isn&apos;t in the database yet. Apply{" "}
+            <code>
+              supabase/migrations/20261109120000_bucket_items_and_rate_limits.sql
+            </code>{" "}
+            in the Supabase SQL editor, then reload this page.
+          </p>
+        )}
 
         {showThinkingOfYou && partner ? (
           <>

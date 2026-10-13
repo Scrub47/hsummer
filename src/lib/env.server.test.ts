@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { getSupabaseSecretKey, getVapidConfig } from "@/lib/env.server";
+import {
+  getSupabaseSecretKey,
+  getUpstashConfig,
+  getVapidConfig,
+} from "@/lib/env.server";
 
 const KEYS = [
   "SUPABASE_SECRET_KEY",
@@ -8,6 +12,8 @@ const KEYS = [
   "VAPID_SUBJECT",
   "VAPID_PRIVATE_KEY",
   "NEXT_PUBLIC_VAPID_PUBLIC_KEY",
+  "UPSTASH_REDIS_REST_URL",
+  "UPSTASH_REDIS_REST_TOKEN",
 ] as const;
 
 const original = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
@@ -43,6 +49,23 @@ describe("server env", () => {
       subject: "mailto:isaac@example.edu",
       publicKey: "public-key-value",
       privateKey: "private-key-value",
+    });
+  });
+
+  it("treats Upstash as optional and ignores placeholders", () => {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    expect(getUpstashConfig()).toBeNull();
+
+    process.env.UPSTASH_REDIS_REST_URL = "https://your-upstash-url.upstash.io";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "your-upstash-token";
+    expect(getUpstashConfig()).toBeNull();
+
+    process.env.UPSTASH_REDIS_REST_URL = "https://example.upstash.io";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "real-token-value";
+    expect(getUpstashConfig()).toEqual({
+      url: "https://example.upstash.io",
+      token: "real-token-value",
     });
   });
 });
