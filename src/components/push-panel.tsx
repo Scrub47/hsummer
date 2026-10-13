@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 
+import {
+  InstallHint,
+  iosInstallRequired,
+  useNeedsIosInstall,
+} from "@/components/install-hint";
 import { getVapidPublicKey } from "@/lib/env";
 import { urlBase64ToUint8Array } from "@/lib/push/subscription";
 
@@ -13,8 +18,17 @@ export function PushPanel() {
   );
   const [status, setStatus] = useState<Status>(null);
 
+  const needsInstall = useNeedsIosInstall();
+
   async function enable() {
     setStatus(null);
+    if (iosInstallRequired()) {
+      setStatus({
+        tone: "error",
+        text: "Add Hsummer to your Home Screen, open it from the icon, then enable notifications.",
+      });
+      return;
+    }
     const publicKey = getVapidPublicKey();
     if (!publicKey) {
       setStatus({
@@ -150,37 +164,42 @@ export function PushPanel() {
     <section className="flex flex-col gap-4">
       <div>
         <h2 className="font-serif text-2xl">Notifications</h2>
-        <p className="mt-2 text-sm leading-6 text-foreground/80">
-          A test push says only that notifications work. It never includes a
-          name, a letter, or anything else private — lock screens are public.
-        </p>
+        {needsInstall ? null : (
+          <p className="mt-2 text-sm leading-6 text-foreground/80">
+            A test push says only that notifications work. It never includes a
+            name, a letter, or anything else private — lock screens are public.
+          </p>
+        )}
       </div>
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-        <button
-          type="button"
-          onClick={enable}
-          disabled={pending !== null}
-          className="inline-flex h-11 items-center justify-center rounded-full bg-accent px-4 text-sm font-medium text-accent-ink disabled:opacity-60"
-        >
-          {pending === "enable" ? "Enabling…" : "Enable notifications"}
-        </button>
-        <button
-          type="button"
-          onClick={sendTest}
-          disabled={pending !== null}
-          className="inline-flex h-11 items-center justify-center rounded-full bg-pine px-4 text-sm font-medium text-white disabled:opacity-60"
-        >
-          {pending === "test" ? "Sending…" : "Send test notification"}
-        </button>
-        <button
-          type="button"
-          onClick={disable}
-          disabled={pending !== null}
-          className="inline-flex h-11 items-center justify-center rounded-full border border-line px-4 text-sm font-medium disabled:opacity-60"
-        >
-          {pending === "disable" ? "Turning off…" : "Turn off on this device"}
-        </button>
-      </div>
+      {needsInstall ? <InstallHint /> : null}
+      {needsInstall ? null : (
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          <button
+            type="button"
+            onClick={enable}
+            disabled={pending !== null}
+            className="inline-flex h-11 items-center justify-center rounded-full bg-accent px-4 text-sm font-medium text-accent-ink disabled:opacity-60"
+          >
+            {pending === "enable" ? "Enabling…" : "Enable notifications"}
+          </button>
+          <button
+            type="button"
+            onClick={sendTest}
+            disabled={pending !== null}
+            className="inline-flex h-11 items-center justify-center rounded-full bg-pine px-4 text-sm font-medium text-white disabled:opacity-60"
+          >
+            {pending === "test" ? "Sending…" : "Send test notification"}
+          </button>
+          <button
+            type="button"
+            onClick={disable}
+            disabled={pending !== null}
+            className="inline-flex h-11 items-center justify-center rounded-full border border-line px-4 text-sm font-medium disabled:opacity-60"
+          >
+            {pending === "disable" ? "Turning off…" : "Turn off on this device"}
+          </button>
+        </div>
+      )}
       {status ? (
         <p
           className="text-sm leading-6"

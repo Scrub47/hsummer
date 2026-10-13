@@ -82,6 +82,8 @@ Migrations live in `supabase/migrations` and run in filename order.
 | ---------------------------------------------------- | ---------------------------------------------------------------- |
 | `20261012120000_profiles_and_push_subscriptions.sql` | `profiles`, `push_subscriptions`, signup trigger, owner-only RLS |
 | `20261019120000_account_private_and_avatars.sql`     | `account_private`, private `avatars` bucket, profile read helper |
+| `20261026120000_circles_and_invites.sql`             | circles, members, invites, redemption, `is_active_member()`      |
+| `20261102120000_pings.sql`                           | `pings`, per-person RLS, couple broadcast guard, send cap        |
 
 There is no email column on `profiles` or `account_private`. The week 2 file is additive: run it once on a database that already has week 1. Do not edit or paste the week 1 file again.
 
@@ -91,6 +93,7 @@ There is no email column on `profiles` or `account_private`. The week 2 file is 
 2. If week 1 is not applied yet, paste `supabase/migrations/20261012120000_profiles_and_push_subscriptions.sql` and run it once.
 3. Paste `supabase/migrations/20261019120000_account_private_and_avatars.sql` and run it once. This creates the private Storage bucket named `avatars`. Do not also click **New bucket**. If you already created an `avatars` bucket by hand, delete that bucket first or this script stops on the duplicate name.
 4. Refresh **Storage**. `avatars` should be listed with public access off. Refresh **Table Editor** and confirm `account_private` exists and has no email column.
+5. Paste `supabase/migrations/20261026120000_circles_and_invites.sql` and run it once, then paste `supabase/migrations/20261102120000_pings.sql` and run it once. Stop if a file was already applied. Do not run a file twice.
 
 **Hosted project, CLI:** use this only if week 1 was applied with `supabase db push` (so it is in the migration history). If you pasted week 1 into the SQL editor, use the SQL editor for week 2 as well. `db push` would try to run week 1 again and fail.
 
@@ -198,8 +201,18 @@ Do this in the Supabase dashboard. No new bucket and no new environment variable
 
 Use `npx supabase db push` only if week 1 and week 2 were applied with the CLI and are already in the migration history. If those were pasted into the SQL editor, paste week 3 there too.
 
+### Apply the week 4 SQL
+
+Do this once production already has weeks 1–3. No new bucket. No new environment variable. VAPID keys and `SUPABASE_SECRET_KEY` are already set; Thinking of You starts using the secret key to deliver to your partner's devices.
+
+1. Open the Supabase dashboard → **SQL Editor** → **New query**.
+2. Do **not** paste or re-run any older file in `supabase/migrations`. Weeks 1–3 are already applied. Running them again will fail.
+3. Open `supabase/migrations/20261102120000_pings.sql`, paste the whole file, and run it **once**.
+4. Refresh **Table Editor**. Confirm `pings` exists. It has no email column. `push_subscriptions` is unchanged.
+5. Deploy the app. Open an active couple circle and tap **Thinking of You**. Your partner gets a notification on every device where notifications are on. On an iPhone, add Hsummer to the Home Screen and open it from the icon before tapping **Enable notifications**.
+
 ## What is not in this version
 
-Letters, the bucket list, memory photos, Realtime, QStash, and Upstash rate limits are later weeks. Do not add those tables to an earlier migration. The `avatars` bucket is only for profile photos. Leave, account deletion, and the group-circle create form are later too. The database already accepts group, family, and friends circles so the isolation tests can use them.
+Letters, the bucket list, memory photos, Realtime, QStash, and Upstash rate limits are later weeks. Do not add those tables to an earlier migration. The `avatars` bucket is only for profile photos. Leave, account deletion, group-circle screens, and whole-circle pings from the app are later too. The database already accepts a null recipient on a group ping so the isolation tests can use one.
 
 See [HOW_IT_WORKS.md](./HOW_IT_WORKS.md) for how the code is put together.

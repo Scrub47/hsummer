@@ -634,6 +634,372 @@ describe("circles, invites, and co-member profiles", () => {
   });
 });
 
+describe("1:1 pings stay between the sender and the recipient", () => {
+  let third: Client;
+  let outsider: Client;
+  let leaver: Client;
+  let rapid: Client;
+  let thirdId = "";
+  let outsiderId = "";
+  let leaverId = "";
+  let rapidId = "";
+  let rapidPartnerId = "";
+  let groupId = "";
+
+  beforeAll(async () => {
+    const nonce = crypto.randomUUID();
+    thirdId = await createUser(admin, {
+      email: `rls-ping-third-${nonce}@example.com`,
+      displayName: "Ping Third",
+      timezone: "America/Chicago",
+    });
+    outsiderId = await createUser(admin, {
+      email: `rls-ping-out-${nonce}@example.com`,
+      displayName: "Ping Outsider",
+      timezone: "UTC",
+    });
+    leaverId = await createUser(admin, {
+      email: `rls-ping-leaver-${nonce}@example.com`,
+      displayName: "Ping Leaver",
+      timezone: "UTC",
+    });
+    rapidId = await createUser(admin, {
+      email: `rls-ping-rapid-${nonce}@example.com`,
+      displayName: "Ping Rapid",
+      timezone: "UTC",
+    });
+    rapidPartnerId = await createUser(admin, {
+      email: `rls-ping-partner-${nonce}@example.com`,
+      displayName: "Ping Partner",
+      timezone: "UTC",
+    });
+    third = (
+      await signIn(apiUrl, anonKey, `rls-ping-third-${nonce}@example.com`)
+    ).client;
+    outsider = (
+      await signIn(apiUrl, anonKey, `rls-ping-out-${nonce}@example.com`)
+    ).client;
+    leaver = (
+      await signIn(apiUrl, anonKey, `rls-ping-leaver-${nonce}@example.com`)
+    ).client;
+    rapid = (
+      await signIn(apiUrl, anonKey, `rls-ping-rapid-${nonce}@example.com`)
+    ).client;
+
+    // Created directly. The product UI does not offer a group circle.
+    const group = await admin
+      .from("circles")
+      .insert({
+        name: "Ping trio",
+        circle_type: "group",
+        created_by: ownerId,
+      })
+      .select("id")
+      .single();
+    if (group.error || !group.data) throw group.error ?? new Error("no group");
+    groupId = group.data.id;
+    const members = await admin.from("circle_members").insert([
+      { circle_id: groupId, user_id: ownerId },
+      { circle_id: groupId, user_id: otherId },
+      { circle_id: groupId, user_id: thirdId },
+    ]);
+    if (members.error) throw members.error;
+    expect(outsiderId).toBeTruthy();
+    expect(rapidPartnerId).toBeTruthy();
+  });
+
+  it("hides a 1:1 ping from an outsider and from another member of the circle", async () => {
+    const ping = await owner
+      .from("pings")
+      .insert({
+        circle_id: groupId,
+        from_user_id: ownerId,
+        to_user_id: otherId,
+        ping_type: "thinking-of-you",
+        secret_variant: true,
+      })
+      .select("id, secret_variant, to_user_id")
+      .single();
+    expect(ping.error).toBeNull();
+    expect(ping.data?.secret_variant).toBe(true);
+    const pingId = ping.data?.id ?? "";
+
+    const stored = await admin
+      .from("pings")
+      .select("id")
+      .eq("id", pingId)
+      .single();
+    expect(stored.data?.id).toBe(pingId);
+
+    const recipient = await other
+      .from("pings")
+      .select("id, secret_variant")
+      .eq("id", pingId)
+      .single();
+    expect(recipient.error).toBeNull();
+    expect(recipient.data?.secret_variant).toBe(true);
+
+    const thirdView = await third
+      .from("pings")
+      .select("*")
+      .eq("circle_id", groupId);
+    expect(thirdView.error).toBeNull();
+    expect(thirdView.data).toEqual([]);
+
+    const outside = await outsider.from("pings").select("*").eq("id", pingId);
+    expect(outside.error).toBeNull();
+    expect(outside.data).toEqual([]);
+    expect(JSON.stringify(outside.data)).not.toContain(pingId);
+
+    const spoof = await third.from("pings").insert({
+      circle_id: groupId,
+      from_user_id: ownerId,
+      to_user_id: otherId,
+      ping_type: "thinking-of-you",
+    });
+    expect(spoof.error).toBeTruthy();
+
+    const edited = await third
+      .from("pings")
+      .update({ secret_variant: false })
+      .eq("id", pingId)
+      .select("id");
+    expect(edited.data ?? []).toEqual([]);
+    const stillSecret = await owner
+      .from("pings")
+      .select("secret_variant")
+      .eq("id", pingId)
+      .single();
+    expect(stillSecret.data?.secret_variant).toBe(true);
+
+    const removed = await outsider
+      .from("pings")
+      .delete()
+      .eq("id", pingId)
+      .select("id");
+    expect(removed.data ?? []).toEqual([]);
+    const stillThere = await owner
+      .from("pings")
+      .select("id")
+      .eq("id", pingId)
+      .single();
+    expect(stillThere.data?.id).toBe(pingId);
+
+    const side = await third
+      .from("pings")
+      .insert({
+        circle_id: groupId,
+        from_user_id: thirdId,
+        to_user_id: ownerId,
+        ping_type: "thinking-of-you",
+      })
+      .select("id")
+      .single();
+    expect(side.error).toBeNull();
+    const notTheirs = await other
+      .from("pings")
+      .select("id")
+      .eq("id", side.data?.id ?? "");
+    expect(notTheirs.data).toEqual([]);
+
+    const broadcast = await owner
+      .from("pings")
+      .insert({
+        circle_id: groupId,
+        from_user_id: ownerId,
+        to_user_id: null,
+        ping_type: "thinking-of-you",
+      })
+      .select("id")
+      .single();
+    expect(broadcast.error).toBeNull();
+
+    const thirdAfter = await third
+      .from("pings")
+      .select("id, to_user_id")
+      .eq("circle_id", groupId);
+    expect(thirdAfter.error).toBeNull();
+    const thirdIds = (thirdAfter.data ?? []).map((row) => row.id);
+    expect(thirdIds).toContain(broadcast.data?.id);
+    expect(thirdIds).toContain(side.data?.id);
+    expect(thirdIds).not.toContain(pingId);
+    expect(
+      thirdAfter.data?.find((row) => row.id === broadcast.data?.id)?.to_user_id,
+    ).toBeNull();
+
+    const outsiderAfter = await outsider
+      .from("pings")
+      .select("id")
+      .eq("circle_id", groupId);
+    expect(outsiderAfter.data).toEqual([]);
+
+    const anon = createClient<Database>(apiUrl, anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const anonRead = await anon.from("pings").select("*");
+    expect(anonRead.error).toBeTruthy();
+    expect(JSON.stringify(anonRead.data)).not.toContain(pingId);
+  });
+
+  it("rejects a whole-circle ping in a couple", async () => {
+    const couple = await admin
+      .from("circles")
+      .insert({
+        name: "Ping couple",
+        circle_type: "couple",
+        created_by: ownerId,
+      })
+      .select("id")
+      .single();
+    expect(couple.error).toBeNull();
+    const coupleId = couple.data?.id ?? "";
+    const seat = await admin
+      .from("circle_members")
+      .insert({ circle_id: coupleId, user_id: ownerId });
+    expect(seat.error).toBeNull();
+
+    const broadcast = await owner.from("pings").insert({
+      circle_id: coupleId,
+      from_user_id: ownerId,
+      to_user_id: null,
+      ping_type: "thinking-of-you",
+    });
+    expect(broadcast.error?.message ?? "").toContain(
+      "hsummer_couple_needs_recipient",
+    );
+
+    const stored = await admin
+      .from("pings")
+      .select("id")
+      .eq("circle_id", coupleId);
+    expect(stored.data).toEqual([]);
+  });
+
+  it("drops the ping from someone the moment they leave", async () => {
+    const couple = await admin
+      .from("circles")
+      .insert({
+        name: "Ping goodbye",
+        circle_type: "couple",
+        created_by: ownerId,
+      })
+      .select("id")
+      .single();
+    expect(couple.error).toBeNull();
+    const coupleId = couple.data?.id ?? "";
+    const seats = await admin.from("circle_members").insert([
+      { circle_id: coupleId, user_id: ownerId },
+      { circle_id: coupleId, user_id: leaverId },
+    ]);
+    expect(seats.error).toBeNull();
+
+    const ping = await owner
+      .from("pings")
+      .insert({
+        circle_id: coupleId,
+        from_user_id: ownerId,
+        to_user_id: leaverId,
+        ping_type: "thinking-of-you",
+      })
+      .select("id")
+      .single();
+    expect(ping.error).toBeNull();
+    const visible = await leaver
+      .from("pings")
+      .select("id")
+      .eq("id", ping.data?.id ?? "");
+    expect(visible.data).toHaveLength(1);
+
+    const goodbye = await leaver
+      .from("circle_members")
+      .update({ left_at: new Date().toISOString() })
+      .eq("circle_id", coupleId)
+      .eq("user_id", leaverId);
+    expect(goodbye.error).toBeNull();
+
+    const gone = await leaver
+      .from("pings")
+      .select("id")
+      .eq("circle_id", coupleId);
+    expect(gone.data).toEqual([]);
+    const senderStill = await owner
+      .from("pings")
+      .select("id")
+      .eq("id", ping.data?.id ?? "")
+      .single();
+    expect(senderStill.data?.id).toBe(ping.data?.id);
+
+    const again = await owner.from("pings").insert({
+      circle_id: coupleId,
+      from_user_id: ownerId,
+      to_user_id: leaverId,
+      ping_type: "thinking-of-you",
+    });
+    expect(again.error).toBeTruthy();
+  });
+
+  it("stops a burst of pings and allows another after the window", async () => {
+    const couple = await admin
+      .from("circles")
+      .insert({
+        name: "Ping limit",
+        circle_type: "couple",
+        created_by: rapidId,
+      })
+      .select("id")
+      .single();
+    expect(couple.error).toBeNull();
+    const coupleId = couple.data?.id ?? "";
+    const seats = await admin.from("circle_members").insert([
+      { circle_id: coupleId, user_id: rapidId },
+      { circle_id: coupleId, user_id: rapidPartnerId },
+    ]);
+    expect(seats.error).toBeNull();
+
+    for (let sent = 0; sent < 10; sent += 1) {
+      const row = await rapid
+        .from("pings")
+        .insert({
+          circle_id: coupleId,
+          from_user_id: rapidId,
+          to_user_id: rapidPartnerId,
+          ping_type: "thinking-of-you",
+        })
+        .select("id")
+        .single();
+      expect(row.error).toBeNull();
+    }
+
+    const blocked = await rapid.from("pings").insert({
+      circle_id: coupleId,
+      from_user_id: rapidId,
+      to_user_id: rapidPartnerId,
+      ping_type: "thinking-of-you",
+    });
+    expect(blocked.error?.message ?? "").toContain("hsummer_rate_limited");
+
+    const backdated = await admin
+      .from("pings")
+      .update({
+        sent_at: new Date(Date.now() - 11 * 60 * 1000).toISOString(),
+      })
+      .eq("from_user_id", rapidId);
+    expect(backdated.error).toBeNull();
+
+    const again = await rapid
+      .from("pings")
+      .insert({
+        circle_id: coupleId,
+        from_user_id: rapidId,
+        to_user_id: rapidPartnerId,
+        ping_type: "thinking-of-you",
+      })
+      .select("id")
+      .single();
+    expect(again.error).toBeNull();
+  }, 60_000);
+});
+
 async function rpc(
   client: Client,
   fn:

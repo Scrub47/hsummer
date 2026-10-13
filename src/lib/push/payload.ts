@@ -15,11 +15,38 @@ export type TestNotification = {
 export const TEST_NOTIFICATION_BODY =
   "Test notification. Nothing private is in this message.";
 
+/**
+ * Thinking of You, still without a name. "Missing you" is the secret variant.
+ * The recipient's display name stays in the app, behind sign-in.
+ */
+export const PING_NOTIFICATION_BODY = "Thinking of you.";
+export const PING_SECRET_NOTIFICATION_BODY = "Missing you.";
+
+const CIRCLE_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function buildTestNotification(origin: string): TestNotification {
   const base = new URL(origin);
   return {
     title: "Hsummer",
     body: TEST_NOTIFICATION_BODY,
     url: new URL("/home", base.origin).toString(),
+  };
+}
+
+export function buildPingNotification(
+  origin: string,
+  input: { secretVariant: boolean; circleId: string },
+): TestNotification {
+  const base = new URL(origin);
+  const path = CIRCLE_ID_PATTERN.test(input.circleId)
+    ? `/circles/${input.circleId}`
+    : "/home";
+  return {
+    title: "Hsummer",
+    body: input.secretVariant
+      ? PING_SECRET_NOTIFICATION_BODY
+      : PING_NOTIFICATION_BODY,
+    url: new URL(path, base.origin).toString(),
   };
 }

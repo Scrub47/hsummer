@@ -3,9 +3,12 @@ import { notFound, redirect } from "next/navigation";
 
 import { InvitePanel } from "@/components/invite-panel";
 import { ProfileAvatar } from "@/components/profile-avatar";
+import { RecentPings } from "@/components/recent-pings";
 import { RenameCircleForm } from "@/components/rename-circle-form";
 import { SignedInHeader } from "@/components/signed-in-header";
+import { ThinkingOfYou } from "@/components/thinking-of-you";
 import { loadCircle } from "@/lib/circles/load";
+import { loadRecentPings } from "@/lib/pings/load";
 import { getSession } from "@/lib/supabase/session";
 
 export const metadata: Metadata = {
@@ -27,6 +30,24 @@ export default async function CirclePage({
   const others = circle.members.filter(
     (member) => member.userId !== session.userId,
   );
+  const partner = others.length === 1 ? others[0] : null;
+  const showThinkingOfYou =
+    circle.circleType === "couple" &&
+    circle.status === "active" &&
+    partner !== null;
+  const self = circle.members.find(
+    (member) => member.userId === session.userId,
+  );
+  const pings = showThinkingOfYou
+    ? await loadRecentPings(
+        session,
+        circle.id,
+        new Map(
+          circle.members.map((member) => [member.userId, member.displayName]),
+        ),
+        self?.timezone ?? "UTC",
+      )
+    : [];
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-6 py-10">
@@ -53,10 +74,22 @@ export default async function CirclePage({
               {others.length > 0
                 ? `You're here with ${others.map((member) => member.displayName).join(", ")}.`
                 : "You're both here."}{" "}
-              Letters and the bucket list come in later weeks.
+              {showThinkingOfYou
+                ? "Tap Thinking of You. It goes to your partner."
+                : "Letters and the bucket list come in later weeks."}
             </p>
           )}
         </div>
+
+        {showThinkingOfYou && partner ? (
+          <>
+            <ThinkingOfYou
+              circleId={circle.id}
+              partnerName={partner.displayName}
+            />
+            <RecentPings pings={pings} selfId={session.userId} />
+          </>
+        ) : null}
 
         <InvitePanel
           circleId={circle.id}
