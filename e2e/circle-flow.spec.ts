@@ -70,7 +70,11 @@ test("sign in, create a couple circle, invite, join, and ping", async ({
     await page
       .getByRole("button", { name: "Thinking of You", exact: true })
       .click();
-    await expect(page.getByRole("status")).toContainText(/Saved for Summer/);
+    // CI starts Supabase without Realtime, so the page also shows a status
+    // line that live updates are off. Match the ping result itself.
+    await expect(
+      page.getByRole("status").filter({ hasText: /Saved for Summer/ }),
+    ).toBeVisible();
     await expect(recent(page)).toContainText("Thinking of you");
 
     await partnerPage.reload();
