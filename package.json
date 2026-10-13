@@ -14,6 +14,7 @@
     "format:check": "prettier --check .",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
+    "test:rls": "vitest run --config vitest.rls.config.mts",
     "test:e2e": "playwright test",
     "generate:vapid": "node scripts/generate-vapid-keys.mjs",
     "generate:icons": "node scripts/generate-icons.mjs"
