@@ -505,6 +505,7 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+#variable_conflict use_column
 declare
   actor uuid := (select auth.uid());
   cleaned text;
@@ -583,6 +584,7 @@ stable
 security definer
 set search_path = ''
 as $$
+#variable_conflict use_column
 declare
   actor uuid := (select auth.uid());
   found_invite public.circle_invites%rowtype;
@@ -677,6 +679,7 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+#variable_conflict use_column
 declare
   actor uuid := (select auth.uid());
   bucket text;
@@ -844,6 +847,7 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+#variable_conflict use_column
 declare
   actor uuid := (select auth.uid());
   found_type text;
