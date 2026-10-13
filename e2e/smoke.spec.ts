@@ -54,6 +54,11 @@ test("circles redirect to sign-in when there is no session", async ({
   await page.goto("/circles");
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fcircles$/);
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+
+  await page.goto("/circles/11111111-1111-4111-8111-111111111111");
+  await expect(page).toHaveURL(
+    /\/sign-in\?next=%2Fcircles%2F11111111-1111-4111-8111-111111111111$/,
+  );
 });
 
 test("a ping requires a signed-in session", async ({ request }) => {

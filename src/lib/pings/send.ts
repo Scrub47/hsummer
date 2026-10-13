@@ -13,6 +13,7 @@ import {
   pingWriteFailure,
   resolveCouplePartner,
 } from "@/lib/pings/fields";
+import { enforceSharedLimit } from "@/lib/rate-limit/enforce";
 import { buildPingNotification } from "@/lib/push/payload";
 import { deliverTestPushes, subscriptionsToPrune } from "@/lib/push/prune";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -74,13 +75,12 @@ export async function sendThinkingOfYou(
       .is("left_at", null),
     session.supabase
       .from("pings")
-      .select("id")
+      .select("id", { count: "exact", head: true })
       .eq("from_user_id", session.userId)
-      .gt("sent_at", since)
-      .limit(PING_LIMIT),
+      .gt("sent_at", since),
   ]);
 
-  if (members.error || recent.error) {
+  if (members.error || recent.error || typeof recent.count !== "number") {
     console.error("Ping membership lookup failed.");
     return { status: 503, body: { error: UNAVAILABLE } };
   }
@@ -96,7 +96,20 @@ export async function sendThinkingOfYou(
     return { status: failure.status, body: { error: failure.error } };
   }
 
-  if (!pingSendAllowed(recent.data?.length ?? 0)) {
+  const shared = await enforceSharedLimit({
+    key: `ping:${session.userId}`,
+    limit: PING_LIMIT,
+    window: `${PING_WINDOW_MINUTES} m`,
+    error: PING_RATE_LIMIT_MESSAGE,
+  });
+  if (!shared.ok) {
+    return { status: shared.status, body: { error: shared.error } };
+  }
+
+  // Exact count of rows this person can already see. The insert trigger is
+  // the backstop when two requests both pass this check, and when Upstash
+  // is not configured.
+  if (!pingSendAllowed(recent.count)) {
     return { status: 429, body: { error: PING_RATE_LIMIT_MESSAGE } };
   }
 

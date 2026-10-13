@@ -1,11 +1,15 @@
 /**
  * Hand-written slice of the generated Supabase types.
  *
- * Profiles, account settings, circles, invites, pings, and push subscriptions
- * live here. When the schema grows, replace this file with
+ * Profiles, account settings, circles, invites, pings, the bucket list, and
+ * push subscriptions live here. When the schema grows, replace this file with
  * `supabase gen types typescript`. `circle_invites.token_hash` is omitted:
  * authenticated clients are not granted that column. Pings have no client
  * update or delete grant; the Update shape is only what a test may attempt.
+ * Bucket-list Insert and Update include columns the app does not send. Those
+ * are what a test may attempt; the trigger and the column grants reject them.
+ * `circle_invites.created_at` is on Update only so a test can move a row out
+ * of the rate-limit window. Authenticated clients have no update grant.
  */
 export type Database = {
   public: {
@@ -119,6 +123,7 @@ export type Database = {
           expires_at?: string;
           revoked_at?: string | null;
           use_count?: number;
+          created_at?: string;
         };
         Relationships: [];
       };
@@ -162,6 +167,52 @@ export type Database = {
         Update: {
           secret_variant?: boolean;
           sent_at?: string;
+        };
+        Relationships: [];
+      };
+      bucket_items: {
+        Row: {
+          id: string;
+          circle_id: string;
+          created_by: string | null;
+          title: string;
+          category:
+            "restaurant" | "movie" | "activity" | "date-idea" | "ldr-idea";
+          status: "idea" | "planned" | "done";
+          planned_date: string | null;
+          completed_at: string | null;
+          notes: string | null;
+          link: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          circle_id: string;
+          created_by?: string | null;
+          title: string;
+          category:
+            "restaurant" | "movie" | "activity" | "date-idea" | "ldr-idea";
+          status?: "idea" | "planned" | "done";
+          planned_date?: string | null;
+          completed_at?: string | null;
+          notes?: string | null;
+          link?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          title?: string;
+          category?:
+            "restaurant" | "movie" | "activity" | "date-idea" | "ldr-idea";
+          status?: "idea" | "planned" | "done";
+          planned_date?: string | null;
+          notes?: string | null;
+          link?: string | null;
+          circle_id?: string;
+          created_by?: string | null;
+          completed_at?: string | null;
+          created_at?: string;
         };
         Relationships: [];
       };

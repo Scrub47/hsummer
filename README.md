@@ -2,7 +2,7 @@
 
 A private shared space for people who are far apart. Made for couples, built for groups, friends, and families.
 
-Hsummer is a portfolio project. Couples are the first audience. The data model supports a Circle of any size (a couple, a friend group, a family). This repository has the app shell, sign-in, a test push notification, profiles, and couple circles with invite links. Group, family, and friends circles exist in the database and stay out of the create form until a later phase.
+Hsummer is a portfolio project. Couples are the first audience. The data model supports a Circle of any size (a couple, a friend group, a family). This repository has the app shell, sign-in, a test push notification, profiles, couple circles with invite links, Thinking of You, and a shared bucket list. Group, family, and friends circles exist in the database and stay out of the create form until a later phase.
 
 ## Stack
 
@@ -12,7 +12,7 @@ Hsummer is a portfolio project. Couples are the first audience. The data model s
 - Deployed on [Vercel](https://vercel.com/)
 - [Vitest](https://vitest.dev/) unit tests, [Playwright](https://playwright.dev/) smoke tests, GitHub Actions
 
-Joining a circle is rate-limited in Postgres (per person and per IP hash). Upstash, for scheduled letters and the later limits on pings and invite creation, is not wired up.
+Pings, new invite links, and joining a circle are rate-limited in Postgres. Upstash Redis is optional: set both `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` to check the same limits in Redis first. Leave them empty and Postgres is the only limiter. Scheduled letters (QStash) are a later week.
 
 ## Local setup
 
@@ -84,6 +84,7 @@ Migrations live in `supabase/migrations` and run in filename order.
 | `20261019120000_account_private_and_avatars.sql`     | `account_private`, private `avatars` bucket, profile read helper |
 | `20261026120000_circles_and_invites.sql`             | circles, members, invites, redemption, `is_active_member()`      |
 | `20261102120000_pings.sql`                           | `pings`, per-person RLS, couple broadcast guard, send cap        |
+| `20261109120000_bucket_items_and_rate_limits.sql`    | `bucket_items`, Realtime, invite cap, redeem locks               |
 
 There is no email column on `profiles` or `account_private`. The week 2 file is additive: run it once on a database that already has week 1. Do not edit or paste the week 1 file again.
 
@@ -93,7 +94,7 @@ There is no email column on `profiles` or `account_private`. The week 2 file is 
 2. If week 1 is not applied yet, paste `supabase/migrations/20261012120000_profiles_and_push_subscriptions.sql` and run it once.
 3. Paste `supabase/migrations/20261019120000_account_private_and_avatars.sql` and run it once. This creates the private Storage bucket named `avatars`. Do not also click **New bucket**. If you already created an `avatars` bucket by hand, delete that bucket first or this script stops on the duplicate name.
 4. Refresh **Storage**. `avatars` should be listed with public access off. Refresh **Table Editor** and confirm `account_private` exists and has no email column.
-5. Paste `supabase/migrations/20261026120000_circles_and_invites.sql` and run it once, then paste `supabase/migrations/20261102120000_pings.sql` and run it once. Stop if a file was already applied. Do not run a file twice.
+5. Paste `supabase/migrations/20261026120000_circles_and_invites.sql` and run it once, then paste `supabase/migrations/20261102120000_pings.sql` and run it once, then paste `supabase/migrations/20261109120000_bucket_items_and_rate_limits.sql` and run it once. Stop if a file was already applied. Do not run a file twice. The week 5 file adds `bucket_items` to the Realtime publication when that publication already exists.
 
 **Hosted project, CLI:** use this only if week 1 was applied with `supabase db push` (so it is in the migration history). If you pasted week 1 into the SQL editor, use the SQL editor for week 2 as well. `db push` would try to run week 1 again and fail.
 
@@ -211,8 +212,20 @@ Do this once production already has weeks 1–3. No new bucket. No new environme
 4. Refresh **Table Editor**. Confirm `pings` exists. It has no email column. `push_subscriptions` is unchanged.
 5. Deploy the app. Open an active couple circle and tap **Thinking of You**. Your partner gets a notification on every device where notifications are on. On an iPhone, add Hsummer to the Home Screen and open it from the icon before tapping **Enable notifications**.
 
+### Apply the week 5 SQL
+
+Do this once production already has weeks 1–4. One new file. No new bucket. No required environment variable.
+
+1. Open the Supabase dashboard → **SQL Editor** → **New query**.
+2. Do **not** paste or re-run any older file in `supabase/migrations`. Weeks 1–4 are already applied. Running them again will fail.
+3. Open `supabase/migrations/20261109120000_bucket_items_and_rate_limits.sql`, paste the whole file, and run it **once**.
+4. Refresh **Table Editor**. Confirm `bucket_items` exists. It has no email column. Older tables are unchanged.
+5. Realtime: the SQL adds `bucket_items` to the `supabase_realtime` publication when that publication already exists (that is the same switch as the dashboard). Open **Database → Publications** (or the Realtime settings for tables) and confirm `bucket_items` is listed. If it is not, turn it on for that table. You do not need a new environment variable for Realtime.
+6. Optional rate-limit Redis. Leave `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` unset and the limits stay in Postgres (10 pings / 10 minutes, 10 new invite links / 15 minutes, 8 join tries per person and 20 per IP hash / 15 minutes). To use Upstash as well, create a Redis database there and set both variables on Vercel for Production and Preview, then redeploy. If Redis is down, the app uses Postgres.
+7. Deploy the app. Open a circle and add a bucket item. The other person, with the circle open, should see it without reloading once Realtime is on for `bucket_items`. Spamming **Thinking of You** shows "You've sent a few of these just now. Wait a little and try again."
+
 ## What is not in this version
 
-Letters, the bucket list, memory photos, Realtime, QStash, and Upstash rate limits are later weeks. Do not add those tables to an earlier migration. The `avatars` bucket is only for profile photos. Leave, account deletion, group-circle screens, and whole-circle pings from the app are later too. The database already accepts a null recipient on a group ping so the isolation tests can use one.
+Letters, memory photos, and QStash are later weeks. Marking a bucket item done records `completed_at`; the Memory Wall entry for that completion is the memory week. Do not add those tables to an earlier migration. The `avatars` bucket is only for profile photos. Leave, account deletion, group-circle screens, and whole-circle pings from the app are later too. The database already accepts a null recipient on a group ping so the isolation tests can use one. Upstash is optional and is not required for the rate limits.
 
 See [HOW_IT_WORKS.md](./HOW_IT_WORKS.md) for how the code is put together.

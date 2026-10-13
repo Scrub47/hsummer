@@ -19,6 +19,8 @@ const PLACEHOLDER_SNIPPETS = [
   "your-secret",
   "your-service",
   "your-vapid",
+  "your-upstash",
+  "your-redis",
   "you@example.com",
 ];
 

@@ -4,11 +4,16 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import {
+  JOIN_IP_LIMIT,
+  JOIN_USER_LIMIT,
+  JOIN_WINDOW_MINUTES,
   hashIp,
+  inviteStateMessage,
   isInviteToken,
   joinPath,
   requestIp,
 } from "@/lib/circles/fields";
+import { enforceSharedLimit } from "@/lib/rate-limit/enforce";
 import { getSession } from "@/lib/supabase/session";
 
 /**
@@ -24,9 +29,31 @@ export async function redeemInvite(formData: FormData): Promise<void> {
   if (!token || !isInviteToken(token)) redirect("/join/invalid");
 
   const headerList = await headers();
+  const ipHash = hashIp(requestIp(headerList));
+  const limitedMessage =
+    inviteStateMessage("rate_limited") ??
+    "Too many tries just now. Wait a little and try again.";
+  const userLimited = await enforceSharedLimit({
+    key: `redeem-user:${session.userId}`,
+    limit: JOIN_USER_LIMIT,
+    window: `${JOIN_WINDOW_MINUTES} m`,
+    error: limitedMessage,
+  });
+  const ipLimited = userLimited.ok
+    ? await enforceSharedLimit({
+        key: `redeem-ip:${ipHash}`,
+        limit: JOIN_IP_LIMIT,
+        window: `${JOIN_WINDOW_MINUTES} m`,
+        error: limitedMessage,
+      })
+    : userLimited;
+  if (!ipLimited.ok) {
+    redirect(`${joinPath(token)}?error=rate_limited`);
+  }
+
   const { data, error } = await session.supabase.rpc("redeem_invite", {
     raw_token: token,
-    ip_hash: hashIp(requestIp(headerList)),
+    ip_hash: ipHash,
   });
 
   if (error || !data?.[0]) {
