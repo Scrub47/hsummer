@@ -1,8 +1,10 @@
 /**
  * Hand-written slice of the generated Supabase types.
  *
- * Profiles, account_private, and push subscriptions live here. When the
- * schema grows, replace this file with `supabase gen types typescript`.
+ * Profiles, account settings, circles, invites, and push subscriptions live
+ * here. When the schema grows, replace this file with
+ * `supabase gen types typescript`. `circle_invites.token_hash` is omitted:
+ * authenticated clients are not granted that column.
  */
 export type Database = {
   public: {
@@ -48,6 +50,93 @@ export type Database = {
         };
         Relationships: [];
       };
+      circles: {
+        Row: {
+          id: string;
+          name: string | null;
+          circle_type: "couple" | "group" | "family" | "friends";
+          created_by: string | null;
+          created_at: string;
+          status: "pending" | "active" | "archived";
+        };
+        Insert: {
+          id?: string;
+          name?: string | null;
+          circle_type: "couple" | "group" | "family" | "friends";
+          created_by?: string | null;
+          created_at?: string;
+          status?: "pending" | "active" | "archived";
+        };
+        Update: {
+          name?: string | null;
+        };
+        Relationships: [];
+      };
+      circle_members: {
+        Row: {
+          circle_id: string;
+          user_id: string;
+          joined_at: string;
+          left_at: string | null;
+          muted_until: string | null;
+        };
+        Insert: {
+          circle_id: string;
+          user_id: string;
+          joined_at?: string;
+          left_at?: string | null;
+          muted_until?: string | null;
+        };
+        Update: {
+          left_at?: string | null;
+          muted_until?: string | null;
+        };
+        Relationships: [];
+      };
+      circle_invites: {
+        Row: {
+          id: string;
+          circle_id: string;
+          created_by: string | null;
+          created_at: string;
+          expires_at: string;
+          max_uses: number | null;
+          use_count: number;
+          revoked_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          circle_id: string;
+          created_by?: string | null;
+          created_at?: string;
+          expires_at: string;
+          max_uses?: number | null;
+          use_count?: number;
+          revoked_at?: string | null;
+        };
+        Update: {
+          expires_at?: string;
+          revoked_at?: string | null;
+          use_count?: number;
+        };
+        Relationships: [];
+      };
+      circle_invite_redemptions: {
+        Row: {
+          invite_id: string;
+          user_id: string;
+          redeemed_at: string;
+        };
+        Insert: {
+          invite_id: string;
+          user_id: string;
+          redeemed_at?: string;
+        };
+        Update: {
+          redeemed_at?: string;
+        };
+        Relationships: [];
+      };
       push_subscriptions: {
         Row: {
           id: string;
@@ -74,7 +163,41 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      create_circle: {
+        Args: { circle_name: string | null; circle_type: string };
+        Returns: {
+          circle_id: string;
+          invite_id: string;
+          token: string;
+          expires_at: string;
+        }[];
+      };
+      preview_invite: {
+        Args: { raw_token: string };
+        Returns: {
+          circle_id: string | null;
+          circle_name: string | null;
+          circle_type: string | null;
+          invite_state: string;
+        }[];
+      };
+      redeem_invite: {
+        Args: { raw_token: string; ip_hash: string };
+        Returns: {
+          invite_state: string;
+          circle_id: string | null;
+        }[];
+      };
+      regenerate_invite: {
+        Args: { target_circle: string };
+        Returns: {
+          invite_id: string;
+          token: string;
+          expires_at: string;
+        }[];
+      };
+    };
   };
 };
 

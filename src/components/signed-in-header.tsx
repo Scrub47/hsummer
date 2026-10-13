@@ -1,6 +1,10 @@
 import Link from "next/link";
 
-export function SignedInHeader({ current }: { current: "home" | "profile" }) {
+export function SignedInHeader({
+  current,
+}: {
+  current: "home" | "profile" | "circles";
+}) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-4">
       <Link href="/" className="font-serif text-xl tracking-tight">
@@ -9,6 +13,9 @@ export function SignedInHeader({ current }: { current: "home" | "profile" }) {
       <nav className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <HeaderLink href="/home" current={current === "home"}>
           Home
+        </HeaderLink>
+        <HeaderLink href="/circles" current={current === "circles"}>
+          Circles
         </HeaderLink>
         <HeaderLink href="/profile" current={current === "profile"}>
           Profile

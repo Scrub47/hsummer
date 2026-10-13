@@ -5,13 +5,27 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getSupabaseBrowserConfig } from "@/lib/env";
 
+function callbackUrl(nextPath: string | undefined): string {
+  const callback = new URL("/auth/callback", window.location.origin);
+  if (nextPath && nextPath !== "/home") {
+    callback.searchParams.set("next", nextPath);
+  }
+  return callback.toString();
+}
+
 const ERROR_COPY: Record<string, string> = {
   "not-configured":
     "Supabase isn't configured yet. Add your project URL and publishable key to .env.local, then restart the dev server.",
   link: "That sign-in link didn't work. Request a new one and open it in this browser.",
 };
 
-export function SignInForm({ errorCode }: { errorCode?: string }) {
+export function SignInForm({
+  errorCode,
+  nextPath,
+}: {
+  errorCode?: string;
+  nextPath?: string;
+}) {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState<string | null>(
     errorCode ? (ERROR_COPY[errorCode] ?? ERROR_COPY.link) : null,
@@ -38,7 +52,7 @@ export function SignInForm({ errorCode }: { errorCode?: string }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: callbackUrl(nextPath),
       },
     });
     setPending(null);
@@ -66,7 +80,7 @@ export function SignInForm({ errorCode }: { errorCode?: string }) {
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: callbackUrl(nextPath),
         data: {
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         },
