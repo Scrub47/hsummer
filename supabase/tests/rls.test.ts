@@ -1264,6 +1264,44 @@ describe("bucket list stays inside the circle", () => {
   });
 });
 
+describe("the backups bucket stays private", () => {
+  it("lets the secret key upload a dump and hides it from a signed-in user", async () => {
+    const object = `weekly/rls-${crypto.randomUUID()}.bin`;
+    const payload = Buffer.from("not a real dump");
+    const uploaded = await admin.storage
+      .from("backups")
+      .upload(object, payload, {
+        contentType: "application/octet-stream",
+        upsert: false,
+      });
+    expect(uploaded.error).toBeNull();
+
+    try {
+      const listed = await owner.storage.from("backups").list("weekly");
+      const names = (listed.data ?? []).map((file) => file.name);
+      expect(names).not.toContain(object.slice("weekly/".length));
+
+      const downloaded = await owner.storage.from("backups").download(object);
+      expect(downloaded.data).toBeNull();
+      expect(downloaded.error).toBeTruthy();
+
+      const planted = await owner.storage
+        .from("backups")
+        .upload(`weekly/nope-${crypto.randomUUID()}.bin`, payload, {
+          contentType: "application/octet-stream",
+        });
+      expect(planted.error).toBeTruthy();
+
+      const pub = await fetch(
+        `${apiUrl}/storage/v1/object/public/backups/${object}`,
+      );
+      expect(pub.ok).toBe(false);
+    } finally {
+      await admin.storage.from("backups").remove([object]);
+    }
+  });
+});
+
 describe("invite creation is rate limited", () => {
   it("stops the 11th new link and allows one after the window", async () => {
     const nonce = crypto.randomUUID();

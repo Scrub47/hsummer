@@ -32,12 +32,15 @@ jobs:
         env:
           CI: true
 
-  # Row Level Security against a local Supabase stack. Docker is available on
-  # GitHub-hosted runners. Studio, analytics, and realtime are not needed to
-  # prove profile and storage policies.
+  # Local Supabase on the GitHub runner. RLS first, then the circle
+  # Playwright flow. The smoke tests stay in the check job and keep using
+  # placeholder keys, so they never call this stack or a hosted project.
+  # Mailpit stays up so the test sign-in can mint a magic link. Studio,
+  # analytics, and realtime are not needed.
   rls:
-    name: RLS
+    name: RLS and local e2e
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,5 +48,19 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx supabase start --yes -x realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+      - run: npx supabase start --yes -x realtime,imgproxy,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
       - run: npm run test:rls
+      - name: Export local Supabase keys
+        run: node scripts/print-local-supabase-env.mjs --github-env >> "$GITHUB_ENV"
+      - name: Build against local Supabase
+        run: npm run build
+        env:
+          # Public values are inlined at build time. The Supabase URL and
+          # publishable key come from the previous step and are local.
+          NEXT_PUBLIC_VAPID_PUBLIC_KEY: your-vapid-public-key
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:local
+        env:
+          CI: true
+          E2E_TEST_AUTH: "1"

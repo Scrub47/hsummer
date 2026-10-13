@@ -1,0 +1,81 @@
+name: Weekly database backup
+
+# Mondays 11:00 UTC. That is 3:00 AM Pacific Standard Time (Oregon, UTC−8)
+# and 4:00 AM during daylight time. workflow_dispatch is the manual run.
+#
+# The dump is encrypted and uploaded to the private Storage bucket "backups".
+# It is not uploaded as a GitHub Actions artifact: this repository is public,
+# and artifacts on a public repo can be downloaded by anyone.
+#
+# GitHub may pause scheduled workflows on a public repo that has had no
+# activity for a while. The manual run is how you prove a backup works.
+
+on:
+  schedule:
+    - cron: "0 11 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Check the database connection string
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: node scripts/check-backup-url.mjs
+
+      - name: Dump with pg_dump and encrypt
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          node scripts/check-backup-url.mjs
+          node scripts/check-backup-passphrase.mjs
+          url="$(node scripts/with-sslmode.mjs)"
+          docker run --rm --network host --entrypoint bash \
+            -e SUPABASE_DB_URL="$url" \
+            -v "$PWD:/work" \
+            -w /work \
+            postgres:17 \
+            -ceu '
+              pg_dump --dbname="$SUPABASE_DB_URL" \
+                --schema-only --no-owner --no-privileges \
+                --schema=public --schema=private \
+                --file=/work/schema.sql
+              pg_dump --dbname="$SUPABASE_DB_URL" \
+                --data-only --no-owner --no-privileges \
+                --schema=public --schema=private \
+                --file=/work/data.sql
+              pg_dump --dbname="$SUPABASE_DB_URL" \
+                --data-only --no-owner --no-privileges \
+                --table=auth.users --table=auth.identities \
+                --file=/work/auth-data.sql
+            '
+          tar czf backup.tgz schema.sql data.sql auth-data.sql
+          gpg --batch --yes --pinentry-mode loopback \
+            --symmetric --cipher-algo AES256 \
+            --passphrase "$BACKUP_PASSPHRASE" \
+            --output backup.tgz.gpg backup.tgz
+          rm -f schema.sql data.sql auth-data.sql backup.tgz
+
+      - name: Upload to the private backups bucket
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          node scripts/upload-backup.mjs backup.tgz.gpg
+          rm -f backup.tgz.gpg

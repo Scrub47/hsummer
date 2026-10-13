@@ -2,7 +2,7 @@
 
 A private shared space for people who are far apart. Made for couples, built for groups, friends, and families.
 
-Hsummer is a portfolio project. Couples are the first audience. The data model supports a Circle of any size (a couple, a friend group, a family). This repository has the app shell, sign-in, a test push notification, profiles, couple circles with invite links, Thinking of You, and a shared bucket list. Group, family, and friends circles exist in the database and stay out of the create form until a later phase.
+Hsummer is a portfolio project. Couples are the first audience. The data model supports a Circle of any size (a couple, a friend group, a family). This repository has the app shell, sign-in, a test push notification, profiles, couple circles with invite links, Thinking of You, a shared bucket list, unit and end-to-end tests, and a weekly database backup. Group, family, and friends circles exist in the database and stay out of the create form until a later phase.
 
 ## Stack
 
@@ -114,6 +114,14 @@ npm run test:rls
 
 `supabase start` prints a local API URL and keys. Those go in `.env.local` if you want the app pointed at the local stack. The checked-in `supabase/config.toml` already allow-lists `http://localhost:3000/auth/callback`. `npm run test:rls` signs in as two local test users and checks that one cannot read the other's `account_private`, cannot see an email column, and cannot update the other's profile.
 
+The circle end-to-end test also uses that local stack. It will not start if the Supabase URL is a hosted project:
+
+```bash
+npx supabase start
+eval "$(node scripts/print-local-supabase-env.mjs)"
+npm run test:e2e:local
+```
+
 ### 4. Generate VAPID keys
 
 ```bash
@@ -168,19 +176,20 @@ If iOS push is still silent: confirm you opened the Home Screen icon (not the Sa
 
 ## Scripts
 
-| Command                  | What it does                           |
-| ------------------------ | -------------------------------------- |
-| `npm run dev`            | Next.js dev server                     |
-| `npm run lint`           | ESLint                                 |
-| `npm run format`         | Prettier                               |
-| `npm run typecheck`      | `next typegen` and `tsc --noEmit`      |
-| `npm test`               | Vitest unit tests                      |
-| `npm run test:rls`       | RLS tests (needs `npx supabase start`) |
-| `npm run test:e2e`       | Playwright smoke test (starts the app) |
-| `npm run build`          | Production build                       |
-| `npm run generate:vapid` | Print a VAPID key pair                 |
+| Command                  | What it does                                          |
+| ------------------------ | ----------------------------------------------------- |
+| `npm run dev`            | Next.js dev server                                    |
+| `npm run lint`           | ESLint                                                |
+| `npm run format`         | Prettier                                              |
+| `npm run typecheck`      | `next typegen` and `tsc --noEmit`                     |
+| `npm test`               | Vitest unit tests                                     |
+| `npm run test:rls`       | RLS tests (needs `npx supabase start`)                |
+| `npm run test:e2e`       | Playwright smoke test (placeholder keys, no Supabase) |
+| `npm run test:e2e:local` | Playwright circle flow against local Supabase         |
+| `npm run build`          | Production build                                      |
+| `npm run generate:vapid` | Print a VAPID key pair                                |
 
-GitHub Actions runs lint, format, typecheck, unit tests, the production build, and the Playwright smoke test on pull requests and on `main`. A second job starts local Supabase and runs the RLS tests. The smoke test does not need real Supabase credentials.
+GitHub Actions runs lint, format, typecheck, unit tests, the production build, and the Playwright smoke test on pull requests and on `main`. A second job starts local Supabase, runs the RLS tests, then builds the app against that local API and runs the circle end-to-end test (sign in, create a couple circle, invite, join, ping). The smoke test uses placeholder keys and does not need real Supabase credentials. The circle test refuses to run unless the API URL is local. Do not set `E2E_TEST_AUTH` on Vercel.
 
 No new environment variables are required for profiles. Photo upload uses the same Supabase URL and publishable key as sign-in.
 
@@ -224,8 +233,83 @@ Do this once production already has weeks 1–4. One new file. No new bucket. No
 6. Optional rate-limit Redis. Leave `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` unset and the limits stay in Postgres (10 pings / 10 minutes, 10 new invite links / 15 minutes, 8 join tries per person and 20 per IP hash / 15 minutes). To use Upstash as well, create a Redis database there and set both variables on Vercel for Production and Preview, then redeploy. If Redis is down, the app uses Postgres.
 7. Deploy the app. Open a circle and add a bucket item. The other person, with the circle open, should see it without reloading once Realtime is on for `bucket_items`. Spamming **Thinking of You** shows "You've sent a few of these just now. Wait a little and try again."
 
+### Apply the week 6 SQL, then turn on the weekly backup
+
+Do this once production already has weeks 1–5. One new file. No new app environment variable. The backup secrets go in GitHub, not in Vercel.
+
+The hosted project is in **Oregon (West US, `us-west-2`)**. Vercel functions run in **`pdx1`** (Portland). The backup does not run on Vercel. It runs on GitHub Actions, which can only reach IPv4. On the free plan the direct database host is IPv6-only, so the workflow uses the **Session pooler** in `us-west-2`.
+
+1. Open the Supabase dashboard for the Oregon project → **SQL Editor** → **New query**.
+2. Do **not** paste or re-run any older file in `supabase/migrations`. Weeks 1–5 are already applied. Running them again will fail.
+3. Open `supabase/migrations/20261116120000_backup_bucket.sql`, paste the whole file, and run it **once**.
+4. Refresh **Storage**. A bucket named `backups` should be listed with public access off. Do not click **New bucket**. If you already created a `backups` bucket by hand, delete that bucket first or the script stops on the duplicate name. There is no policy for signed-in users. That is intentional. Only the secret key, used by the GitHub Action, can write a dump.
+5. Confirm the database is Postgres 17. In **SQL Editor**, run `select version();`. It should say PostgreSQL 17. This repo's local config (`supabase/config.toml`, `major_version = 17`) is set to match that. The workflow's `pg_dump` is the Postgres 17 client.
+
+Add four repository secrets. On GitHub open this repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**. Create each name exactly.
+
+| Secret                | Where the value comes from                                                                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SUPABASE_DB_URL`     | The Session pooler URI. Steps below.                                                                                                                          |
+| `SUPABASE_URL`        | **Project Settings → API keys** → Project URL, `https://<project-ref>.supabase.co`. Not the database URI.                                                     |
+| `SUPABASE_SECRET_KEY` | **Project Settings → API keys** → secret key (`sb_secret_...`). The same value already set on Vercel as a server variable. The publishable key will not work. |
+| `BACKUP_PASSPHRASE`   | A passphrase you invent, at least 16 characters. Store it in a password manager. GitHub will not show it again. The dump cannot be restored without it.       |
+
+`SUPABASE_DB_URL`, step by step:
+
+1. Open the Oregon project in the [Supabase dashboard](https://supabase.com/dashboard).
+2. Click **Connect** at the top of the page.
+3. Choose **Session pooler**. Do not choose **Direct connection**. Do not choose **Transaction pooler**.
+4. The host must contain `us-west-2` and the port must be **5432**. The username looks like `postgres.<project-ref>`. An example shape (the index before the region can differ; copy yours, don't type this):
+
+   `postgresql://postgres.<project-ref>:[YOUR-PASSWORD]@aws-0-us-west-2.pooler.supabase.com:5432/postgres`
+
+5. Replace `[YOUR-PASSWORD]` with the database password. It is on **Project Settings → Database**, in the database password section. If you don't know it, reset it there and wait a minute before running the workflow. If the password contains `&`, `#`, `?`, `@`, or a space, percent-encode that character (`@` becomes `%40`, and so on).
+6. Paste the finished URI into the `SUPABASE_DB_URL` secret. The workflow rejects port 6543, a `db.<project-ref>.supabase.co` host, and any pooler host that is not `us-west-2`.
+
+Run it once by hand. On GitHub open **Actions** → **Weekly database backup** → **Run workflow** → branch `main` (after this pull request is merged; until then you can run it from this branch) → **Run workflow**. A green run means the encrypted file is in Storage. Open **Storage** → `backups` → `weekly` and confirm a file named like `hsummer-20261116T110000Z-abcd1234.tgz.gpg`. The schedule after that is Mondays at 11:00 UTC (3:00 AM Pacific Standard Time, 4:00 AM during daylight time). GitHub can pause scheduled workflows on a public repo that has been idle. If a Monday run does not appear, use **Run workflow** again.
+
+The Action keeps the latest 8 dumps and deletes older ones in that bucket. It does not upload the file as a GitHub artifact, because this repository is public and artifacts there can be downloaded by anyone. Avatar files are not inside the dump. Storage objects are separate from the database.
+
+#### Restore a dump into the local database
+
+1. In **Storage** → `backups` → `weekly`, download the `.tgz.gpg` file.
+2. Decrypt and unpack it. Use the same passphrase you stored in `BACKUP_PASSPHRASE`:
+
+   ```bash
+   gpg --batch --yes --pinentry-mode loopback \
+     --decrypt --passphrase 'your passphrase' \
+     --output backup.tgz hsummer-YYYYMMDDTHHMMSSZ-aaaaaaaa.tgz.gpg
+   tar xzf backup.tgz
+   ```
+
+   That writes `schema.sql`, `data.sql`, and `auth-data.sql`.
+
+3. Start a clean local database. This applies the migrations in this repo, including the empty `backups` bucket:
+
+   ```bash
+   npx supabase start
+   npx supabase db reset
+   ```
+
+4. Load the accounts, then the app data. Do **not** load `schema.sql` on top of `db reset`. The local migrations already created the tables. `schema.sql` is in the archive so the structure is still there if this repo were missing.
+
+   ```bash
+   psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+     -v ON_ERROR_STOP=1 \
+     -c "SET session_replication_role = replica" \
+     -f auth-data.sql \
+     -f data.sql \
+     -c "SET session_replication_role = DEFAULT"
+   psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+     -c "select display_name from public.profiles;"
+   ```
+
+   `session_replication_role` lets the local database load rows whose foreign keys point at each other (a profile points at an auth user). It is a local superuser setting. The dump itself does not require it.
+
+   Names from the hosted project should be listed. If `auth-data.sql` fails because a column does not exist, the local Auth schema and the hosted one differ. Run `npm ci` so the Supabase CLI matches `package.json`, then `npx supabase stop` and `npx supabase start` again before repeating from step 3.
+
 ## What is not in this version
 
-Letters, memory photos, and QStash are later weeks. Marking a bucket item done records `completed_at`; the Memory Wall entry for that completion is the memory week. Do not add those tables to an earlier migration. The `avatars` bucket is only for profile photos. Leave, account deletion, group-circle screens, and whole-circle pings from the app are later too. The database already accepts a null recipient on a group ping so the isolation tests can use one. Upstash is optional and is not required for the rate limits.
+Letters, memory photos, and QStash are later weeks. Marking a bucket item done records `completed_at`; the Memory Wall entry for that completion is the memory week. Do not add those tables to an earlier migration. The `avatars` bucket is only for profile photos. The weekly backup is the database, not those photo files. Leave, account deletion, group-circle screens, and whole-circle pings from the app are later too. The database already accepts a null recipient on a group ping so the isolation tests can use one. Upstash is optional and is not required for the rate limits.
 
 See [HOW_IT_WORKS.md](./HOW_IT_WORKS.md) for how the code is put together.

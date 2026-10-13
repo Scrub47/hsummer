@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { redirectOrigin } from "@/lib/auth/request-origin";
 import { safeNextPath } from "@/lib/auth/safe-next";
 import type { Database } from "@/lib/database.types";
 import { getSupabaseBrowserConfig } from "@/lib/env";
@@ -9,7 +10,10 @@ const PROTECTED_PREFIXES = ["/home", "/profile", "/circles"];
 
 function signInRedirect(request: NextRequest): URL {
   const next = `${request.nextUrl.pathname}${request.nextUrl.search}`;
-  return new URL(`/sign-in?next=${encodeURIComponent(next)}`, request.url);
+  return new URL(
+    `/sign-in?next=${encodeURIComponent(next)}`,
+    redirectOrigin(request),
+  );
 }
 
 function isProtectedPage(pathname: string): boolean {
@@ -100,7 +104,9 @@ export async function updateSession(request: NextRequest) {
       request.nextUrl.searchParams.get("next"),
       request.nextUrl.origin,
     );
-    const redirect = NextResponse.redirect(new URL(nextPath, request.url));
+    const redirect = NextResponse.redirect(
+      new URL(nextPath, redirectOrigin(request)),
+    );
     return copySessionHeaders(supabaseResponse, redirect);
   }
 

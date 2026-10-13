@@ -1,6 +1,6 @@
 # How Hsummer works
 
-This is the map of the repository as it stands after the bucket list. It is written for reading the code, not as a changelog.
+This is the map of the repository as it stands after the tests, CI, and the weekly backup. It is written for reading the code, not as a changelog.
 
 Hsummer is a private space shared by a Circle: a couple, a few friends, or a family. Profiles came first. Who may read one is a single function, and that function now includes people who share an active circle. Circles, memberships, invite links, pings, and a shared bucket list are in the database. A 1:1 ping is readable only by the sender and the recipient. A bucket item is readable and editable by every active member of that circle. Letters are not built yet.
 
@@ -195,6 +195,12 @@ The icons are a small generated mark (two overlapping circles). `npm run generat
 
 Vitest covers the pieces that are easy to get wrong and expensive to test by hand: the push payload shape (including that a ping payload has no name), which status codes delete a subscription, subscription JSON parsing, the VAPID key decoder, open-redirect filtering, the placeholder env rules (including an empty or placeholder Upstash pair), the profile field rules, the ping request rules (no recipient field, couple partner resolution, the 10-in-10-minutes cap, `Missing<name>` copy), bucket-list field checks, and the 429 responses. The ping route test feeds a fake session: ten recent sends return HTTP 429 and the sentence the button shows, and a database `hsummer_rate_limited` error does the same. The Upstash helper returns that 429 when a test double says the window is full, and it falls through to Postgres when Redis is absent, throws, or does not answer in time.
 
+The loaders are covered the same way, with a fake client instead of a database. `loadBucketItems` sorts idea, then planned (dated ones before an empty date), then done, and drops a category the app does not know. `loadRecentPings` turns a row into the in-app phrase, names a missing sender "Former member", and formats the time in the viewer's zone (a bad zone falls back to UTC). `loadCircles` and `loadCircle` drop an unknown circle type, sign an avatar only when the object path is in that member's folder, and leave a legacy `https://` photo alone. `loadOwnProfile` refuses a signed URL that is not a displayable http(s) address.
+
+`src/lib/auth/local-supabase.ts` is the gate for the test sign-in route. The route at `src/app/api/test/sign-in/route.ts` returns 404 unless `E2E_TEST_AUTH` is exactly `1` and the Supabase URL is `http` on `localhost`, `127.0.0.1`, or `::1`. A hosted `https://….supabase.co` URL stays closed even if the flag is set. The route then creates a user with the admin API (display name and timezone in user metadata, so the signup trigger fills `profiles`) and redirects to `/auth/callback` with the magic-link token. The callback calls `verifyOtp` and writes the cookie. Next reports `request.url` as `http://localhost:3000` even when the browser is on `http://127.0.0.1:3000`. Those hosts do not share cookies, so `src/lib/auth/request-origin.ts` sends loopback redirects to the `Host` header and leaves every other host on `request.url`. The address has to end in `@example.com`. `POST /api/test/sign-in` is what Playwright calls after it has opened the sign-in page. It is not a second product sign-in.
+
+`scripts/backup-lib.mjs` is the part of the weekly dump that can be tested without a database. It accepts only a Session pooler URI whose host is `aws-<index>-us-west-2.pooler.supabase.com` and whose port is 5432. It rejects the transaction pooler (6543), the direct `db.<ref>.supabase.co` host (IPv6 on the free plan; GitHub Actions is IPv4), a missing password, and a project URL that is not `https://<ref>.supabase.co`. It keeps the newest 8 dump object names and ignores anything else in the bucket.
+
 `npm run test:rls` is a separate Vitest config (`vitest.rls.config.mts`) that talks to local Supabase. It creates two users with the Auth admin API, signs each of them in, and checks:
 
 - the second user gets zero rows from the first user's `account_private`, and cannot update or insert one
@@ -208,16 +214,35 @@ Vitest covers the pieces that are easy to get wrong and expensive to test by han
 - a couple insert with a null recipient is rejected, a member who sets `left_at` immediately loses the ping, and the 11th ping inside 10 minutes is rejected
 - in a 3-member circle, every active member can read and edit a bucket item (including one they did not add), an outsider's select is empty and their insert, update, and delete do nothing, and a member who sets `left_at` immediately loses the list
 - the 11th invite row in 15 minutes raises `hsummer_rate_limited` for both a new circle and a regenerated link, and one succeeds after those rows are moved outside the window
+- the service role can upload into the private `backups` bucket; a signed-in user cannot list, download, or upload there, and the public object URL is not available
 
-GitHub Actions runs that job on every pull request. It starts the local stack with `npx supabase start` and does not need the hosted project's keys. `npm test` stays free of Docker.
+GitHub Actions runs two jobs on every pull request and on `main`. The first runs lint, format, typecheck, `npm test`, the production build with placeholder keys, and the Playwright smoke test. The second starts local Supabase (mailpit stays on; studio, analytics, and realtime stay off), runs `npm run test:rls`, exports the local URL and keys, builds the app with those keys inlined, and runs `npm run test:e2e:local`. `npm test` stays free of Docker. Neither job has the hosted project's keys.
 
-Playwright loads the landing page and the sign-in page with placeholder keys forced in, clicks the magic-link button, and checks that `/home` and `/profile` redirect when nobody is signed in. It does not create a user.
+Playwright's smoke project loads the landing page and the sign-in page with placeholder keys forced in, clicks the magic-link button, checks that `/home`, `/profile`, and `/circles` redirect when nobody is signed in, and checks that `POST /api/test/sign-in` is 404. It does not create a user.
+
+The local project (`playwright.local.config.ts`) throws unless `NEXT_PUBLIC_SUPABASE_URL` is a local http URL and both API keys are set. It starts its own server with `E2E_TEST_AUTH=1` and refuses to reuse a server that is already running, so it cannot attach to a dev server pointed at production. The spec opens `/sign-in`, posts to the test route, creates a couple circle named "Me & Summer", reads the invite link, opens that link signed out, signs in as the second person, confirms **Join circle**, and taps **Thinking of You**. The partner's recent list shows the ping. VAPID stays a placeholder, so the button's status line says notifications are not configured, and the row is still saved.
+
+A separate workflow, `.github/workflows/db-backup.yml`, is the weekly dump. It is not part of the pull-request jobs. See Backups below.
+
+## Backups
+
+Supabase's free plan does not take automatic backups. The weekly Action is the backup. It runs Mondays at 11:00 UTC (3:00 AM Pacific Standard Time, which is Oregon in the winter, and 4:00 AM during daylight time) and whenever someone starts it from the Actions tab.
+
+The connection string has to be the Session pooler in `us-west-2` on port 5432. GitHub-hosted runners do not have a usable IPv6 path to the direct host `db.<project-ref>.supabase.co`, and port 6543 is transaction mode, which `pg_dump` cannot use. `scripts/check-backup-url.mjs` exits before `pg_dump` if the secret is the wrong shape. The project URL and the secret key are separate secrets. The secret key is what uploads the file. It is the same key the app already uses on the server to reach a partner's push subscriptions. It is not a `NEXT_PUBLIC_` variable.
+
+`pg_dump` runs from the Postgres 17 image, matching `major_version` in `supabase/config.toml`. Three files are written: `schema.sql` (public and private, no data), `data.sql` (those schemas, data only), and `auth-data.sql` (`auth.users` and `auth.identities`). The CLI's own dump skips the auth schema, and `profiles.id` references `auth.users`, so a data-only restore without those two tables would fail the foreign key. The three files are tarred and encrypted with GnuPG (AES-256, the passphrase from `BACKUP_PASSPHRASE`). The plaintext is deleted on the runner before the upload.
+
+The upload goes to the private Storage bucket `backups`, object prefix `weekly/`. The week 6 migration creates that bucket with public access off, a 50 MB limit, and `application/octet-stream` only. It creates no Storage policy. Signed-in users and the public object URL get nothing. The RLS suite uploads with the service role and checks that the other test user cannot list, download, or upload. The Action then deletes dump objects older than the newest eight. The repository is public, so the file is not stored as a workflow artifact.
+
+Avatar objects are not in the dump. A database restore brings rows back, not the bytes in the `avatars` bucket.
+
+The restore drill is in the README. Short version: decrypt, `npx supabase db reset` so the local migrations create an empty schema, then in one `psql` session set `session_replication_role` to `replica` and load `auth-data.sql` and `data.sql`. Do not apply `schema.sql` on top of that reset. `schema.sql` is there so the backup still contains the structure. The hosted `postgres` role is not asked to disable triggers during the dump.
 
 ## What was left out on purpose
 
 Cache Components (the Next.js 16 default for new apps) are off. Signed-in pages depend on the request cookie, and there is no public data worth caching yet. The comment is in `next.config.ts`.
 
-Letters, memory photos, QStash, and the Memory Wall row for a finished bucket item are later weeks. `completed_at` is set when an item is marked done, and the memory week is what turns that into a scrapbook entry. Join is limited by `private.join_attempts`, now serialized. Pings are limited by the insert trigger. Invite creation is limited by the invite insert trigger. Upstash, when its two variables are set, checks the same caps first and is not required. Avatar bytes are not stripped of EXIF yet; the memory-wall week does that for photos people share. The age-confirmation column is null until that screen exists. The group-circle create form, recipient pickers, and whole-circle pings from the app are later. The leave screen is later too; leaving is possible through the membership column so the status rule and the access cutoff can be tested. Mood-share is a `ping_type` the table accepts and the route refuses.
+Letters, memory photos, QStash, and the Memory Wall row for a finished bucket item are later weeks. Copying the `avatars` bucket into the weekly backup is later too. The database dump is what week 6 stores. `completed_at` is set when an item is marked done, and the memory week is what turns that into a scrapbook entry. Join is limited by `private.join_attempts`, now serialized. Pings are limited by the insert trigger. Invite creation is limited by the invite insert trigger. Upstash, when its two variables are set, checks the same caps first and is not required. Avatar bytes are not stripped of EXIF yet; the memory-wall week does that for photos people share. The age-confirmation column is null until that screen exists. The group-circle create form, recipient pickers, and whole-circle pings from the app are later. The leave screen is later too; leaving is possible through the membership column so the status rule and the access cutoff can be tested. Mood-share is a `ping_type` the table accepts and the route refuses.
 
 ## File map
 
@@ -261,6 +286,13 @@ Letters, memory photos, QStash, and the Memory Wall row for a finished bucket it
 | `src/app/api/push/test/route.ts`      | Send the test push and prune dead rows                         |
 | `src/lib/supabase/`                   | Browser client, server client, proxy, session helper           |
 | `src/lib/database.types.ts`           | Hand-written types for the tables                              |
+| `src/app/api/test/sign-in/route.ts`   | Local-only Playwright sign-in. 404 everywhere else.            |
+| `src/lib/auth/local-supabase.ts`      | The URL and flag gate for that route                           |
+| `e2e/circle-flow.spec.ts`             | Sign in, create, invite, join, ping against local Supabase     |
+| `playwright.local.config.ts`          | Refuses to start unless the Supabase URL is local              |
+| `scripts/backup-lib.mjs`              | Session-pooler check, retention of 8 dumps, upload errors      |
+| `scripts/upload-backup.mjs`           | Uploads the encrypted dump and deletes older ones              |
+| `.github/workflows/db-backup.yml`     | Weekly `pg_dump`, encrypt, upload to the private bucket        |
 | `supabase/migrations/`                | SQL applied to the database                                    |
-| `supabase/tests/rls.test.ts`          | Two-user RLS checks                                            |
+| `supabase/tests/rls.test.ts`          | Two-user RLS checks, including the backups bucket              |
 | `supabase/config.toml`                | Local Supabase CLI config                                      |

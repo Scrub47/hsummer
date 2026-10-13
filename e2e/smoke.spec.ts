@@ -61,6 +61,15 @@ test("circles redirect to sign-in when there is no session", async ({
   );
 });
 
+test("the test sign-in route is closed without the local flag", async ({
+  request,
+}) => {
+  const response = await request.post("/api/test/sign-in", {
+    data: { email: "ada@example.com", displayName: "Ada" },
+  });
+  expect(response.status()).toBe(404);
+});
+
 test("a ping requires a signed-in session", async ({ request }) => {
   const response = await request.post("/api/pings", {
     data: { circleId: "11111111-1111-4111-8111-111111111111" },
