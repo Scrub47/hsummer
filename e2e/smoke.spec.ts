@@ -56,6 +56,15 @@ test("circles redirect to sign-in when there is no session", async ({
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 });
 
+test("a ping requires a signed-in session", async ({ request }) => {
+  const response = await request.post("/api/pings", {
+    data: { circleId: "11111111-1111-4111-8111-111111111111" },
+  });
+  expect(response.status()).toBe(401);
+  const body = (await response.json()) as { error?: string };
+  expect(body.error).toMatch(/sign in/i);
+});
+
 test("an invite link explains that sign-in comes before joining", async ({
   page,
 }) => {

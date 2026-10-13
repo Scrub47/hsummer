@@ -1,8 +1,8 @@
 # How Hsummer works
 
-This is the map of the repository as it stands after the profile week. It is written for reading the code, not as a changelog.
+This is the map of the repository as it stands after Thinking of You. It is written for reading the code, not as a changelog.
 
-Hsummer is a private space shared by a Circle: a couple, a few friends, or a family. Profiles came first. Who may read one is a single function, and that function now includes people who share an active circle. Circles, memberships, and invite links are in the database. Letters and the bucket list are not.
+Hsummer is a private space shared by a Circle: a couple, a few friends, or a family. Profiles came first. Who may read one is a single function, and that function now includes people who share an active circle. Circles, memberships, invite links, and pings are in the database. A 1:1 ping is readable only by the sender and the recipient. Letters and the bucket list are not built yet.
 
 ## Shape of the app
 
@@ -19,13 +19,16 @@ Next.js (App Router) on Vercel
   src/app/circles/actions.ts       create a circle, rename, new invite
   src/app/join/actions.ts          redeem an invite link
   src/app/api/push/*               save a device, send a test push
+  src/app/api/pings                Thinking of You, then push the partner
         │
         ▼
 Supabase
   Auth (auth.users holds the email)
-  Postgres: profiles, account_private, circles, members, invites, push_subscriptions
+  Postgres: profiles, account_private, circles, members, invites,
+            pings, push_subscriptions
   Storage: private bucket "avatars"
-  Row Level Security: a signed-in user can only touch their own rows
+  Row Level Security: circle rows for active members; a 1:1 ping
+                      only for its sender and recipient
 ```
 
 Next.js serves both the UI and the server routes, so there is one TypeScript codebase. Supabase holds the data and the login session. Vercel hosts the Next.js app. The browser's push service (Apple, Google, Mozilla) delivers notifications; our server only talks to the endpoint the browser gave us.
@@ -111,7 +114,7 @@ Server Actions default to a 1 MB body. `next.config.ts` raises that to 3 MB so a
 
 ## Circles and invite links
 
-A circle has a type (`couple`, `group`, `family`, `friends`), an optional name, and a status. Status is not written by the app. A trigger counts `circle_members` rows with `left_at` null: 0 is `archived`, 1 is `pending`, 2 or more is `active`. The create form only offers a couple. The other types are accepted by `create_circle` so the RLS tests can build a 3-person circle. `circle_type` is not mentioned in any policy. It only chooses the invite default: couples get `max_uses = 1`, everyone else gets null (open until expiry).
+A circle has a type (`couple`, `group`, `family`, `friends`), an optional name, and a status. Status is not written by the app. A trigger counts `circle_members` rows with `left_at` null: 0 is `archived`, 1 is `pending`, 2 or more is `active`. The create form only offers a couple. The other types are accepted by `create_circle` so the RLS tests can build a 3-person circle. `circle_type` is not mentioned in any policy. It chooses the invite default (couples get `max_uses = 1`; everyone else is open until expiry) and, in the ping insert trigger only, rejects a whole-circle ping in a couple.
 
 `private.is_active_member(circle_id)` is the plan's helper, kept in the `private` schema. It is `security definer` with an empty `search_path`. Policies on circles, members, invites, and redemptions call it. If it ran as the caller, the member policy would recurse through itself.
 
@@ -123,7 +126,13 @@ Redeem is one transaction. It records the attempt, locks the circle, locks the i
 
 `/join/[token]` is the link. Signed out, it asks the person to sign in and comes back via `next`. Signed in, it previews the circle name and posts to `redeem_invite`. Nothing joins them until they confirm.
 
-While a circle is pending, its page is the invite prompt. Letters, Thinking of You, and the booths are not built yet, so there is nothing else to hide behind that prompt. After the second person joins, the page lists members (name, photo, timezone) and says the later features are still to come.
+While a circle is pending, its page is the invite prompt. Thinking of You is not shown there. After the second person joins, an active couple gets one button and a short list of recent pings. The button does not ask who to send to. `resolveCouplePartner` returns the only other active member, and the route refuses a group, a pending circle, and any body that includes `toUserId`.
+
+`BROADCAST_PINGS_ENABLED` is false. A whole-circle ping is a row with `to_user_id` null. The select policy lets every active member read that shape, and the insert policy allows the null, so the RLS suite can create a 3-member group directly and prove both sides: the third member sees the null row and does not see a 1:1 row between the other two. The app never writes the null. A couple cannot write it either. The insert trigger reads `circle_type` and raises `hsummer_couple_needs_recipient`. That read stays out of the policies. `circle_type` is still only a default.
+
+The same trigger stamps `sent_at` from the database clock and allows 10 pings per sender per 10 minutes, across every circle. An advisory lock makes two overlapping requests share one count. Week 5 moves the limit to Upstash. The route checks the same numbers first so a burst gets a 429 and a plain sentence, and the trigger is what a direct insert cannot skip.
+
+`secret_variant` is the `Missing<name>` easter egg. A long-press on the button, or a visually hidden control whose name is "Missing Summer", sets the flag. The recent list then says "Missing Summer". The push body is the fixed sentence "Missing you." The display name is not in the payload.
 
 A member can set their own `left_at`. They cannot clear it; coming back is another redemption, and only `redeem_invite` is allowed to do that. The moment `left_at` is set, `is_active_member` is false, so that person gets zero rows from the circle and stops being able to read the other person's profile.
 
@@ -132,24 +141,24 @@ A member can set their own `left_at`. They cannot clear it; coming back is anoth
 A push has three pieces.
 
 1. **The browser** asks permission (that has to be a tap, especially on iOS), subscribes with our VAPID public key, and POSTs the subscription to `/api/push/subscribe`. The route saves `endpoint`, `p256dh`, and `auth` on `push_subscriptions`, with `user_id` taken from the verified session, not from the JSON body.
-2. **The server** (`/api/push/test`) loads the caller's rows and asks `web-push` to encrypt a small JSON payload and POST it to each endpoint. VAPID proves the request comes from us. The private key stays in `env.server.ts`.
-3. **The service worker** (`public/sw.js`) receives the `push` event and shows a notification. A click opens `/home` on this origin only.
+2. **The server** asks `web-push` to encrypt a small JSON payload and POST it to each endpoint. `/api/push/test` loads the caller's own rows with their session. `/api/pings` loads the partner's rows with the secret key, because those rows are owner-only and the sender must not gain a policy on them. VAPID proves the request comes from us. The private key stays in `env.server.ts`. One person can have many rows (phone, laptop, an old browser). The send loops every row.
+3. **The service worker** (`public/sw.js`) receives the `push` event and shows a notification. A click stays on this origin. A Thinking of You opens that circle. The test notification still opens `/home`.
 
-iOS delivers web push only to a Home Screen app, and only on iOS 16.4+. `InstallHint` detects an iPhone or iPad that is not already standalone and explains the Share → Add to Home Screen steps. The manifest (`src/app/manifest.ts`) sets `display: "standalone"`, which is what makes the installed icon open without Safari chrome.
+iOS delivers web push only to a Home Screen app, and only on iOS 16.4+. `useNeedsIosInstall` detects an iPhone or iPad that is not already standalone. On that device the notifications section shows the Share → Add to Home Screen steps and does not render Enable notifications. `enable()` repeats the check, so a tap during the first paint cannot prompt either. Android and desktop subscribe from the browser tab. The manifest (`src/app/manifest.ts`) sets `display: "standalone"`, which is what makes the installed icon open without Safari chrome.
 
-Payloads are built in `src/lib/push/payload.ts`. The test notification's body is a fixed sentence. It has no name and no Circle content, because a lock screen is visible to anyone holding the phone. Later features should keep that rule: the push says something happened, and the app shows the private part after sign-in.
+Payloads are built in `src/lib/push/payload.ts`. The test notification's body is a fixed sentence. A ping is either "Thinking of you." or "Missing you." Neither string contains a name, because a lock screen is visible to anyone holding the phone. The name is in the signed-in list.
 
-When the push service answers **404** or **410**, the subscription is dead (expired, or the user turned it off). `subscriptionsToPrune` returns those ids and the route deletes them. Other errors, including a network failure with no status code, keep the row. That logic is a pure function so the unit tests do not need a real push service.
+When the push service answers **404** or **410**, the subscription is dead (expired, or the user turned it off). `subscriptionsToPrune` returns those ids. The test route deletes them with the caller's session. The ping route deletes them with the secret key, and only rows that belong to the recipient. Other errors, including a network failure with no status code, keep the row. That choice is a pure function so the unit tests do not need a real push service.
 
-The route is POST on purpose. A GET would run from a prefetch or an `<img>` and could buzz the phone.
+Both routes are POST on purpose. A GET would run from a prefetch or an `<img>` and could buzz a phone.
 
-The user's own session can read and delete their own subscriptions under RLS. The secret key bypasses RLS; it is documented and parsed so it is ready, and it should stay unused until a job truly needs it.
+The ping is inserted before the push, with the user's client. If the secret key or the VAPID keys are missing, the row still exists and the response says notifications are not configured. A missing device does not undo the gesture.
 
 ## Environment variables
 
 `src/lib/env.ts` is safe for Client Components. It only reads `NEXT_PUBLIC_` variables, and it reads them as `process.env.NEXT_PUBLIC_SOMETHING` rather than `process.env[name]`. Next.js inlines public variables into the browser bundle only for that static form. Placeholder values from `.env.example` count as "not configured", so copying the example file cannot accidentally call a fake project.
 
-`src/lib/env.server.ts` imports `server-only`. A Client Component that imported it would fail the build. The VAPID private key and the Supabase secret key are read there, inside the request, not at module scope. Profiles do not add variables.
+`src/lib/env.server.ts` imports `server-only`. A Client Component that imported it would fail the build. The VAPID private key and the Supabase secret key are read there, inside the request, not at module scope. Thinking of You does not add a variable. It starts using the secret key that was already required.
 
 ## PWA files
 
@@ -166,7 +175,7 @@ The icons are a small generated mark (two overlapping circles). `npm run generat
 
 ## Tests and CI
 
-Vitest covers the pieces that are easy to get wrong and expensive to test by hand: the push payload shape, which status codes delete a subscription, subscription JSON parsing, the VAPID key decoder, open-redirect filtering, the placeholder env rules, and the profile field rules (name, timezone, image bytes).
+Vitest covers the pieces that are easy to get wrong and expensive to test by hand: the push payload shape (including that a ping payload has no name), which status codes delete a subscription, subscription JSON parsing, the VAPID key decoder, open-redirect filtering, the placeholder env rules, the profile field rules, and the ping request rules (no recipient field, couple partner resolution, the 10-in-10-minutes cap, `Missing<name>` copy).
 
 `npm run test:rls` is a separate Vitest config (`vitest.rls.config.mts`) that talks to local Supabase. It creates two users with the Auth admin API, signs each of them in, and checks:
 
@@ -176,6 +185,9 @@ Vitest covers the pieces that are easy to get wrong and expensive to test by han
 - the second user cannot change the first user's display name, including with an update that is not filtered to one id
 - the first user can upload a PNG under their own folder and open it with a signed URL; the second user cannot download it, sign it, or upload into that folder
 - the service-role key can still read `auth.users.email`, which is how the test shows the address exists and is not copied into `profiles`
+- in a 3-member circle created directly in the test database, the sender and the recipient can read a 1:1 ping (including `secret_variant`) and an outsider cannot
+- the third member of that circle gets zero rows for that 1:1 ping, cannot update or spoof it, and can read a whole-circle ping (`to_user_id` null) in the same circle
+- a couple insert with a null recipient is rejected, a member who sets `left_at` immediately loses the ping, and the 11th ping inside 10 minutes is rejected
 
 GitHub Actions runs that job on every pull request. It starts the local stack with `npx supabase start` and does not need the hosted project's keys. `npm test` stays free of Docker.
 
@@ -185,7 +197,7 @@ Playwright loads the landing page and the sign-in page with placeholder keys for
 
 Cache Components (the Next.js 16 default for new apps) are off. Signed-in pages depend on the request cookie, and there is no public data worth caching yet. The comment is in `next.config.ts`.
 
-Letters, memory photos, Realtime, QStash, and Upstash rate limits are later weeks. Join is the only rate limit so far, and it uses the `private.join_attempts` table rather than Redis. Avatar bytes are not stripped of EXIF yet; the memory-wall week does that for photos people share. The age-confirmation column is null until that screen exists. The group-circle create form and the leave screen are later; leaving is possible through the membership column so the status rule and the access cutoff can be tested.
+Letters, the bucket list, memory photos, Realtime, QStash, and Upstash rate limits are later weeks. Join is limited by `private.join_attempts`. Pings are limited by the insert trigger, not Redis. Avatar bytes are not stripped of EXIF yet; the memory-wall week does that for photos people share. The age-confirmation column is null until that screen exists. The group-circle create form, recipient pickers, and whole-circle pings from the app are later. The leave screen is later too; leaving is possible through the membership column so the status rule and the access cutoff can be tested. Mood-share is a `ping_type` the table accepts and the route refuses.
 
 ## File map
 
@@ -195,7 +207,14 @@ Letters, memory photos, Realtime, QStash, and Upstash rate limits are later week
 | `src/app/sign-in/page.tsx`            | Sign-in page (server), renders the form                        |
 | `src/app/home/page.tsx`               | Signed-in home. Shows the profile, circles, and the test push. |
 | `src/app/circles/page.tsx`            | List circles and create a couple circle                        |
-| `src/app/circles/[id]/page.tsx`       | Pending invite prompt, or the active circle                    |
+| `src/app/circles/[id]/page.tsx`       | Invite prompt, or Thinking of You in an active couple          |
+| `src/app/api/pings/route.ts`          | Send Thinking of You to the partner                            |
+| `src/components/thinking-of-you.tsx`  | The button, including the hidden `Missing<name>` control       |
+| `src/components/recent-pings.tsx`     | The short list of pings this person is allowed to see          |
+| `src/lib/pings/fields.ts`             | Request shape, partner resolution, rate-limit numbers          |
+| `src/lib/pings/send.ts`               | Insert under RLS, then push to every device of the recipient   |
+| `src/lib/pings/load.ts`               | Recent pings for the circle page                               |
+| `src/lib/supabase/admin.ts`           | Secret-key client, used to deliver and prune partner devices   |
 | `src/app/circles/actions.ts`          | Create, rename, regenerate invite                              |
 | `src/app/join/[token]/page.tsx`       | Sign in, then confirm the invite                               |
 | `src/app/join/actions.ts`             | Redeem the token                                               |

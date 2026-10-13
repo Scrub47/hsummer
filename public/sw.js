@@ -28,12 +28,19 @@ self.addEventListener("notificationclick", (event) => {
   event.waitUntil(
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
-      .then((clients) => {
+      .then(async (clients) => {
         for (const client of clients) {
           if (
             client.url.startsWith(self.location.origin) &&
             "focus" in client
           ) {
+            if (typeof client.navigate === "function") {
+              try {
+                await client.navigate(target);
+              } catch {
+                // Focusing still opens the app. The list is behind sign-in.
+              }
+            }
             return client.focus();
           }
         }

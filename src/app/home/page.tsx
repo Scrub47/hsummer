@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { InstallHint } from "@/components/install-hint";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { PushPanel } from "@/components/push-panel";
 import { SignedInHeader } from "@/components/signed-in-header";
@@ -22,6 +21,9 @@ export default async function HomePage() {
   const circles = await loadCircles(session);
   const pending = circles.circles.filter(
     (circle) => circle.status === "pending",
+  );
+  const activeCouple = circles.circles.find(
+    (circle) => circle.status === "active" && circle.circleType === "couple",
   );
 
   return (
@@ -46,23 +48,29 @@ export default async function HomePage() {
           </div>
           <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
             {pending.length > 0
-              ? "A circle is waiting for one more person. Share the invite link. Letters stay closed until you both are here."
-              : circles.circles.some((circle) => circle.status === "active")
-                ? "Your circle is active. Letters and the bucket list come in later weeks."
-                : "Create a circle and send one invite link. Letters and the bucket list come in later weeks."}
+              ? "A circle is waiting for one more person. Share the invite link. Thinking of You stays closed until you both are here."
+              : activeCouple
+                ? "Your circle is active. Open it and tap Thinking of You."
+                : "Create a circle and send one invite link. Thinking of You starts once you're both here."}
           </p>
           <p className="mt-4">
             <Link
               href={
                 pending[0]
                   ? `/circles/${pending[0].id}`
-                  : circles.circles[0]
-                    ? `/circles/${circles.circles[0].id}`
-                    : "/circles"
+                  : activeCouple
+                    ? `/circles/${activeCouple.id}`
+                    : circles.circles[0]
+                      ? `/circles/${circles.circles[0].id}`
+                      : "/circles"
               }
               className="text-sm font-medium text-pine underline decoration-pine/40"
             >
-              {pending.length > 0 ? "Share the invite" : "Circles"}
+              {pending.length > 0
+                ? "Share the invite"
+                : activeCouple
+                  ? "Thinking of You"
+                  : "Circles"}
             </Link>
           </p>
           {profile ? (
@@ -78,7 +86,6 @@ export default async function HomePage() {
             </p>
           )}
         </div>
-        <InstallHint />
         <PushPanel />
       </main>
     </div>

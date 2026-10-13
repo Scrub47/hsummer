@@ -1,0 +1,147 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+
+import { missingName } from "@/lib/pings/fields";
+
+const LONG_PRESS_MS = 700;
+
+type Status = { tone: "error" | "ok"; text: string } | null;
+
+/**
+ * One tap sends Thinking of You to the partner. There is no recipient picker.
+ *
+ * Long-press, or the visually hidden button, sends the Missing<name>
+ * variant. The name is not the visible label. The push says "Missing you"
+ * and the list inside the app says "Missing Summer".
+ */
+export function ThinkingOfYou({
+  circleId,
+  partnerName,
+}: {
+  circleId: string;
+  partnerName: string;
+}) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [status, setStatus] = useState<Status>(null);
+  const inflight = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressSent = useRef(false);
+  const hiddenLabel = missingName(partnerName);
+
+  useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, []);
+
+  function clearTimer() {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }
+
+  async function send(secretVariant: boolean) {
+    if (inflight.current) return;
+    inflight.current = true;
+    setPending(true);
+    setStatus(null);
+    try {
+      const response = await fetch("/api/pings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ circleId, secretVariant }),
+      });
+      const body = (await response.json().catch(() => null)) as {
+        error?: string;
+        ok?: boolean;
+        sent?: number;
+        devices?: number;
+        push?: string;
+      } | null;
+      if (!response.ok) {
+        setStatus({
+          tone: "error",
+          text: body?.error ?? "That ping couldn't be sent.",
+        });
+        return;
+      }
+      setStatus({ tone: "ok", text: successText(body, partnerName) });
+      router.refresh();
+    } catch {
+      setStatus({ tone: "error", text: "That ping couldn't be sent." });
+    } finally {
+      inflight.current = false;
+      setPending(false);
+    }
+  }
+
+  return (
+    <section className="flex flex-col gap-4">
+      <button type="button" className="sr-only" onClick={() => void send(true)}>
+        {hiddenLabel}
+      </button>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => {
+          if (longPressSent.current) {
+            longPressSent.current = false;
+            return;
+          }
+          void send(false);
+        }}
+        onPointerDown={() => {
+          clearTimer();
+          longPressSent.current = false;
+          timer.current = setTimeout(() => {
+            longPressSent.current = true;
+            void send(true);
+          }, LONG_PRESS_MS);
+        }}
+        onPointerUp={clearTimer}
+        onPointerLeave={clearTimer}
+        onPointerCancel={clearTimer}
+        onContextMenu={(event) => event.preventDefault()}
+        className="inline-flex h-16 w-full items-center justify-center rounded-full bg-accent px-6 font-serif text-2xl text-accent-ink select-none disabled:opacity-60"
+        style={{ WebkitTouchCallout: "none" }}
+      >
+        {pending ? "Sending…" : "Thinking of You"}
+      </button>
+      <p className="text-sm leading-6 text-foreground/80">
+        For {partnerName}. One tap. On an iPhone, the notification arrives after
+        Hsummer is on the Home Screen and notifications are on.
+      </p>
+      {status ? (
+        <p
+          className="text-sm leading-6"
+          role={status.tone === "error" ? "alert" : "status"}
+        >
+          {status.text}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function successText(
+  body: { sent?: number; devices?: number; push?: string } | null,
+  partnerName: string,
+): string {
+  if (!body || body.push === "unconfigured") {
+    return `Saved for ${partnerName}. Notifications aren't configured on the server yet.`;
+  }
+  if (body.push === "none" || (body.devices ?? 0) === 0) {
+    return `Saved for ${partnerName}. They'll see it here. Their phone buzzes after they turn notifications on.`;
+  }
+  if ((body.sent ?? 0) > 0) {
+    const devices = body.devices ?? 0;
+    return devices > 1
+      ? `Sent to ${partnerName}, on ${body.sent} of ${devices} devices.`
+      : `Sent to ${partnerName}.`;
+  }
+  return `Saved for ${partnerName}. Their devices couldn't be reached just now.`;
+}
