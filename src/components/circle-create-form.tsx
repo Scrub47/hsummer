@@ -1,0 +1,68 @@
+"use client";
+
+import { useActionState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+
+import { createCircle, type CreateCircleState } from "@/app/circles/actions";
+import { inviteStorageKey } from "@/lib/circles/fields";
+
+const initialState: CreateCircleState = {
+  error: null,
+  circleId: null,
+  inviteId: null,
+  token: null,
+  expiresAt: null,
+};
+
+export function CircleCreateForm() {
+  const router = useRouter();
+  const [state, formAction, pending] = useActionState(
+    createCircle,
+    initialState,
+  );
+
+  useEffect(() => {
+    if (!state.token || !state.inviteId || !state.circleId) return;
+    sessionStorage.setItem(inviteStorageKey(state.inviteId), state.token);
+    router.push(`/circles/${state.circleId}`);
+  }, [router, state.circleId, state.inviteId, state.token]);
+
+  return (
+    <form action={formAction} className="flex flex-col gap-4">
+      <input type="hidden" name="circleType" value="couple" />
+      <div className="flex flex-col gap-2">
+        <label htmlFor="circle-name" className="text-sm font-medium">
+          Name{" "}
+          <span className="font-normal text-foreground/60">(optional)</span>
+        </label>
+        <input
+          id="circle-name"
+          name="name"
+          maxLength={80}
+          placeholder="Me & Summer"
+          autoComplete="off"
+          className="h-12 rounded-2xl border border-line bg-card px-4 text-base"
+        />
+        <p className="text-sm leading-6 text-foreground/70">
+          A couple circle starts with you. The invite link works once, so a
+          third person cannot use it.
+        </p>
+      </div>
+      {state.error ? (
+        <p
+          className="rounded-2xl border border-line bg-card px-4 py-3 text-sm leading-6"
+          role="alert"
+        >
+          {state.error}
+        </p>
+      ) : null}
+      <button
+        type="submit"
+        disabled={pending}
+        className="inline-flex h-12 items-center justify-center self-start rounded-full bg-accent px-6 text-sm font-medium text-accent-ink transition-opacity disabled:opacity-60"
+      >
+        {pending ? "Creating…" : "Create a circle"}
+      </button>
+    </form>
+  );
+}

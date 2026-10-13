@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { safeNextPath } from "@/lib/auth/safe-next";
 import { SignInForm } from "@/components/sign-in-form";
 import { getUserId } from "@/lib/supabase/session";
 
@@ -12,12 +13,18 @@ export const metadata: Metadata = {
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string | string[] }>;
+  searchParams: Promise<{
+    error?: string | string[];
+    next?: string | string[];
+  }>;
 }) {
-  const userId = await getUserId();
-  if (userId) redirect("/home");
-
   const params = await searchParams;
+  const requestedNext = typeof params.next === "string" ? params.next : null;
+  const nextPath = safeNextPath(requestedNext, "https://hsummer.vercel.app");
+
+  const userId = await getUserId();
+  if (userId) redirect(nextPath);
+
   const errorCode = typeof params.error === "string" ? params.error : undefined;
 
   return (
@@ -34,7 +41,7 @@ export default async function SignInPage({
           store.
         </p>
         <div className="mt-8">
-          <SignInForm errorCode={errorCode} />
+          <SignInForm errorCode={errorCode} nextPath={nextPath} />
         </div>
       </main>
     </div>

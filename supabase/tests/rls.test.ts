@@ -40,6 +40,7 @@ let admin: Client;
 let owner: Client;
 let other: Client;
 let otherToken = "";
+let ownerToken = "";
 let ownerId = "";
 let otherId = "";
 let ownerEmail = "";
@@ -86,6 +87,7 @@ beforeAll(async () => {
 
   const ownerSession = await signIn(apiUrl, anonKey, ownerEmail);
   owner = ownerSession.client;
+  ownerToken = ownerSession.token;
   const otherSession = await signIn(apiUrl, anonKey, otherEmail);
   other = otherSession.client;
   otherToken = otherSession.token;
@@ -331,6 +333,336 @@ describe("anonymous clients", () => {
     expect(JSON.stringify(data)).not.toContain(ownerEmail);
   });
 });
+
+describe("circles, invites, and co-member profiles", () => {
+  let third: Client;
+  let leaver: Client;
+  let leaverId = "";
+  let limiter: Client;
+  const objectPath = () => `${ownerId}/${crypto.randomUUID()}.png`;
+
+  beforeAll(async () => {
+    const nonce = crypto.randomUUID();
+    await createUser(admin, {
+      email: `rls-third-${nonce}@example.com`,
+      displayName: "Lin Third",
+      timezone: "America/Chicago",
+    });
+    leaverId = await createUser(admin, {
+      email: `rls-leaver-${nonce}@example.com`,
+      displayName: "Lea Ver",
+      timezone: "UTC",
+    });
+    const limiterId = await createUser(admin, {
+      email: `rls-limit-${nonce}@example.com`,
+      displayName: "Limited",
+      timezone: "UTC",
+    });
+    third = (await signIn(apiUrl, anonKey, `rls-third-${nonce}@example.com`))
+      .client;
+    leaver = (await signIn(apiUrl, anonKey, `rls-leaver-${nonce}@example.com`))
+      .client;
+    limiter = (await signIn(apiUrl, anonKey, `rls-limit-${nonce}@example.com`))
+      .client;
+    expect(limiterId).toBeTruthy();
+  });
+
+  it("lets a couple join, hides email, and refuses a third person on the same link", async () => {
+    const created = await rpc(owner, "create_circle", {
+      circle_name: "Me & Summer",
+      circle_type: "couple",
+    });
+    const circleId = created.circle_id as string;
+    const token = created.token as string;
+    expect(token).toMatch(/^[0-9a-f]{64}$/);
+    expect(created.invite_id).toBeTruthy();
+
+    const pending = await owner
+      .from("circles")
+      .select("status, circle_type, name")
+      .eq("id", circleId)
+      .single();
+    expect(pending.error).toBeNull();
+    expect(pending.data).toMatchObject({
+      status: "pending",
+      circle_type: "couple",
+      name: "Me & Summer",
+    });
+
+    const hidden = await third.from("circles").select("id").eq("id", circleId);
+    expect(hidden.error).toBeNull();
+    expect(hidden.data).toEqual([]);
+
+    const planted = await third.from("circles").insert({
+      circle_type: "couple",
+    });
+    expect(planted.error).toBeTruthy();
+
+    const preview = await rpc(other, "preview_invite", { raw_token: token });
+    expect(preview.invite_state).toBe("ready");
+    expect(preview.circle_name).toBe("Me & Summer");
+
+    const joined = await rpc(other, "redeem_invite", {
+      raw_token: token,
+      ip_hash: freshIp(),
+    });
+    expect(joined.invite_state).toBe("joined");
+    expect(joined.circle_id).toBe(circleId);
+
+    const active = await other
+      .from("circles")
+      .select("status")
+      .eq("id", circleId)
+      .single();
+    expect(active.data?.status).toBe("active");
+
+    const members = await other
+      .from("circle_members")
+      .select("user_id")
+      .eq("circle_id", circleId)
+      .is("left_at", null);
+    expect(members.data).toHaveLength(2);
+
+    const profile = await other
+      .from("profiles")
+      .select("*")
+      .eq("id", ownerId)
+      .single();
+    expect(profile.error).toBeNull();
+    expect(profile.data?.display_name).toBe("Ada Updated");
+    expect(profile.data).not.toHaveProperty("email");
+    expect(JSON.stringify(profile.data)).not.toContain(ownerEmail);
+
+    const privateRow = await other
+      .from("account_private")
+      .select("*")
+      .eq("user_id", ownerId);
+    expect(privateRow.error).toBeNull();
+    expect(privateRow.data).toEqual([]);
+
+    const attack = await other
+      .from("profiles")
+      .update({ display_name: "Stolen Name" })
+      .eq("id", ownerId)
+      .select("id");
+    expect(attack.error).toBeNull();
+    expect(attack.data).toEqual([]);
+
+    const path = objectPath();
+    const upload = await owner.storage.from("avatars").upload(path, png, {
+      contentType: "image/png",
+    });
+    expect(upload.error).toBeNull();
+    const signed = await other.storage
+      .from("avatars")
+      .createSignedUrl(path, 60);
+    expect(signed.error).toBeNull();
+    expect(signed.data?.signedUrl).toBeTruthy();
+    const outsiderSigned = await third.storage
+      .from("avatars")
+      .createSignedUrl(path, 60);
+    expect(outsiderSigned.data?.signedUrl ?? null).toBeNull();
+
+    const refused = await rpc(third, "redeem_invite", {
+      raw_token: token,
+      ip_hash: freshIp(),
+    });
+    expect(refused.invite_state).toBe("full");
+    const stillTwo = await owner
+      .from("circle_members")
+      .select("user_id")
+      .eq("circle_id", circleId)
+      .is("left_at", null);
+    expect(stillTwo.data).toHaveLength(2);
+
+    const regenerated = await rpc(owner, "regenerate_invite", {
+      target_circle: circleId,
+    });
+    const oldLink = await rpc(third, "redeem_invite", {
+      raw_token: token,
+      ip_hash: freshIp(),
+    });
+    expect(oldLink.invite_state).toBe("revoked");
+    const stillFull = await rpc(third, "redeem_invite", {
+      raw_token: regenerated.token as string,
+      ip_hash: freshIp(),
+    });
+    expect(stillFull.invite_state).toBe("full");
+
+    const hashLookup = await fetch(
+      `${apiUrl}/rest/v1/circle_invites?select=token_hash`,
+      {
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${ownerToken}`,
+          Accept: "application/json",
+        },
+      },
+    );
+    expect(hashLookup.ok).toBe(false);
+  });
+
+  it("refuses a revoked or expired link and lets a group take a third member", async () => {
+    const expired = await rpc(owner, "create_circle", {
+      circle_name: null,
+      circle_type: "couple",
+    });
+    const stamped = await admin
+      .from("circle_invites")
+      .update({ expires_at: new Date(Date.now() - 60_000).toISOString() })
+      .eq("id", expired.invite_id as string);
+    expect(stamped.error).toBeNull();
+    const late = await rpc(third, "redeem_invite", {
+      raw_token: expired.token as string,
+      ip_hash: freshIp(),
+    });
+    expect(late.invite_state).toBe("expired");
+
+    const revoked = await rpc(owner, "create_circle", {
+      circle_name: "Revoked",
+      circle_type: "couple",
+    });
+    const turnedOff = await admin
+      .from("circle_invites")
+      .update({ revoked_at: new Date().toISOString() })
+      .eq("id", revoked.invite_id as string);
+    expect(turnedOff.error).toBeNull();
+    const afterRevoke = await rpc(third, "redeem_invite", {
+      raw_token: revoked.token as string,
+      ip_hash: freshIp(),
+    });
+    expect(afterRevoke.invite_state).toBe("revoked");
+
+    const group = await rpc(owner, "create_circle", {
+      circle_name: "The Group Chat",
+      circle_type: "group",
+    });
+    const groupInvite = await owner
+      .from("circle_invites")
+      .select("max_uses, use_count")
+      .eq("id", group.invite_id as string)
+      .single();
+    expect(groupInvite.data?.max_uses).toBeNull();
+    const second = await rpc(other, "redeem_invite", {
+      raw_token: group.token as string,
+      ip_hash: freshIp(),
+    });
+    expect(second.invite_state).toBe("joined");
+    const fourthSeat = await rpc(third, "redeem_invite", {
+      raw_token: group.token as string,
+      ip_hash: freshIp(),
+    });
+    expect(fourthSeat.invite_state).toBe("joined");
+    const count = await owner
+      .from("circle_members")
+      .select("user_id")
+      .eq("circle_id", group.circle_id as string)
+      .is("left_at", null);
+    expect(count.data).toHaveLength(3);
+  });
+
+  it("drops access the moment someone leaves", async () => {
+    const created = await rpc(owner, "create_circle", {
+      circle_name: "Leaving",
+      circle_type: "couple",
+    });
+    const circleId = created.circle_id as string;
+    const joined = await rpc(leaver, "redeem_invite", {
+      raw_token: created.token as string,
+      ip_hash: freshIp(),
+    });
+    expect(joined.invite_state).toBe("joined");
+
+    const goodbye = await leaver
+      .from("circle_members")
+      .update({ left_at: new Date().toISOString() })
+      .eq("circle_id", circleId)
+      .eq("user_id", leaverId)
+      .select("left_at");
+    expect(goodbye.error).toBeNull();
+    expect(goodbye.data?.[0]?.left_at).toBeTruthy();
+
+    const gone = await leaver.from("circles").select("id").eq("id", circleId);
+    expect(gone.data).toEqual([]);
+    const profile = await leaver
+      .from("profiles")
+      .select("id")
+      .eq("id", ownerId);
+    expect(profile.data).toEqual([]);
+
+    const pending = await owner
+      .from("circles")
+      .select("status")
+      .eq("id", circleId)
+      .single();
+    expect(pending.data?.status).toBe("pending");
+
+    const ownerLeaves = await owner
+      .from("circle_members")
+      .update({ left_at: new Date().toISOString() })
+      .eq("circle_id", circleId)
+      .eq("user_id", ownerId);
+    expect(ownerLeaves.error).toBeNull();
+
+    const archived = await admin
+      .from("circles")
+      .select("status")
+      .eq("id", circleId)
+      .single();
+    expect(archived.data?.status).toBe("archived");
+    const ownerGone = await owner
+      .from("circles")
+      .select("id")
+      .eq("id", circleId);
+    expect(ownerGone.data).toEqual([]);
+  });
+
+  it("rate-limits redeem attempts for one user", async () => {
+    const token = "ab".repeat(32);
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const row = await rpc(limiter, "redeem_invite", {
+        raw_token: token,
+        ip_hash: freshIp(),
+      });
+      expect(row.invite_state).toBe("missing");
+    }
+    const blocked = await rpc(limiter, "redeem_invite", {
+      raw_token: token,
+      ip_hash: freshIp(),
+    });
+    expect(blocked.invite_state).toBe("rate_limited");
+  });
+});
+
+async function rpc(
+  client: Client,
+  fn:
+    "create_circle" | "preview_invite" | "redeem_invite" | "regenerate_invite",
+  args: Record<string, string | null>,
+): Promise<Record<string, string | null>> {
+  const untyped = client as unknown as {
+    rpc: (
+      name: string,
+      args: Record<string, string | null>,
+    ) => Promise<{
+      data: Record<string, string | null>[] | null;
+      error: { message: string } | null;
+    }>;
+  };
+  const { data, error } = await untyped.rpc(fn, args);
+  if (error) throw new Error(`${fn}: ${error.message}`);
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row !== "object") {
+    throw new Error(`${fn} returned no row`);
+  }
+  return row as Record<string, string | null>;
+}
+
+function freshIp(): string {
+  return (crypto.randomUUID() + crypto.randomUUID())
+    .replaceAll("-", "")
+    .slice(0, 64);
+}
 
 async function createUser(
   client: Client,

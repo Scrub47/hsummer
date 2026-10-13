@@ -2,7 +2,7 @@
 
 A private shared space for people who are far apart. Made for couples, built for groups, friends, and families.
 
-Hsummer is a portfolio project. Couples are the first audience. The data model will support a Circle of any size (a couple, a friend group, a family). This repository has the app shell, sign-in, a test push notification, and a profile you can edit. Circles themselves come next.
+Hsummer is a portfolio project. Couples are the first audience. The data model supports a Circle of any size (a couple, a friend group, a family). This repository has the app shell, sign-in, a test push notification, profiles, and couple circles with invite links. Group, family, and friends circles exist in the database and stay out of the create form until a later phase.
 
 ## Stack
 
@@ -12,7 +12,7 @@ Hsummer is a portfolio project. Couples are the first audience. The data model w
 - Deployed on [Vercel](https://vercel.com/)
 - [Vitest](https://vitest.dev/) unit tests, [Playwright](https://playwright.dev/) smoke tests, GitHub Actions
 
-Upstash (scheduled letters and rate limits) is a later week and is not wired up.
+Joining a circle is rate-limited in Postgres (per person and per IP hash). Upstash, for scheduled letters and the later limits on pings and invite creation, is not wired up.
 
 ## Local setup
 
@@ -180,8 +180,26 @@ GitHub Actions runs lint, format, typecheck, unit tests, the production build, a
 
 No new environment variables are required for profiles. Photo upload uses the same Supabase URL and publishable key as sign-in.
 
+## Circles and invites
+
+A signed-in person opens **Circles**, creates a couple circle, and gets one invite link. The link is shown once. Sharing uses the phone's share sheet, or copies the link. Opening it signs the other person in, then asks them to confirm. The circle stays **pending** until that second person joins, and this screen is the invite rather than letters or a ping. After they join it becomes **active**. A third account that uses the same link is refused. Making a new link turns the old one off, and a couple that is already full still refuses the new link.
+
+The raw token is not stored. The database keeps a SHA-256 hash. Redeeming the link is one transaction, and it is limited to 8 tries per person and 20 per IP hash inside 15 minutes.
+
+### Apply the week 3 SQL
+
+Do this in the Supabase dashboard. No new bucket and no new environment variable.
+
+1. Open **SQL Editor → New query**.
+2. Do **not** paste or re-run `supabase/migrations/20261012120000_profiles_and_push_subscriptions.sql` or `supabase/migrations/20261019120000_account_private_and_avatars.sql`. Those are already applied. Running them again will fail.
+3. Open `supabase/migrations/20261026120000_circles_and_invites.sql` in this repo, paste the whole file, and run it **once**.
+4. Refresh **Table Editor**. Confirm `circles`, `circle_members`, `circle_invites`, and `circle_invite_redemptions`. None of them has an email column. `account_private` is unchanged.
+5. Vercel deploys the circle pages from this merge. Apply the SQL before creating a circle. Then sign in, open `/circles`, create one, and open the invite link in a second account.
+
+Use `npx supabase db push` only if week 1 and week 2 were applied with the CLI and are already in the migration history. If those were pasted into the SQL editor, paste week 3 there too.
+
 ## What is not in this version
 
-Circles, invites, letters, the bucket list, memory photos, Realtime, QStash, and rate limits are later weeks. Do not add those tables to the week 1 migration. The `avatars` bucket is only for profile photos.
+Letters, the bucket list, memory photos, Realtime, QStash, and Upstash rate limits are later weeks. Do not add those tables to an earlier migration. The `avatars` bucket is only for profile photos. Leave, account deletion, and the group-circle create form are later too. The database already accepts group, family, and friends circles so the isolation tests can use them.
 
 See [HOW_IT_WORKS.md](./HOW_IT_WORKS.md) for how the code is put together.

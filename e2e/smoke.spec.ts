@@ -36,7 +36,7 @@ test("the signed-in home redirects to sign-in when there is no session", async (
   page,
 }) => {
   await page.goto("/home");
-  await expect(page).toHaveURL(/\/sign-in$/);
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Fhome$/);
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 });
 
@@ -44,6 +44,24 @@ test("the profile page redirects to sign-in when there is no session", async ({
   page,
 }) => {
   await page.goto("/profile");
-  await expect(page).toHaveURL(/\/sign-in$/);
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Fprofile$/);
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+});
+
+test("circles redirect to sign-in when there is no session", async ({
+  page,
+}) => {
+  await page.goto("/circles");
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Fcircles$/);
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+});
+
+test("an invite link explains that sign-in comes before joining", async ({
+  page,
+}) => {
+  await page.goto("/join/not-a-real-token");
+  await expect(
+    page.getByRole("heading", { name: "Join a circle" }),
+  ).toBeVisible();
+  await expect(page.getByText(/isn't valid/i)).toBeVisible();
 });
