@@ -287,7 +287,7 @@ begin
   if new.name is not null and (
     pg_catalog.char_length(pg_catalog.btrim(new.name)) = 0
     or pg_catalog.char_length(new.name) > 80
-    or pg_catalog.position('@' in new.name) > 0
+    or pg_catalog.strpos(new.name, '@') > 0
   ) then
     raise exception 'hsummer_bad_name';
   end if;
@@ -525,7 +525,7 @@ begin
   cleaned := nullif(pg_catalog.btrim(coalesce(circle_name, '')), '');
   if cleaned is not null and (
     pg_catalog.char_length(cleaned) > 80
-    or pg_catalog.position('@' in cleaned) > 0
+    or pg_catalog.strpos(cleaned, '@') > 0
   ) then
     raise exception 'hsummer_bad_name';
   end if;
