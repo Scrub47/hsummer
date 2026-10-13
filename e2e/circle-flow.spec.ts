@@ -108,6 +108,9 @@ async function signIn(
   expect(response.status(), await response.text()).toBe(307);
   const location = response.headers()["location"];
   expect(location).toContain("/auth/callback");
+  // The session cookie is host-only. localhost and 127.0.0.1 are different
+  // hosts, so the callback has to stay on the origin the browser already has.
+  expect(new URL(location!).origin).toBe(new URL(page.url()).origin);
   await page.goto(location!);
   await expect(
     page.getByRole("heading", { name: `Hello, ${input.displayName}` }),

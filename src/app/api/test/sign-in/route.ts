@@ -2,6 +2,7 @@ import { type EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 import { testSignInAllowed } from "@/lib/auth/local-supabase";
+import { redirectOrigin } from "@/lib/auth/request-origin";
 import { parseDisplayName, parseTimezone } from "@/lib/profile/fields";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSupabaseBrowserConfig } from "@/lib/env";
@@ -89,7 +90,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const callback = new URL("/auth/callback", request.url);
+  const callback = new URL("/auth/callback", redirectOrigin(request));
   callback.searchParams.set("token_hash", tokenHash);
   callback.searchParams.set("type", otpType);
   callback.searchParams.set("next", "/home");

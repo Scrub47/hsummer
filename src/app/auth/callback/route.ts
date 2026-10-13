@@ -1,6 +1,7 @@
 import { type EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { redirectOrigin } from "@/lib/auth/request-origin";
 import { safeNextPath } from "@/lib/auth/safe-next";
 import { createClient } from "@/lib/supabase/server";
 
@@ -15,12 +16,13 @@ import { createClient } from "@/lib/supabase/server";
  */
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
-  const nextPath = safeNextPath(url.searchParams.get("next"), url.origin);
+  const origin = redirectOrigin(request);
+  const nextPath = safeNextPath(url.searchParams.get("next"), origin);
   const supabase = await createClient();
 
   if (!supabase) {
     return NextResponse.redirect(
-      new URL("/sign-in?error=not-configured", url.origin),
+      new URL("/sign-in?error=not-configured", origin),
     );
   }
 
@@ -31,9 +33,9 @@ export async function GET(request: NextRequest) {
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
-      return NextResponse.redirect(new URL(nextPath, url.origin));
+      return NextResponse.redirect(new URL(nextPath, origin));
     }
-    return NextResponse.redirect(new URL("/sign-in?error=link", url.origin));
+    return NextResponse.redirect(new URL("/sign-in?error=link", origin));
   }
 
   if (tokenHash && type && isEmailOtpType(type)) {
@@ -42,12 +44,12 @@ export async function GET(request: NextRequest) {
       type,
     });
     if (!error) {
-      return NextResponse.redirect(new URL(nextPath, url.origin));
+      return NextResponse.redirect(new URL(nextPath, origin));
     }
-    return NextResponse.redirect(new URL("/sign-in?error=link", url.origin));
+    return NextResponse.redirect(new URL("/sign-in?error=link", origin));
   }
 
-  return NextResponse.redirect(new URL("/sign-in?error=link", url.origin));
+  return NextResponse.redirect(new URL("/sign-in?error=link", origin));
 }
 
 const OTP_TYPES = new Set<EmailOtpType>([
