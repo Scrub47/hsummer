@@ -88,6 +88,35 @@ describe("saveSoloBooth", () => {
     expect(uploads[0]?.path).toBe(`${circleId}/${sessionId}/0.jpg`);
   });
 
+  it("reads a JPEG blob that is not a File", async () => {
+    const uploads: { path: string; bytes: Uint8Array }[] = [];
+    getSession.mockResolvedValue(
+      session([], uploads, {
+        data: {
+          session_id: sessionId,
+          memory_id: memoryId,
+          paths: [
+            `${circleId}/${sessionId}/0.jpg`,
+            `${circleId}/${sessionId}/1.jpg`,
+          ],
+        },
+        error: null,
+      }),
+    );
+    const data = form({ layout: "2-cut" });
+    const jpeg = jpegWithExif();
+    const blob = new Blob([Buffer.from(jpeg)], { type: "image/jpeg" });
+    expect(blob instanceof File).toBe(false);
+    data.getAll = ((name: string) =>
+      name === "shot"
+        ? [blob, blob]
+        : FormData.prototype.getAll.call(data, name)) as FormData["getAll"];
+
+    const result = await saveSoloBooth(previous, data);
+    expect(result).toEqual({ error: null, saved: true });
+    expect(uploads).toHaveLength(2);
+  });
+
   it("does not call the database when a shot is not a JPEG", async () => {
     const calls: unknown[] = [];
     getSession.mockResolvedValue(

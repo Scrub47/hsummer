@@ -5,7 +5,6 @@ import {
   useEffect,
   useRef,
   useState,
-  useTransition,
   type ReactNode,
 } from "react";
 import Link from "next/link";
@@ -409,10 +408,17 @@ function Review({
   onRetake: () => void;
 }) {
   const [state, formAction, pending] = useActionState(
-    saveSoloBooth,
+    async (previous: BoothActionState, formData: FormData) => {
+      shots.forEach((blob, index) => {
+        formData.append(
+          "shot",
+          new File([blob], `shot-${index}.jpg`, { type: "image/jpeg" }),
+        );
+      });
+      return saveSoloBooth(previous, formData);
+    },
     initialState,
   );
-  const [, startSaving] = useTransition();
   const bundle = themeBundle(theme);
 
   return (
@@ -451,19 +457,7 @@ function Review({
       </div>
       <form
         className="flex flex-col gap-4 rounded-3xl border border-line bg-card p-5"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const data = new FormData(event.currentTarget);
-          shots.forEach((blob, index) => {
-            data.append(
-              "shot",
-              new File([blob], `shot-${index}.jpg`, { type: "image/jpeg" }),
-            );
-          });
-          startSaving(() => {
-            formAction(data);
-          });
-        }}
+        action={formAction}
       >
         <input type="hidden" name="circleId" value={circleId} />
         <input type="hidden" name="theme" value={theme} />

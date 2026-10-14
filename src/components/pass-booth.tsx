@@ -5,7 +5,6 @@ import {
   useEffect,
   useRef,
   useState,
-  useTransition,
   type ReactNode,
 } from "react";
 import Link from "next/link";
@@ -597,8 +596,18 @@ function Review({
   doneHref: string | null;
   onRetake: () => void;
 }) {
-  const [state, formAction, pending] = useActionState(action, initialState);
-  const [, startSaving] = useTransition();
+  const [state, formAction, pending] = useActionState(
+    async (previous: PassActionState, formData: FormData) => {
+      shots.forEach((blob, index) => {
+        formData.append(
+          "shot",
+          new File([blob], `shot-${index}.jpg`, { type: "image/jpeg" }),
+        );
+      });
+      return action(previous, formData);
+    },
+    initialState,
+  );
   const dateLabel = new Intl.DateTimeFormat("en-US", {
     month: "long",
     day: "numeric",
@@ -614,22 +623,7 @@ function Review({
         label={`${themeBundle(theme).label} ${layoutLabel(layout)} photo booth strip`}
         sources={sources}
       />
-      <form
-        className="flex flex-col gap-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const data = new FormData(event.currentTarget);
-          shots.forEach((blob, index) => {
-            data.append(
-              "shot",
-              new File([blob], `shot-${index}.jpg`, { type: "image/jpeg" }),
-            );
-          });
-          startSaving(() => {
-            formAction(data);
-          });
-        }}
-      >
+      <form className="flex flex-col gap-4" action={formAction}>
         {Object.entries(hidden).map(([name, value]) => (
           <input key={name} type="hidden" name={name} value={value} />
         ))}
