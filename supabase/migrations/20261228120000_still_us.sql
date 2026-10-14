@@ -243,13 +243,30 @@ begin
       raise exception 'hsummer_letter_sender';
     end if;
     if not private.is_active_member_user(new.circle_id, new.from_user_id)
-       or not private.is_active_member_user(new.circle_id, new.to_user_id)
        or new.from_user_id = new.to_user_id
     then
       raise exception 'hsummer_letter_recipient';
     end if;
     new.qstash_message_id := null;
     new.opened_at := null;
+    -- A signed-in insert still requires an active recipient. The service role
+    -- can record a letter that was scheduled before they left, so delivery
+    -- can cancel it. An immediate letter to someone who left is still refused.
+    if not private.is_active_member_user(new.circle_id, new.to_user_id) then
+      if new.scheduled_for is null
+         or not exists (
+           select 1
+           from public.circle_members
+           where circle_id = new.circle_id
+             and user_id = new.to_user_id
+         )
+      then
+        raise exception 'hsummer_letter_recipient';
+      end if;
+      new.status := 'scheduled';
+      new.delivered_at := null;
+      return new;
+    end if;
     if new.scheduled_for is null then
       new.status := 'delivered';
       new.delivered_at := coalesce(new.delivered_at, pg_catalog.now());
