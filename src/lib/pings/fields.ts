@@ -17,6 +17,7 @@
 
 import { z } from "zod";
 
+import { demoWriteMessage } from "@/lib/account/copy";
 import { isMoodEmoji, type MoodEmoji } from "@/lib/moods/fields";
 
 export const BROADCAST_PINGS_ENABLED = false;
@@ -224,6 +225,8 @@ export function pingWriteFailure(
   message: string | undefined,
 ): { status: number; error: string } | null {
   if (!message) return null;
+  const demo = demoWriteMessage(message);
+  if (demo) return { status: 403, error: demo };
   if (message.includes("hsummer_rate_limited")) {
     return { status: 429, error: PING_RATE_LIMIT_MESSAGE };
   }

@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  getCronSecret,
   getQstashConfig,
+  getSentryDsn,
   getSupabaseSecretKey,
   getUpstashConfig,
   getVapidConfig,
@@ -18,6 +20,8 @@ const KEYS = [
   "QSTASH_TOKEN",
   "QSTASH_CURRENT_SIGNING_KEY",
   "QSTASH_NEXT_SIGNING_KEY",
+  "CRON_SECRET",
+  "SENTRY_DSN",
 ] as const;
 
 const original = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
@@ -90,5 +94,22 @@ describe("server env", () => {
       currentSigningKey: "current-signing-key",
       nextSigningKey: "next-signing-key",
     });
+  });
+
+  it("requires a long cron secret and an https Sentry DSN", () => {
+    delete process.env.CRON_SECRET;
+    delete process.env.SENTRY_DSN;
+    expect(getCronSecret()).toBeNull();
+    expect(getSentryDsn()).toBeNull();
+
+    process.env.CRON_SECRET = "short";
+    process.env.SENTRY_DSN = "http://key@example.invalid/1";
+    expect(getCronSecret()).toBeNull();
+    expect(getSentryDsn()).toBeNull();
+
+    process.env.CRON_SECRET = "cron-secret-value";
+    process.env.SENTRY_DSN = "https://public@example.invalid/1";
+    expect(getCronSecret()).toBe("cron-secret-value");
+    expect(getSentryDsn()).toBe("https://public@example.invalid/1");
   });
 });

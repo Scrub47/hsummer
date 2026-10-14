@@ -1,7 +1,10 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { z } from "zod";
+
+import { AGE_REQUIRED_MESSAGE } from "@/lib/account/copy";
+import { AGE_COOKIE, ageCookieOptions } from "@/lib/account/age";
 
 import { enforceAuthLimits } from "@/lib/auth/attempt";
 import {
@@ -50,14 +53,19 @@ export async function requestMagicLink(input: {
   nextPath?: unknown;
   captchaToken?: unknown;
   timezone?: unknown;
+  ageConfirmed?: unknown;
 }): Promise<SignInResult> {
   const email = emailSchema.safeParse(input.email);
   if (!email.success) return { ok: false, error: EMAIL_FAILED };
+  if (input.ageConfirmed !== true) {
+    return { ok: false, error: AGE_REQUIRED_MESSAGE };
+  }
 
   const captcha = readCaptcha(input.captchaToken);
   if (!captcha.ok) return { ok: false, error: captcha.error };
 
   const headerList = await headers();
+  await rememberAge(headerList);
   const limited = await enforceAuthLimits([
     {
       key: authIpBucket("magic", hashIp(requestIp(headerList))),
@@ -93,11 +101,17 @@ export async function requestMagicLink(input: {
 export async function startGoogleSignIn(input: {
   nextPath?: unknown;
   captchaToken?: unknown;
+  ageConfirmed?: unknown;
 }): Promise<SignInResult> {
+  if (input.ageConfirmed !== true) {
+    return { ok: false, error: AGE_REQUIRED_MESSAGE };
+  }
+
   const captcha = readCaptcha(input.captchaToken);
   if (!captcha.ok) return { ok: false, error: captcha.error };
 
   const headerList = await headers();
+  await rememberAge(headerList);
   const limited = await enforceAuthLimits([
     {
       key: authIpBucket("google", hashIp(requestIp(headerList))),
@@ -169,6 +183,13 @@ function readCaptcha(
   const parsed = captchaSchema.safeParse(value);
   if (!parsed.success) return { ok: false, error: CAPTCHA_REQUIRED };
   return { ok: true, token: parsed.data };
+}
+
+async function rememberAge(headerList: Headers): Promise<void> {
+  const store = await cookies();
+  const https =
+    headerList.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https";
+  store.set(AGE_COOKIE, "1", ageCookieOptions(https));
 }
 
 function isSupabaseAuthUrl(value: string): boolean {

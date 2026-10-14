@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { DemoBanner } from "@/components/demo-banner";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { PushPanel } from "@/components/push-panel";
 import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
@@ -12,6 +13,7 @@ import { loadCircle, loadCircles } from "@/lib/circles/load";
 import { pushOrigin } from "@/lib/auth/request-origin";
 import { loadCurrentMoods } from "@/lib/moods/load";
 import { AVATAR_SIGNED_URL_SECONDS } from "@/lib/profile/fields";
+import { loadAccountFlags } from "@/lib/account/load";
 import { loadOwnProfile } from "@/lib/profile/load";
 import { getSession } from "@/lib/supabase/session";
 
@@ -23,9 +25,10 @@ export default async function HomePage() {
   const session = await getSession();
   if (!session) redirect("/sign-in");
 
-  const [profile, circles] = await Promise.all([
+  const [profile, circles, account] = await Promise.all([
     loadOwnProfile(session),
     loadCircles(session),
+    loadAccountFlags(session),
   ]);
   const origin = pushOrigin(await headers());
   await Promise.all(
@@ -60,6 +63,7 @@ export default async function HomePage() {
       />
       <SignedInHeader current="home" />
       <main className="flex flex-1 flex-col gap-10 py-16">
+        {account.isDemo ? <DemoBanner /> : null}
         <div>
           <div className="flex items-center gap-5">
             {profile ? (
@@ -163,7 +167,7 @@ export default async function HomePage() {
             </ul>
           </section>
         ) : null}
-        <PushPanel />
+        {account.isDemo ? null : <PushPanel />}
       </main>
     </div>
   );

@@ -8,6 +8,8 @@
 
 import { z } from "zod";
 
+import { demoWriteMessage } from "@/lib/account/copy";
+
 export const BUCKET_CATEGORIES = [
   { value: "restaurant", label: "Restaurants" },
   { value: "movie", label: "Movies" },
@@ -206,6 +208,8 @@ export function bucketWriteFailure(
   code: string | undefined,
 ): string | null {
   if (!message && !code) return null;
+  const demo = demoWriteMessage(message);
+  if (demo) return demo;
   if (
     code === "42P01" ||
     code === "PGRST205" ||

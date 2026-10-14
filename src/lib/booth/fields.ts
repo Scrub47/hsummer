@@ -11,6 +11,7 @@
 
 import { z } from "zod";
 
+import { demoWriteMessage } from "@/lib/account/copy";
 import { isCircleId } from "@/lib/bucket/fields";
 import { MEMORY_CAPTION_MAX, MEMORY_MAX_BYTES } from "@/lib/memories/fields";
 
@@ -70,8 +71,7 @@ export const PASS_EXPIRED = "That booth expired before it was finished.";
 export const PASS_CANCELLED = "That booth was cancelled.";
 export const PASS_WAITING =
   "Passed on. They'll get a notification to take their frames.";
-export const PASS_FINISHED =
-  "The strip is on the memory wall for both of you.";
+export const PASS_FINISHED = "The strip is on the memory wall for both of you.";
 
 export type PassFrame = {
   position: number;
@@ -290,6 +290,8 @@ export function boothWriteFailure(
   code: string | undefined,
 ): string | null {
   if (!message && !code) return null;
+  const demo = demoWriteMessage(message);
+  if (demo) return demo;
   if (
     message?.includes("create_pass_booth") ||
     message?.includes("submit_pass_shots") ||
