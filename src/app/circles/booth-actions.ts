@@ -39,12 +39,18 @@ const UPLOAD_FAILED =
   "The strip couldn't be saved. Apply the week 13 SQL so the photo booth tables exist, then try again.";
 
 function shotFiles(formData: FormData): File[] {
-  return formData.getAll("shot").flatMap((value) => {
-    if (typeof value === "string" || value.size <= 0) return [];
-    if (value instanceof File) return [value];
-    const type = value.type || "image/jpeg";
-    return [new File([value], "shot.jpg", { type })];
-  });
+  const files: File[] = [];
+  for (const entry of formData.getAll("shot")) {
+    if (typeof entry === "string" || entry.size <= 0) continue;
+    // A server action can hand back a Blob that is not this realm's File.
+    const blob: Blob = entry;
+    files.push(
+      blob instanceof File
+        ? blob
+        : new File([blob], "shot.jpg", { type: blob.type || "image/jpeg" }),
+    );
+  }
+  return files;
 }
 
 /**
@@ -166,3 +172,4 @@ async function discardStrip(
     await session.supabase.storage.from(MEMORIES_BUCKET).remove([...removable]);
   }
 }
+
