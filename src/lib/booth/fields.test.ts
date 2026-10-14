@@ -98,9 +98,9 @@ describe("booth paths and errors", () => {
     expect(boothWriteFailure("hsummer_booth_open", "P0001")).toBe(
       PASS_OPEN_MESSAGE,
     );
-    expect(boothWriteFailure("create_pass_booth does not exist", "PGRST202")).toBe(
-      PASS_UNAVAILABLE,
-    );
+    expect(
+      boothWriteFailure("create_pass_booth does not exist", "PGRST202"),
+    ).toBe(PASS_UNAVAILABLE);
     expect(BOOTH_JPEG_ERROR).toMatch(/JPEG/);
   });
 });

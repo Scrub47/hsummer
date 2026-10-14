@@ -219,7 +219,11 @@ describe("startPassBooth", () => {
         calls,
         [],
         { data: null, error: null },
-        { circleType: "group", status: "active", members: [selfId, partnerId, "44444444-4444-4444-8444-444444444444"] },
+        {
+          circleType: "group",
+          status: "active",
+          members: [selfId, partnerId, "44444444-4444-4444-8444-444444444444"],
+        },
       ),
     );
     const data = form({ layout: "2-cut" });

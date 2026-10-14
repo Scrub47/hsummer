@@ -27,7 +27,9 @@ export function BoothModes({
   turns: PassTurn[];
   unavailable: boolean;
 }) {
-  const yourTurn = turns.some((turn) => turn.waitingOnYou && turn.status === "open");
+  const yourTurn = turns.some(
+    (turn) => turn.waitingOnYou && turn.status === "open",
+  );
   const [mode, setMode] = useState<"solo" | "pass">(yourTurn ? "pass" : "solo");
 
   return (

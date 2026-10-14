@@ -44,7 +44,9 @@ export default async function BoothPage({
   const names = new Map(
     circle.members.map((member) => [member.userId, member.displayName]),
   );
-  const self = circle.members.find((member) => member.userId === session.userId);
+  const self = circle.members.find(
+    (member) => member.userId === session.userId,
+  );
   const pass = await loadPassBooth(
     session,
     circle.id,

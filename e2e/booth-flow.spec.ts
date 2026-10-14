@@ -47,11 +47,11 @@ test("pass a 4-cut: one person shoots, the other finishes the strip", async ({
     await page.getByRole("link", { name: "Open the photo booth" }).click();
     await page.getByRole("button", { name: "Pass it on" }).click();
     const jpeg = await jpegFile(page);
-    await page
-      .getByLabel("Photos for your frames")
-      .setInputFiles([jpeg, jpeg]);
+    await page.getByLabel("Photos for your frames").setInputFiles([jpeg, jpeg]);
     await page.getByRole("button", { name: "Pass it to Summer" }).click();
-    await expect(page.getByRole("status").filter({ hasText: /Passed on/ })).toBeVisible({
+    await expect(
+      page.getByRole("status").filter({ hasText: /Passed on/ }),
+    ).toBeVisible({
       timeout: 20_000,
     });
 
