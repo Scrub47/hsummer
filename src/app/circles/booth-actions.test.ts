@@ -16,6 +16,7 @@ vi.mock("next/headers", () => ({
 
 const getSession = vi.hoisted(() => vi.fn());
 const notifyPassPartner = vi.hoisted(() => vi.fn());
+const notifyGroupBooth = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/supabase/session", () => ({
   getSession,
@@ -23,6 +24,7 @@ vi.mock("@/lib/supabase/session", () => ({
 
 vi.mock("@/lib/booth/notify", () => ({
   notifyPassPartner,
+  notifyGroupBooth,
 }));
 
 import { BOOTH_JPEG_ERROR, PASS_GROUP, PASS_WAITING } from "@/lib/booth/fields";
@@ -232,6 +234,61 @@ describe("startPassBooth", () => {
     expect(result.error).toBe(PASS_GROUP);
     expect(calls).toEqual([]);
     expect(notifyPassPartner).not.toHaveBeenCalled();
+    expect(notifyGroupBooth).not.toHaveBeenCalled();
+  });
+
+  it("starts a picked pass for the people in the form", async () => {
+    const uploads: { path: string; bytes: Uint8Array }[] = [];
+    const calls: { name: string; args: unknown }[] = [];
+    const third = "44444444-4444-4444-8444-444444444444";
+    getSession.mockResolvedValue(
+      passSession(
+        calls,
+        uploads,
+        {
+          data: {
+            session_id: sessionId,
+            positions: [0, 1],
+            paths: [0, 1].map(
+              (position) => `${circleId}/${sessionId}/${position}.jpg`,
+            ),
+          },
+          error: null,
+        },
+        {
+          circleType: "group",
+          status: "active",
+          members: [selfId, partnerId, third],
+        },
+      ),
+    );
+    const data = form({ layout: "4-cut" });
+    data.append("participant", partnerId);
+    data.append("participant", third);
+    const jpeg = jpegWithExif();
+    for (let index = 0; index < 2; index += 1) {
+      data.append(
+        "shot",
+        new File([Buffer.from(jpeg)], `shot-${index}.jpg`, {
+          type: "image/jpeg",
+        }),
+      );
+    }
+    const result = await startPassBooth(passPrevious, data);
+    expect(result).toEqual({ error: null, notice: PASS_WAITING });
+    expect(calls[0]).toEqual({
+      name: "create_pass_booth_picked",
+      args: expect.objectContaining({
+        target_circle: circleId,
+        participant_ids: [selfId, partnerId, third],
+      }),
+    });
+    expect(notifyPassPartner).not.toHaveBeenCalled();
+    expect(notifyGroupBooth).toHaveBeenCalledWith({
+      userIds: [partnerId, third],
+      circleId,
+      origin: "http://127.0.0.1:3000",
+    });
   });
 
   it("discards the session when an upload fails", async () => {

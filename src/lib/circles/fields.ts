@@ -181,6 +181,12 @@ export function circleRpcFailure(message: string | undefined): string | null {
   if (message.includes("hsummer_not_member")) {
     return "You can't change this circle.";
   }
+  if (message.includes("hsummer_couple_invite")) {
+    return "A couple invite link works once. It can't be widened.";
+  }
+  if (message.includes("hsummer_invite_cap")) {
+    return "Pick a limit from 1 to 100, or leave it open until the link expires. It can't be lower than how many people already used it.";
+  }
   return null;
 }
 

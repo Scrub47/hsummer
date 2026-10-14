@@ -24,8 +24,10 @@ export default async function CirclesPage() {
         <div>
           <h1 className="font-serif text-5xl tracking-tight">Circles</h1>
           <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
-            A circle is the private space you share. Start a couple circle and
-            send the invite link. It works once.
+            A circle is the private space you share. Start a couple circle, or
+            a group, family, or friends circle. A couple invite works once. A
+            group invite can be used until it expires, or until you set a
+            limit.
           </p>
         </div>
 

@@ -686,7 +686,7 @@ describe("1:1 pings stay between the sender and the recipient", () => {
       await signIn(apiUrl, anonKey, `rls-ping-rapid-${nonce}@example.com`)
     ).client;
 
-    // Created directly. The product UI does not offer a group circle.
+    // Created directly so this case does not depend on the create form.
     const group = await admin
       .from("circles")
       .insert({
@@ -3744,6 +3744,277 @@ describe("leaving, deletion, export storage, and the demo circle", () => {
       `${apiUrl}/storage/v1/object/public/exports/pending/nope.zip`,
     );
     expect(download.ok).toBe(false);
+  });
+});
+
+describe("phase 4 keeps a third member out of what they were not picked for", () => {
+  let host: Client;
+  let guest: Client;
+  let third: Client;
+  let outsider: Client;
+  let hostId = "";
+  let guestId = "";
+  let thirdId = "";
+  let groupId = "";
+  let coupleId = "";
+
+  beforeAll(async () => {
+    const nonce = crypto.randomUUID();
+    hostId = await createUser(admin, {
+      email: `rls-p4-host-${nonce}@example.com`,
+      displayName: "Phase Host",
+      timezone: "America/Los_Angeles",
+    });
+    guestId = await createUser(admin, {
+      email: `rls-p4-guest-${nonce}@example.com`,
+      displayName: "Phase Guest",
+      timezone: "America/New_York",
+    });
+    thirdId = await createUser(admin, {
+      email: `rls-p4-third-${nonce}@example.com`,
+      displayName: "Phase Third",
+      timezone: "UTC",
+    });
+    const outsiderId = await createUser(admin, {
+      email: `rls-p4-out-${nonce}@example.com`,
+      displayName: "Phase Out",
+      timezone: "UTC",
+    });
+    host = (await signIn(apiUrl, anonKey, `rls-p4-host-${nonce}@example.com`)).client;
+    guest = (await signIn(apiUrl, anonKey, `rls-p4-guest-${nonce}@example.com`)).client;
+    third = (await signIn(apiUrl, anonKey, `rls-p4-third-${nonce}@example.com`)).client;
+    outsider = (await signIn(apiUrl, anonKey, `rls-p4-out-${nonce}@example.com`)).client;
+    expect(outsiderId).toBeTruthy();
+
+    const group = await rpc(host, "create_circle", {
+      circle_name: "Phase 4",
+      circle_type: "group",
+    });
+    groupId = group.circle_id ?? "";
+    const token = group.token ?? "";
+    await rpc(guest, "redeem_invite", { raw_token: token, ip_hash: freshIp() });
+    await rpc(third, "redeem_invite", { raw_token: token, ip_hash: freshIp() });
+
+    const couple = await rpc(host, "create_circle", {
+      circle_name: "Phase couple",
+      circle_type: "couple",
+    });
+    coupleId = couple.circle_id ?? "";
+  });
+
+  it("lets a person mute only their own membership", async () => {
+    const muted = await host
+      .from("circle_members")
+      .update({ muted_until: "9999-12-31T00:00:00.000Z" })
+      .eq("circle_id", groupId)
+      .eq("user_id", hostId)
+      .select("muted_until");
+    expect(muted.error).toBeNull();
+    expect(muted.data?.[0]?.muted_until).toContain("9999");
+
+    const spoof = await guest
+      .from("circle_members")
+      .update({ muted_until: "9999-12-31T00:00:00.000Z" })
+      .eq("circle_id", groupId)
+      .eq("user_id", hostId)
+      .select("user_id");
+    expect(spoof.data ?? []).toEqual([]);
+
+    const ping = await guest
+      .from("pings")
+      .insert({
+        circle_id: groupId,
+        from_user_id: guestId,
+        to_user_id: hostId,
+        ping_type: "thinking-of-you",
+      })
+      .select("id")
+      .single();
+    expect(ping.error).toBeNull();
+    const stillVisible = await host
+      .from("pings")
+      .select("id")
+      .eq("id", ping.data?.id ?? "");
+    expect(stillVisible.data?.[0]?.id).toBe(ping.data?.id);
+  });
+
+  it("hides a letter and a selected memory from the person who was not chosen", async () => {
+    const letter = await host
+      .from("letters")
+      .insert({
+        circle_id: groupId,
+        from_user_id: hostId,
+        to_user_id: guestId,
+        category: "need-motivation",
+        title: "For you",
+        body: "Only the guest",
+        design: "minimal",
+      })
+      .select("id")
+      .single();
+    expect(letter.error).toBeNull();
+    const hiddenLetter = await third
+      .from("letters")
+      .select("id")
+      .eq("id", letter.data?.id ?? "");
+    expect(hiddenLetter.data ?? []).toEqual([]);
+
+    const memory = await host
+      .from("memories")
+      .insert({
+        circle_id: groupId,
+        kind: "note",
+        body: "Only the guest can read this",
+        visibility: "selected",
+        occurred_on: utcDay(0),
+      })
+      .select("id")
+      .single();
+    expect(memory.error).toBeNull();
+    const viewer = await host.from("memory_viewers").insert({
+      memory_id: memory.data?.id ?? "",
+      circle_id: groupId,
+      user_id: guestId,
+    });
+    expect(viewer.error).toBeNull();
+
+    const guestView = await guest
+      .from("memories")
+      .select("body")
+      .eq("id", memory.data?.id ?? "")
+      .single();
+    expect(guestView.data?.body).toBe("Only the guest can read this");
+    const thirdView = await third
+      .from("memories")
+      .select("id")
+      .eq("id", memory.data?.id ?? "");
+    expect(thirdView.data ?? []).toEqual([]);
+  });
+
+  it("lets every member read a ping that was sent to the circle", async () => {
+    const ping = await host
+      .from("pings")
+      .insert({
+        circle_id: groupId,
+        from_user_id: hostId,
+        to_user_id: null,
+        ping_type: "thinking-of-you",
+      })
+      .select("id")
+      .single();
+    expect(ping.error).toBeNull();
+    const seen = await third.from("pings").select("id").eq("id", ping.data?.id ?? "");
+    expect(seen.data?.[0]?.id).toBe(ping.data?.id);
+    const outside = await outsider
+      .from("pings")
+      .select("id")
+      .eq("id", ping.data?.id ?? "");
+    expect(outside.data ?? []).toEqual([]);
+  });
+
+  it("splits pass frames across the people who were picked", async () => {
+    const started = await host.rpc("create_pass_booth_picked", {
+      target_circle: groupId,
+      participant_ids: [hostId, guestId, thirdId],
+      target_theme: "minimal",
+      target_layout: "4-cut",
+      target_filter: "none",
+      target_caption: "",
+      shot_sizes: [120, 120],
+    });
+    expect(started.error).toBeNull();
+    const sessionId = started.data?.session_id ?? "";
+    const contributors = await host
+      .from("booth_contributors")
+      .select("assigned_positions")
+      .eq("session_id", sessionId);
+    const positions = (contributors.data ?? [])
+      .flatMap((row) => row.assigned_positions)
+      .sort((a, b) => a - b);
+    expect(positions).toEqual([0, 1, 2, 3]);
+
+    const refused = await host.rpc("create_pass_booth_picked", {
+      target_circle: groupId,
+      participant_ids: [hostId, guestId, "99999999-9999-4999-8999-999999999999"],
+      target_theme: "minimal",
+      target_layout: "4-cut",
+      target_filter: "none",
+      target_caption: "",
+      shot_sizes: [120, 120],
+    });
+    expect(refused.error?.message).toContain("hsummer_booth_memory");
+  });
+
+  it("opens the shutter only when every chosen person is ready", async () => {
+    const opened = await host.rpc("open_together_booth", {
+      target_circle: groupId,
+      participant_ids: [hostId, guestId],
+      target_theme: "kawaii",
+      target_layout: "2-cut",
+    });
+    expect(opened.error).toBeNull();
+    const sessionId = opened.data?.session_id ?? "";
+
+    const one = await host.rpc("mark_together_ready", {
+      target_session: sessionId,
+      offset_ms: 12,
+      rtt_ms: 40,
+    });
+    expect(one.error).toBeNull();
+    expect(one.data?.capture_at).toBeNull();
+    expect(one.data?.waiting_ids).toContain(guestId);
+
+    const notPicked = await third.rpc("mark_together_ready", {
+      target_session: sessionId,
+      offset_ms: 1,
+      rtt_ms: 10,
+    });
+    expect(notPicked.error?.message).toContain("hsummer_booth_memory");
+
+    const outside = await outsider.rpc("mark_together_ready", {
+      target_session: sessionId,
+    });
+    expect(outside.error).toBeTruthy();
+
+    const two = await guest.rpc("mark_together_ready", {
+      target_session: sessionId,
+      offset_ms: -8,
+      rtt_ms: 30,
+    });
+    expect(two.error).toBeNull();
+    expect(two.data?.capture_at).toBeTruthy();
+
+    const thirdSamples = await third
+      .from("booth_clock_samples")
+      .select("id")
+      .eq("session_id", sessionId);
+    expect(thirdSamples.data ?? []).toEqual([]);
+    const hostSamples = await host
+      .from("booth_clock_samples")
+      .select("offset_ms")
+      .eq("session_id", sessionId);
+    expect(hostSamples.data?.some((row) => row.offset_ms === 12)).toBe(true);
+  });
+
+  it("refuses a couple invite cap and accepts one on a group", async () => {
+    const coupleCap = await host.rpc("set_invite_max_uses", {
+      target_circle: coupleId,
+      next_max: 5,
+    });
+    expect(coupleCap.error?.message).toContain("hsummer_couple_invite");
+
+    const groupCap = await host.rpc("set_invite_max_uses", {
+      target_circle: groupId,
+      next_max: 4,
+    });
+    expect(groupCap.error).toBeNull();
+    const invite = await host
+      .from("circle_invites")
+      .select("max_uses")
+      .eq("circle_id", groupId)
+      .is("revoked_at", null)
+      .single();
+    expect(invite.data?.max_uses).toBe(4);
   });
 });
 

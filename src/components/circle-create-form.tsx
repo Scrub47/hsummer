@@ -29,7 +29,27 @@ export function CircleCreateForm() {
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
-      <input type="hidden" name="circleType" value="couple" />
+      <fieldset className="flex flex-col gap-2">
+        <legend className="text-sm font-medium">Kind of circle</legend>
+        {(
+          [
+            ["couple", "Couple"],
+            ["group", "Group"],
+            ["family", "Family"],
+            ["friends", "Friends"],
+          ] as const
+        ).map(([value, label]) => (
+          <label key={value} className="flex items-center gap-3 text-sm">
+            <input
+              type="radio"
+              name="circleType"
+              value={value}
+              defaultChecked={value === "couple"}
+            />
+            {label}
+          </label>
+        ))}
+      </fieldset>
       <div className="flex flex-col gap-2">
         <label htmlFor="circle-name" className="text-sm font-medium">
           Name{" "}
@@ -44,8 +64,9 @@ export function CircleCreateForm() {
           className="h-12 rounded-2xl border border-line bg-card px-4 text-base"
         />
         <p className="text-sm leading-6 text-foreground/70">
-          A couple circle starts with you. The invite link works once, so a
-          third person cannot use it.
+          A couple starts with you. That invite link works once. A group,
+          family, or friends link can be used until it expires, or until you
+          set a limit.
         </p>
       </div>
       {state.error ? (

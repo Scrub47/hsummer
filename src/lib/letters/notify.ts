@@ -3,6 +3,7 @@ import "server-only";
 import * as webpush from "web-push";
 
 import { getVapidConfig } from "@/lib/env.server";
+import { deliverGroupPushes } from "@/lib/push/group-delivery";
 import { buildLetterNotification } from "@/lib/push/payload";
 import { deliverTestPushes, subscriptionsToPrune } from "@/lib/push/prune";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -25,6 +26,21 @@ export async function notifyLetterRecipient(input: {
     const vapid = getVapidConfig();
     const admin = createAdminClient();
     if (!vapid || !admin) return;
+
+    const circle = await admin
+      .from("circles")
+      .select("circle_type")
+      .eq("id", input.circleId)
+      .maybeSingle();
+    if (circle.data && circle.data.circle_type !== "couple") {
+      await deliverGroupPushes({
+        circleId: input.circleId,
+        userIds: [input.recipientId],
+        origin: input.origin,
+        specific: buildLetterNotification(input.origin, input.circleId),
+      });
+      return;
+    }
 
     const { data: rows, error } = await admin
       .from("push_subscriptions")

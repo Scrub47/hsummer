@@ -370,6 +370,48 @@ export type Database = {
         };
         Relationships: [];
       };
+      circle_push_windows: {
+        Row: {
+          circle_id: string;
+          user_id: string;
+          last_sent_at: string | null;
+          held_count: number;
+        };
+        Insert: {
+          circle_id: string;
+          user_id: string;
+          last_sent_at?: string | null;
+          held_count?: number;
+        };
+        Update: {
+          last_sent_at?: string | null;
+          held_count?: number;
+        };
+        Relationships: [];
+      };
+      booth_clock_samples: {
+        Row: {
+          id: string;
+          session_id: string;
+          user_id: string;
+          offset_ms: number;
+          rtt_ms: number;
+          recorded_at: string;
+        };
+        Insert: {
+          id?: string;
+          session_id: string;
+          user_id: string;
+          offset_ms: number;
+          rtt_ms: number;
+          recorded_at?: string;
+        };
+        Update: {
+          offset_ms?: number;
+          rtt_ms?: number;
+        };
+        Relationships: [];
+      };
       booth_shots: {
         Row: {
           session_id: string;
@@ -693,6 +735,92 @@ export type Database = {
       expire_pass_booths: {
         Args: { target_circle: string };
         Returns: number;
+      };
+      set_invite_max_uses: {
+        Args: { target_circle: string; next_max: number | null };
+        Returns: undefined;
+      };
+      create_pass_booth_picked: {
+        Args: {
+          target_circle: string;
+          participant_ids: string[];
+          target_theme: string;
+          target_layout: string;
+          target_filter: string;
+          target_caption: string;
+          shot_sizes: number[];
+        };
+        Returns: {
+          session_id: string;
+          positions: number[];
+          paths: string[];
+        };
+      };
+      open_together_booth: {
+        Args: {
+          target_circle: string;
+          participant_ids: string[];
+          target_theme: string;
+          target_layout: string;
+        };
+        Returns: {
+          session_id: string;
+          positions: number[];
+          expires_at: string;
+        };
+      };
+      mark_together_ready: {
+        Args: {
+          target_session: string;
+          offset_ms?: number | null;
+          rtt_ms?: number | null;
+        };
+        Returns: {
+          status: string;
+          capture_at: string | null;
+          expires_at: string | null;
+          ready_ids: string[];
+          waiting_ids: string[];
+        };
+      };
+      submit_together_shots: {
+        Args: {
+          target_session: string;
+          target_filter: string;
+          shot_sizes: number[];
+        };
+        Returns: {
+          status: string;
+          paths: string[];
+          already: boolean;
+        };
+      };
+      finish_together_booth: {
+        Args: { target_session: string };
+        Returns: {
+          status: string;
+          memory_id: string | null;
+          capture_at?: string | null;
+          expires_at?: string | null;
+          ready_ids?: string[];
+          waiting_ids?: string[];
+        };
+      };
+      cancel_together_booth: {
+        Args: { target_session: string };
+        Returns: { status: string };
+      };
+      fallback_together_to_pass: {
+        Args: { target_session: string };
+        Returns: { status: string };
+      };
+      expire_together_booths: {
+        Args: { target_circle?: string | null };
+        Returns: number;
+      };
+      release_together_shots: {
+        Args: { target_session: string };
+        Returns: { ok: boolean };
       };
       consume_auth_attempt: {
         Args: {

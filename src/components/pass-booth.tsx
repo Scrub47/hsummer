@@ -42,6 +42,7 @@ import {
 } from "@/lib/booth/fields";
 import { applyFilter } from "@/lib/booth/filters";
 import { coverCrop, frameSlots, type Slot } from "@/lib/booth/layout";
+import { assignPositions } from "@/lib/booth/positions";
 import { MEMORY_CAPTION_MAX } from "@/lib/memories/fields";
 import { themeBundle } from "@/lib/booth/themes";
 
@@ -55,17 +56,18 @@ export function PassBooth({
   circleId,
   canStart,
   blocked,
-  partnerName,
+  people,
   turns,
   unavailable,
 }: {
   circleId: string;
   canStart: boolean;
   blocked: PassBlocked | null;
-  partnerName: string | null;
+  people: { userId: string; displayName: string }[];
   turns: PassTurn[];
   unavailable: boolean;
 }) {
+  const partnerName = people.length === 1 ? people[0]?.displayName ?? null : null;
   const yours = turns.find((turn) => turn.waitingOnYou && turn.status === "open");
   const waiting = turns.filter(
     (turn) => turn.status === "open" && !turn.waitingOnYou,
@@ -75,9 +77,9 @@ export function PassBooth({
   return (
     <div className="flex flex-col gap-8">
       <p className="max-w-xl text-base leading-7 text-foreground/80">
-        You take your frames now. {partnerName ?? "Your partner"} takes theirs
-        whenever they can. The strip shows up for both of you when the last
-        frame is in. It closes after 7 days if it is still open.
+        {people.length > 1
+          ? "You take your frames now. The people you pick take theirs whenever they can. The strip shows up for the circle when the last frame is in. It closes after 7 days if it is still open."
+          : `You take your frames now. ${partnerName ?? "Your partner"} takes theirs whenever they can. The strip shows up for both of you when the last frame is in. It closes after 7 days if it is still open.`}
       </p>
       {unavailable ? (
         <p className="text-sm leading-6 text-foreground/70">{PASS_UNAVAILABLE}</p>
@@ -95,8 +97,8 @@ export function PassBooth({
             : "A booth was cancelled. The unfinished frames were removed."}
         </p>
       ))}
-      {!unavailable && !yours && canStart && partnerName ? (
-        <StartPass circleId={circleId} partnerName={partnerName} />
+      {!unavailable && !yours && canStart && people.length > 0 ? (
+        <StartPass circleId={circleId} people={people} />
       ) : null}
       {!unavailable && !canStart && !yours && waiting.length === 0 ? (
         <p className="text-sm leading-6 text-foreground/80">
@@ -124,9 +126,9 @@ function WaitingCard({
   );
   return (
     <div className="flex flex-col gap-3 rounded-3xl border border-line bg-card p-5">
-      <p className="font-medium">Waiting for {turn.partnerName}</p>
+      <p className="font-medium">Waiting for {turn.stillWaiting}</p>
       <p className="text-sm leading-6 text-foreground/70">
-        Your frames are in. {turn.partnerName} still has theirs.
+        Your frames are in. {turn.stillWaiting} still {turn.stillWaiting.includes(",") ? "have" : "has"} theirs.
         {turn.expiresLabel ? ` This closes ${turn.expiresLabel}.` : ""}
       </p>
       <form action={formAction} className="flex flex-col gap-3">
@@ -183,15 +185,21 @@ function TurnShoot({ circleId, turn }: { circleId: string; turn: PassTurn }) {
 
 function StartPass({
   circleId,
-  partnerName,
+  people,
 }: {
   circleId: string;
-  partnerName: string;
+  people: { userId: string; displayName: string }[];
 }) {
   const [theme, setTheme] = useState<BoothTheme>("kawaii");
   const [layout, setLayout] = useState<BoothLayout>("4-cut");
   const [filter, setFilter] = useState<BoothFilter>("none");
-  const positions = creatorPositions(layout);
+  const [selected, setSelected] = useState<string[]>(() =>
+    defaultBoothPeople(people, "4-cut"),
+  );
+  const many = people.length > 1;
+  const plan = many ? assignPositions(layout, selected.length + 1) : null;
+  const positions = many ? (plan?.[0] ?? []) : creatorPositions(layout);
+  const partnerName = people[0]?.displayName ?? "your partner";
   return (
     <div className="flex flex-col gap-6">
       <fieldset className="flex flex-col gap-4">
@@ -214,7 +222,12 @@ function StartPass({
               name="pass-layout"
               pressed={layout === value}
               label={layoutLabel(value)}
-              onChoose={() => setLayout(value)}
+              onChoose={() => {
+                setLayout(value);
+                setSelected((current) =>
+                  current.slice(0, value === "4-cut" ? 3 : 1),
+                );
+              }}
             />
           ))}
         </ChoiceRow>
@@ -230,13 +243,52 @@ function StartPass({
           ))}
         </ChoiceRow>
         <p className="text-sm text-foreground/70">
-          {partnerName} picks a filter when they take their frames.
+          {many
+            ? "Each person picks a filter when they take their frames."
+            : `${partnerName} picks a filter when they take their frames.`}
         </p>
+        {many ? (
+          <fieldset className="flex flex-col gap-2">
+            <legend className="text-sm font-medium">Who is in this booth</legend>
+            {people.map((person) => {
+              const maxOthers = layout === "4-cut" ? 3 : 1;
+              const checked = selected.includes(person.userId);
+              return (
+                <label key={person.userId} className="flex items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => {
+                      setSelected((current) => {
+                        if (current.includes(person.userId)) {
+                          return current.filter((id) => id !== person.userId);
+                        }
+                        if (current.length >= maxOthers) return current;
+                        return [...current, person.userId];
+                      });
+                    }}
+                  />
+                  {person.displayName}
+                </label>
+              );
+            })}
+            <p className="text-sm text-foreground/70">
+              {layout === "2-cut"
+                ? "A 2-cut fits you and one other person."
+                : "A 4-cut fits you and up to three other people. You take the extra frame."}
+            </p>
+          </fieldset>
+        ) : null}
       </fieldset>
+      {many && positions.length === 0 ? (
+        <p className="text-sm leading-6 text-foreground/80">
+          Choose who is in this booth.
+        </p>
+      ) : (
       <Capture
-        key={`${theme}-${layout}-${filter}`}
+        key={`${theme}-${layout}-${filter}-${selected.join(",")}`}
         title={`Your ${positions.length} frames`}
-        detail={`Then pass it to ${partnerName}.`}
+        detail={many ? "Then pass it on." : `Then pass it to ${partnerName}.`}
         theme={theme}
         layout={layout}
         lockStyle={false}
@@ -245,10 +297,12 @@ function StartPass({
         filter={filter}
         action={startPassBooth}
         hidden={{ circleId, theme, layout }}
+        participants={many ? selected : undefined}
         caption
-        submitLabel={`Pass it to ${partnerName}`}
+        submitLabel={many ? "Pass it on" : `Pass it to ${partnerName}`}
         doneHref={null}
       />
+      )}
     </div>
   );
 }
@@ -264,6 +318,7 @@ function Capture({
   filter: fixedFilter,
   action,
   hidden,
+  participants,
   caption,
   submitLabel,
   doneHref,
@@ -281,6 +336,7 @@ function Capture({
     formData: FormData,
   ) => Promise<PassActionState>;
   hidden: Record<string, string>;
+  participants?: string[];
   caption?: boolean;
   submitLabel: string;
   doneHref: string | null;
@@ -450,6 +506,7 @@ function Capture({
           shots={shots}
           action={action}
           hidden={{ ...hidden, filter }}
+          participants={participants}
           caption={caption ?? false}
           submitLabel={submitLabel}
           doneHref={doneHref}
@@ -577,6 +634,7 @@ function Review({
   shots,
   action,
   hidden,
+  participants,
   caption,
   submitLabel,
   doneHref,
@@ -591,6 +649,7 @@ function Review({
     formData: FormData,
   ) => Promise<PassActionState>;
   hidden: Record<string, string>;
+  participants?: string[];
   caption: boolean;
   submitLabel: string;
   doneHref: string | null;
@@ -631,6 +690,9 @@ function Review({
       >
         {Object.entries(hidden).map(([name, value]) => (
           <input key={name} type="hidden" name={name} value={value} />
+        ))}
+        {participants?.map((id) => (
+          <input key={id} type="hidden" name="participant" value={id} />
         ))}
         {caption ? (
           <>
@@ -768,6 +830,14 @@ async function frameToJpeg(
 
 function stopStream(stream: MediaStream | null): void {
   stream?.getTracks().forEach((track) => track.stop());
+}
+
+function defaultBoothPeople(
+  people: { userId: string }[],
+  layout: BoothLayout,
+): string[] {
+  const max = layout === "4-cut" ? 3 : 1;
+  return people.slice(0, max).map((person) => person.userId);
 }
 
 function wait(ms: number): Promise<void> {

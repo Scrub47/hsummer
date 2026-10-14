@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { demoWriteMessage } from "@/lib/account/copy";
+import { isCircleId } from "@/lib/bucket/fields";
 import {
   INVITE_RATE_LIMIT_MESSAGE,
   INVITE_WRITE_LIMIT,
@@ -11,6 +13,7 @@ import {
   parseCircleName,
   parseCircleType,
 } from "@/lib/circles/fields";
+import { muteUntilFromChoice } from "@/lib/push/batch";
 import { enforceSharedLimit } from "@/lib/rate-limit/enforce";
 import { getSession } from "@/lib/supabase/session";
 
@@ -141,6 +144,106 @@ export async function regenerateInvite(
     token: data[0].token,
     expiresAt: data[0].expires_at,
   };
+}
+
+export type InviteCapState = { error: string | null; saved: boolean };
+
+/** Sets how many times a group link can be used. Blank means until it expires. */
+export async function setInviteCap(
+  _previous: InviteCapState,
+  formData: FormData,
+): Promise<InviteCapState> {
+  const session = await getSession();
+  if (!session) redirect("/sign-in?next=/circles");
+
+  const circleId = stringField(formData.get("circleId"));
+  if (!circleId || !isCircleId(circleId)) {
+    return { error: "That circle isn't available.", saved: false };
+  }
+
+  const raw = formData.get("maxUses");
+  const text = typeof raw === "string" ? raw.trim() : "";
+  let nextMax: number | null = null;
+  if (text !== "" && text !== "unlimited") {
+    const parsed = Number(text);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
+      return {
+        error:
+          "Pick a limit from 1 to 100, or leave it open until the link expires.",
+        saved: false,
+      };
+    }
+    nextMax = parsed;
+  }
+
+  const { error } = await session.supabase.rpc("set_invite_max_uses", {
+    target_circle: circleId,
+    next_max: nextMax,
+  });
+  if (error) {
+    console.error("set_invite_max_uses failed.", error.message);
+    return {
+      error: circleRpcFailure(error.message) ?? "That limit wasn't saved.",
+      saved: false,
+    };
+  }
+
+  revalidatePath(`/circles/${circleId}`);
+  return { error: null, saved: true };
+}
+
+export type MuteState = { error: string | null; saved: boolean };
+
+/** Mutes pushes from one group circle. A couple circle cannot mute. */
+export async function setCircleMute(
+  _previous: MuteState,
+  formData: FormData,
+): Promise<MuteState> {
+  const session = await getSession();
+  if (!session) redirect("/sign-in?next=/circles");
+
+  const circleId = stringField(formData.get("circleId"));
+  if (!circleId || !isCircleId(circleId)) {
+    return { error: "That circle isn't available.", saved: false };
+  }
+  const choice = stringField(formData.get("mute")) ?? "";
+  const until = muteUntilFromChoice(choice, new Date());
+  if (until === undefined) {
+    return { error: "Choose how long to mute.", saved: false };
+  }
+
+  const circle = await session.supabase
+    .from("circles")
+    .select("circle_type, is_demo")
+    .eq("id", circleId)
+    .maybeSingle();
+  if (circle.error || !circle.data) {
+    return { error: "That circle isn't available.", saved: false };
+  }
+  if (circle.data.is_demo) {
+    return {
+      error: demoWriteMessage("hsummer_demo_readonly") ?? "This demo circle is only for looking.",
+      saved: false,
+    };
+  }
+  if (circle.data.circle_type === "couple") {
+    return { error: "A couple circle doesn't mute.", saved: false };
+  }
+
+  const updated = await session.supabase
+    .from("circle_members")
+    .update({ muted_until: until })
+    .eq("circle_id", circleId)
+    .eq("user_id", session.userId)
+    .select("user_id");
+
+  if (updated.error || !updated.data || updated.data.length === 0) {
+    console.error("Mute failed.", updated.error?.code);
+    return { error: "That mute wasn't saved.", saved: false };
+  }
+
+  revalidatePath(`/circles/${circleId}`);
+  return { error: null, saved: true };
 }
 
 function emptyCreate(error: string): CreateCircleState {

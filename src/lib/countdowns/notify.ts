@@ -3,6 +3,7 @@ import "server-only";
 import * as webpush from "web-push";
 
 import { getVapidConfig } from "@/lib/env.server";
+import { deliverGroupPushes } from "@/lib/push/group-delivery";
 import { buildCheckpointNotification } from "@/lib/push/payload";
 import { deliverTestPushes, subscriptionsToPrune } from "@/lib/push/prune";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -23,6 +24,21 @@ export async function notifyCheckpoint(input: {
     const vapid = getVapidConfig();
     const admin = createAdminClient();
     if (!vapid || !admin) return;
+
+    const circle = await admin
+      .from("circles")
+      .select("circle_type")
+      .eq("id", input.circleId)
+      .maybeSingle();
+    if (circle.data && circle.data.circle_type !== "couple") {
+      await deliverGroupPushes({
+        circleId: input.circleId,
+        userIds: ids,
+        origin: input.origin,
+        specific: buildCheckpointNotification(input.origin, input.circleId),
+      });
+      return;
+    }
 
     const { data: rows, error } = await admin
       .from("push_subscriptions")

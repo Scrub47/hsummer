@@ -6,7 +6,8 @@
  *
  * Pass: the starter's frames create an open session. The partner fills the
  * other frames later. The memory is created only when every frame is in.
- * Live Together is later.
+ * Live Together shares one shutter. If the live channel fails, the same
+ * session can become a pass before that shutter is set.
  */
 
 import { z } from "zod";
@@ -63,8 +64,7 @@ export const PASS_UNAVAILABLE =
   "Pass the booth can't start yet. Apply the week 15 SQL in the Supabase SQL editor, then try again.";
 export const PASS_PENDING =
   "Share the invite link first. Pass the booth starts once you're both here.";
-export const PASS_GROUP =
-  "Pass the booth is for the two of you. Choosing more people comes later.";
+export const PASS_GROUP = "Choose who is in this booth.";
 export const PASS_OPEN_MESSAGE =
   "You already have a few booths waiting. Finish or cancel one first.";
 export const PASS_EXPIRED = "That booth expired before it was finished.";
@@ -72,6 +72,13 @@ export const PASS_CANCELLED = "That booth was cancelled.";
 export const PASS_WAITING =
   "Passed on. They'll get a notification to take their frames.";
 export const PASS_FINISHED = "The strip is on the memory wall for both of you.";
+
+export const TOGETHER_UNAVAILABLE =
+  "Live Together can't start yet. Apply the week 19 SQL in the Supabase SQL editor, then try again.";
+export const TOGETHER_WAITING =
+  "The lobby is open. Everyone you picked has to tap ready.";
+export const TOGETHER_FALLBACK =
+  "This booth is now a pass. Each person takes their frames when they can.";
 
 export type PassFrame = {
   position: number;
@@ -91,9 +98,30 @@ export type PassTurn = {
   caption: string | null;
   /** True when this person still has frames to take. */
   waitingOnYou: boolean;
+  /** People who still owe frames. A couple is the one other person. */
+  stillWaiting: string;
 };
 
 export type PassBlocked = "pending" | "group" | "alone";
+
+export type TogetherPerson = {
+  userId: string;
+  displayName: string;
+};
+
+export type TogetherLobby = {
+  sessionId: string;
+  theme: BoothTheme;
+  layout: BoothLayout;
+  status: "open" | "ready" | "capturing";
+  expiresAt: string | null;
+  captureAt: string | null;
+  startedByMe: boolean;
+  myPositions: number[];
+  readyIds: string[];
+  waitingIds: string[];
+  people: TogetherPerson[];
+};
 
 export const BOOTH_SHOT_PATH =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-3]\.jpg$/;
@@ -213,6 +241,8 @@ export function parsePassStart(input: {
   filter: unknown;
   caption: unknown;
   shotCount: number;
+  /** Defaults to the couple half. A picked group passes the starter's share. */
+  expectedShots?: number;
 }): Parsed<BoothDraft> {
   const theme = themeSchema.safeParse(input.theme);
   const layout = layoutSchema.safeParse(input.layout);
@@ -223,7 +253,8 @@ export function parsePassStart(input: {
   if (typeof input.circleId !== "string" || !isCircleId(input.circleId)) {
     return { ok: false, error: "That circle isn't available." };
   }
-  if (input.shotCount !== creatorPositions(layout.data).length) {
+  const expected = input.expectedShots ?? creatorPositions(layout.data).length;
+  if (input.shotCount !== expected) {
     return { ok: false, error: BOOTH_SHOTS_ERROR };
   }
   const caption =
@@ -297,9 +328,13 @@ export function boothWriteFailure(
     message?.includes("submit_pass_shots") ||
     message?.includes("finish_pass_booth") ||
     message?.includes("cancel_pass_booth") ||
-    message?.includes("pass_the_booth")
+    message?.includes("pass_the_booth") ||
+    message?.includes("open_together_booth") ||
+    message?.includes("mark_together_ready") ||
+    message?.includes("submit_together_shots") ||
+    message?.includes("finish_together_booth")
   ) {
-    return PASS_UNAVAILABLE;
+    return message?.includes("together") ? TOGETHER_UNAVAILABLE : PASS_UNAVAILABLE;
   }
   if (
     code === "42883" ||
@@ -310,8 +345,19 @@ export function boothWriteFailure(
   ) {
     return BOOTH_UNAVAILABLE;
   }
-  if (message?.includes("hsummer_booth_open")) {
-    return PASS_OPEN_MESSAGE;
+  if (message?.includes("hsummer_booth_open") || message?.includes("hsummer_together_open")) {
+    return message.includes("hsummer_together_open")
+      ? "A live booth is already open in this circle. Finish or cancel it first."
+      : PASS_OPEN_MESSAGE;
+  }
+  if (message?.includes("hsummer_booth_couple")) {
+    return "A couple booth is the two of you.";
+  }
+  if (message?.includes("hsummer_booth_pair")) {
+    return "This booth needs both of you.";
+  }
+  if (message?.includes("hsummer_booth_early")) {
+    return "The shutter hasn't opened yet.";
   }
   if (message?.includes("hsummer_rate_limited")) {
     return BOOTH_RATE_LIMIT_MESSAGE;

@@ -31,17 +31,24 @@ export async function GET(request: Request) {
 
   const purged = await admin.rpc("purge_archived_circles");
   const swept = await admin.rpc("sweep_quiet_circles");
+  const together = await admin.rpc("expire_together_booths", {
+    target_circle: null,
+  });
   const demo = await resetDemoCircle();
   const exportsRemoved = await removeOldExports(admin);
 
-  if (purged.error || swept.error || !demo.ok) {
-    console.error("Daily job failed.", purged.error?.code ?? swept.error?.code);
+  if (purged.error || swept.error || together.error || !demo.ok) {
+    console.error(
+      "Daily job failed.",
+      purged.error?.code ?? swept.error?.code ?? together.error?.code,
+    );
     return NextResponse.json({ error: "Not ready." }, { status: 500 });
   }
 
   return NextResponse.json({
     purged: purged.data ?? 0,
     passesExpired: swept.data ?? 0,
+    togetherExpired: together.data ?? 0,
     demoReset: true,
     exportsRemoved,
   });

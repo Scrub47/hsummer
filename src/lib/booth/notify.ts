@@ -3,7 +3,8 @@ import "server-only";
 import * as webpush from "web-push";
 
 import { getVapidConfig } from "@/lib/env.server";
-import { buildPassNotification } from "@/lib/push/payload";
+import { deliverGroupPushes } from "@/lib/push/group-delivery";
+import { buildPassNotification, buildTogetherNotification } from "@/lib/push/payload";
 import { deliverTestPushes, subscriptionsToPrune } from "@/lib/push/prune";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -16,15 +17,49 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * one the push service has retired. A missing key or a failed send does not
  * undo the booth.
  */
+/** Tells the other people in a group booth. A couple uses notifyPassPartner. */
+export async function notifyGroupBooth(input: {
+  userIds: readonly string[];
+  origin: string;
+  circleId: string;
+  together?: boolean;
+}): Promise<void> {
+  const payload = input.together
+    ? buildTogetherNotification(input.origin, input.circleId)
+    : buildPassNotification(input.origin, input.circleId);
+  await deliverGroupPushes({
+    circleId: input.circleId,
+    userIds: input.userIds,
+    origin: input.origin,
+    specific: payload,
+  });
+}
+
 export async function notifyPassPartner(input: {
   partnerId: string;
   origin: string;
   circleId: string;
+  together?: boolean;
 }): Promise<void> {
   try {
     const vapid = getVapidConfig();
     const admin = createAdminClient();
     if (!vapid || !admin) return;
+
+    const circle = await admin
+      .from("circles")
+      .select("circle_type")
+      .eq("id", input.circleId)
+      .maybeSingle();
+    if (circle.data && circle.data.circle_type !== "couple") {
+      await notifyGroupBooth({
+        userIds: [input.partnerId],
+        origin: input.origin,
+        circleId: input.circleId,
+        together: input.together,
+      });
+      return;
+    }
 
     const { data: rows, error } = await admin
       .from("push_subscriptions")
@@ -34,7 +69,9 @@ export async function notifyPassPartner(input: {
     if (error || !rows || rows.length === 0) return;
 
     const payload = JSON.stringify(
-      buildPassNotification(input.origin, input.circleId),
+      input.together
+        ? buildTogetherNotification(input.origin, input.circleId)
+        : buildPassNotification(input.origin, input.circleId),
     );
 
     const results = await deliverTestPushes(

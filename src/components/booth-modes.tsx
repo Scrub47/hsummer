@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 
+import { LiveTogether } from "@/components/live-together";
 import { PassBooth } from "@/components/pass-booth";
 import { PhotoBooth } from "@/components/photo-booth";
-import type { PassBlocked, PassTurn } from "@/lib/booth/fields";
+import type { PassBlocked, PassTurn, TogetherLobby } from "@/lib/booth/fields";
 
 /**
  * Solo stays the default so a strip can still be shot on one phone.
@@ -15,20 +16,28 @@ export function BoothModes({
   circleTitle,
   canStart,
   blocked,
-  partnerName,
+  people,
+  needsPicker,
+  selfId,
   turns,
+  lobby,
   unavailable,
 }: {
   circleId: string;
   circleTitle: string;
   canStart: boolean;
   blocked: PassBlocked | null;
-  partnerName: string | null;
+  people: { userId: string; displayName: string }[];
+  needsPicker: boolean;
+  selfId: string;
   turns: PassTurn[];
+  lobby: TogetherLobby | null;
   unavailable: boolean;
 }) {
   const yourTurn = turns.some((turn) => turn.waitingOnYou && turn.status === "open");
-  const [mode, setMode] = useState<"solo" | "pass">(yourTurn ? "pass" : "solo");
+  const [mode, setMode] = useState<"solo" | "pass" | "together">(
+    lobby ? "together" : yourTurn ? "pass" : "solo",
+  );
 
   return (
     <div className="flex flex-col gap-8">
@@ -43,19 +52,36 @@ export function BoothModes({
           label="Pass it on"
           onChoose={() => setMode("pass")}
         />
+        <ModeButton
+          pressed={mode === "together"}
+          label="Live together"
+          onChoose={() => setMode("together")}
+        />
       </div>
       {mode === "solo" ? (
         <PhotoBooth circleId={circleId} circleTitle={circleTitle} />
-      ) : (
+      ) : null}
+      {mode === "pass" ? (
         <PassBooth
           circleId={circleId}
           canStart={canStart}
-          blocked={blocked}
-          partnerName={partnerName}
+          blocked={blocked === "group" ? null : blocked}
+          people={people}
           turns={turns}
           unavailable={unavailable}
         />
-      )}
+      ) : null}
+      {mode === "together" ? (
+        <LiveTogether
+          circleId={circleId}
+          canStart={canStart}
+          blocked={blocked === "pending" ? "pending" : blocked === "alone" ? "alone" : null}
+          people={people}
+          needsPicker={needsPicker}
+          selfId={selfId}
+          lobby={lobby}
+        />
+      ) : null}
     </div>
   );
 }
