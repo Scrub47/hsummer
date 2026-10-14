@@ -8,7 +8,7 @@ import { formatMonth } from "@/lib/memories/fields";
 
 export type MemoryCard = {
   id: string;
-  kind: "photo" | "note" | "letter";
+  kind: "photo" | "note" | "letter" | "milestone";
   body: string | null;
   photoUrl: string | null;
   photoPath: string | null;

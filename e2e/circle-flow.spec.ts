@@ -8,7 +8,7 @@ import { expect, test, type Page } from "@playwright/test";
  * 127.0.0.1 or localhost. Do not point this file at production.
  */
 
-test("sign in, create a couple circle, invite, join, ping, set a mood, add a memory, and open a letter", async ({
+test("sign in, create a couple circle, invite, join, ping, set a mood, add a memory, open a letter, and set Still Us", async ({
   page,
   browser,
   baseURL,
@@ -215,6 +215,47 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     await expect(
       wall(page).getByRole("link", { name: "Read the letter" }),
     ).toBeVisible();
+
+    const still = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Still Us" }) });
+    await still.getByLabel("Reunion date").fill("2027-02-14");
+    await still.getByRole("button", { name: "Save the date" }).click();
+    await expect(
+      still.getByRole("status").filter({ hasText: "Saved" }),
+    ).toBeVisible();
+    await expect(still.getByText(/\d+ days|Today/)).toBeVisible();
+
+    await still.getByLabel("Checkpoint").fill("Flight booked");
+    await still.getByLabel("Checkpoint date").fill("2027-03-01");
+    await still.getByLabel("When one of you marks it").check();
+    await still.getByRole("button", { name: "Add checkpoint" }).click();
+    await still.getByRole("button", { name: "Mark hit" }).click();
+    await expect(
+      still.getByText("Hit. It's on the memory wall."),
+    ).toBeVisible();
+    await expect(wall(page).getByText("Still Us")).toBeVisible();
+    await expect(wall(page).getByText("Flight booked")).toBeVisible();
+
+    await partnerPage.reload();
+    const partnerStill = partnerPage.locator("section").filter({
+      has: partnerPage.getByRole("heading", { name: "Still Us" }),
+    });
+    await expect(partnerStill.getByText(/\d+ days|Today/)).toBeVisible();
+    await expect(wall(partnerPage).getByText("Flight booked")).toBeVisible();
+
+    await isaacLetters.getByLabel("Later").check();
+    await isaacLetters.getByLabel("Date").fill("2027-06-01");
+    await isaacLetters.getByLabel("Time").fill("08:00");
+    await isaacLetters.getByLabel("Letter").fill("Open this in the morning.");
+    await isaacLetters.getByRole("button", { name: "Send the letter" }).click();
+    await expect(
+      isaacLetters.getByRole("status").filter({ hasText: /It will arrive/ }),
+    ).toBeVisible();
+    await partnerPage.reload();
+    await expect(
+      letters(partnerPage).getByText("Open this in the morning."),
+    ).toHaveCount(0);
   } finally {
     await partner.close();
   }
