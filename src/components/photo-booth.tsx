@@ -408,7 +408,15 @@ function Review({
   onRetake: () => void;
 }) {
   const [state, formAction, pending] = useActionState(
-    saveSoloBooth,
+    async (previous: BoothActionState, formData: FormData) => {
+      shots.forEach((blob, index) => {
+        formData.append(
+          "shot",
+          new File([blob], `shot-${index}.jpg`, { type: "image/jpeg" }),
+        );
+      });
+      return saveSoloBooth(previous, formData);
+    },
     initialState,
   );
   const bundle = themeBundle(theme);
@@ -449,15 +457,7 @@ function Review({
       </div>
       <form
         className="flex flex-col gap-4 rounded-3xl border border-line bg-card p-5"
-        action={(formData) => {
-          shots.forEach((blob, index) => {
-            formData.append(
-              "shot",
-              new File([blob], `shot-${index}.jpg`, { type: "image/jpeg" }),
-            );
-          });
-          formAction(formData);
-        }}
+        action={formAction}
       >
         <input type="hidden" name="circleId" value={circleId} />
         <input type="hidden" name="theme" value={theme} />
