@@ -59,7 +59,7 @@ describe("loadRecentPings", () => {
     expect(rows.map((row) => row.phrase)).toEqual([
       "Thinking of you",
       "Missing Summer",
-      "🌤️",
+      "Feeling 🌤️",
     ]);
     expect(rows[0]?.when).toBe("Nov 16, 11:00 AM");
   });

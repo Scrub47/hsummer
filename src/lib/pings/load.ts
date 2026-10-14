@@ -63,7 +63,9 @@ function phraseFor(
   },
   names: ReadonlyMap<string, string>,
 ): string {
-  if (row.ping_type === "mood-share" && row.mood_emoji) return row.mood_emoji;
+  if (row.ping_type === "mood-share" && row.mood_emoji) {
+    return `Feeling ${row.mood_emoji}`;
+  }
   const recipient = row.to_user_id
     ? (names.get(row.to_user_id) ?? "them")
     : "them";

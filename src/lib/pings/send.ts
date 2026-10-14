@@ -8,6 +8,7 @@ import {
   PING_LIMIT,
   PING_RATE_LIMIT_MESSAGE,
   PING_WINDOW_MINUTES,
+  circlePingInsert,
   partnerReasonMessage,
   pingSendAllowed,
   pingWriteFailure,
@@ -47,7 +48,16 @@ const UNAVAILABLE =
  */
 export async function sendThinkingOfYou(
   session: Session,
-  input: { circleId: string; secretVariant: boolean; origin: string },
+  input: {
+    circleId: string;
+    secretVariant: boolean;
+    origin: string;
+    /**
+     * Set only when the mood page asked to share. The push body stays the
+     * generic Thinking of You sentence. The emoji is stored on the ping row.
+     */
+    moodEmoji?: string | null;
+  },
 ): Promise<PingSendResponse> {
   const circle = await session.supabase
     .from("circles")
@@ -96,6 +106,17 @@ export async function sendThinkingOfYou(
     return { status: failure.status, body: { error: failure.error } };
   }
 
+  const ping = circlePingInsert({
+    circleId: input.circleId,
+    fromUserId: session.userId,
+    toUserId: partner.partnerId,
+    secretVariant: input.secretVariant,
+    moodEmoji: input.moodEmoji ?? null,
+  });
+  if (!ping.ok) {
+    return { status: 400, body: { error: ping.error } };
+  }
+
   const shared = await enforceSharedLimit({
     key: `ping:${session.userId}`,
     limit: PING_LIMIT,
@@ -115,14 +136,7 @@ export async function sendThinkingOfYou(
 
   const inserted = await session.supabase
     .from("pings")
-    .insert({
-      circle_id: input.circleId,
-      from_user_id: session.userId,
-      to_user_id: partner.partnerId,
-      ping_type: "thinking-of-you",
-      mood_emoji: null,
-      secret_variant: input.secretVariant,
-    })
+    .insert(ping.row)
     .select("id, secret_variant")
     .single();
 

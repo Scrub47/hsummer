@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { redirectOrigin } from "@/lib/auth/request-origin";
+import { pushOrigin, redirectOrigin } from "@/lib/auth/request-origin";
 
 function request(url: string, host: string | null) {
   return {
@@ -75,5 +75,34 @@ describe("redirectOrigin", () => {
     expect(
       redirectOrigin(request("https://hsummer.vercel.app/home", null)),
     ).toBe("https://hsummer.vercel.app");
+  });
+});
+
+describe("pushOrigin", () => {
+  const previous = process.env.NEXT_PUBLIC_SITE_URL;
+
+  afterEach(() => {
+    if (previous === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+    else process.env.NEXT_PUBLIC_SITE_URL = previous;
+  });
+
+  it("follows a loopback host and ignores a public host", () => {
+    process.env.NEXT_PUBLIC_SITE_URL = "https://hsummer.vercel.app";
+    expect(
+      pushOrigin({
+        get: (name) => (name === "host" ? "127.0.0.1:3000" : null),
+      }),
+    ).toBe("http://127.0.0.1:3000");
+    expect(
+      pushOrigin({
+        get: (name) =>
+          name === "host" ? "evil.example" : "https://evil.example",
+      }),
+    ).toBe("https://hsummer.vercel.app");
+  });
+
+  it("falls back to localhost when the site URL is not configured", () => {
+    delete process.env.NEXT_PUBLIC_SITE_URL;
+    expect(pushOrigin({ get: () => null })).toBe("http://localhost:3000");
   });
 });
