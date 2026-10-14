@@ -5,8 +5,8 @@
  * a request, and it is where the join and invite-creation limits live so the
  * tests can name them. Week 3 enforces redemption. Week 5 enforces new links.
  *
- * Group, family, and friends circles exist in the database (the RLS tests
- * create them) and stay out of the UI until the group phase.
+ * Group, family, and friends circles use the same tables as a couple.
+ * The type chooses defaults and copy. It is not a permission.
  */
 
 import { createHash } from "node:crypto";
@@ -19,8 +19,11 @@ export const CIRCLE_TYPES = ["couple", "group", "family", "friends"] as const;
 export type CircleType = (typeof CIRCLE_TYPES)[number];
 export type CircleStatus = "pending" | "active" | "archived";
 
-/** Off until the group phase. The database still accepts every type. */
-export const GROUP_CIRCLE_TYPES_ENABLED = false;
+/**
+ * Group, family, and friends circles are offered in the create form.
+ * The constant stays so a test can name the phase. It is not a second gate.
+ */
+export const GROUP_CIRCLE_TYPES_ENABLED = true;
 
 export const JOIN_USER_LIMIT = 8;
 export const JOIN_IP_LIMIT = 20;
@@ -40,7 +43,8 @@ export const INVITE_TOKEN_PATTERN = /^[0-9a-f]{64}$/;
 
 export const CIRCLE_NAME_ERROR =
   "Use a name up to 80 characters, without an email address.";
-export const CIRCLE_TYPE_ERROR = "Couple circles are the ones you can create.";
+export const CIRCLE_TYPE_ERROR =
+  "Pick a couple, group, family, or friends circle.";
 
 const KNOWN_INVITE_STATES = [
   "missing",
@@ -69,10 +73,19 @@ export function isInviteState(value: string): value is InviteState {
   return (KNOWN_INVITE_STATES as readonly string[]).includes(value);
 }
 
-/** True when the UI is allowed to create this type. */
+/** True when the create form may offer this type. */
 export function circleTypeOffered(type: CircleType): boolean {
   if (type === "couple") return true;
   return GROUP_CIRCLE_TYPES_ENABLED;
+}
+
+/**
+ * A picker is for a circle that already has you and at least two other
+ * people. A couple, and any circle of two, skips it: the other person is
+ * the recipient.
+ */
+export function circleNeedsPicker(otherMemberCount: number): boolean {
+  return otherMemberCount > 1;
 }
 
 export function parseCircleType(value: unknown): Parsed<CircleType> {

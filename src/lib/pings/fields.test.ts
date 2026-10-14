@@ -8,28 +8,35 @@ import {
   circlePingInsert,
   missingName,
   parsePingRequest,
+  parseRecipientField,
   partnerReasonMessage,
   pingPhrase,
   pingSendAllowed,
   pingWriteFailure,
+  resolveCircleRecipient,
   resolveCouplePartner,
 } from "@/lib/pings/fields";
 
 const circleId = "11111111-1111-4111-8111-111111111111";
 
 describe("Thinking of You requests", () => {
-  it("keeps whole-circle pings flagged off and refuses a recipient in the body", () => {
-    expect(BROADCAST_PINGS_ENABLED).toBe(false);
+  it("accepts one person or everyone, and still refuses a mood on this route", () => {
+    expect(BROADCAST_PINGS_ENABLED).toBe(true);
+    const person = "22222222-2222-4222-8222-222222222222";
     expect(parsePingRequest({ circleId, toUserId: null })).toEqual({
-      ok: false,
-      status: 400,
-      error: PING_BROADCAST_ERROR,
+      ok: true,
+      circleId,
+      secretVariant: false,
+      recipient: { kind: "broadcast" },
+    });
+    expect(parsePingRequest({ circleId, toUserId: person })).toEqual({
+      ok: true,
+      circleId,
+      secretVariant: false,
+      recipient: { kind: "member", userId: person },
     });
     expect(
-      parsePingRequest({
-        circleId,
-        toUserId: "22222222-2222-4222-8222-222222222222",
-      }),
+      parsePingRequest({ circleId, toUserId: null, secretVariant: true }),
     ).toMatchObject({ ok: false, status: 400 });
     expect(
       parsePingRequest({ circleId, pingType: "mood-share" }),
@@ -40,6 +47,7 @@ describe("Thinking of You requests", () => {
       ok: false,
       status: 400,
     });
+    expect(PING_BROADCAST_ERROR).toMatch(/partner/i);
   });
 
   it("accepts a circle id and an optional secret flag", () => {
@@ -47,11 +55,13 @@ describe("Thinking of You requests", () => {
       ok: true,
       circleId,
       secretVariant: false,
+      recipient: { kind: "auto" },
     });
     expect(parsePingRequest({ circleId, secretVariant: true })).toEqual({
       ok: true,
       circleId,
       secretVariant: true,
+      recipient: { kind: "auto" },
     });
     expect(parsePingRequest({ circleId, secretVariant: "yes" })).toMatchObject({
       ok: false,
@@ -103,6 +113,115 @@ describe("couple partner", () => {
     ).toEqual({ ok: false, reason: "ambiguous" });
     expect(partnerReasonMessage("not_couple").status).toBe(400);
     expect(partnerReasonMessage("pending").status).toBe(409);
+  });
+});
+
+describe("circle recipient", () => {
+  const me = "11111111-1111-4111-8111-111111111111";
+  const summer = "22222222-2222-4222-8222-222222222222";
+  const third = "33333333-3333-4333-8333-333333333333";
+
+  it("keeps a couple and a pair on the other person", () => {
+    expect(
+      resolveCircleRecipient({
+        selfId: me,
+        circleType: "couple",
+        status: "active",
+        activeMemberIds: [me, summer],
+        request: { kind: "auto" },
+        allowBroadcast: true,
+      }),
+    ).toEqual({ ok: true, toUserId: summer, mode: "partner" });
+    expect(
+      resolveCircleRecipient({
+        selfId: me,
+        circleType: "group",
+        status: "active",
+        activeMemberIds: [me, summer],
+        request: { kind: "auto" },
+        allowBroadcast: true,
+      }),
+    ).toEqual({ ok: true, toUserId: summer, mode: "partner" });
+    expect(
+      resolveCircleRecipient({
+        selfId: me,
+        circleType: "couple",
+        status: "active",
+        activeMemberIds: [me, summer],
+        request: { kind: "member", userId: summer },
+        allowBroadcast: false,
+      }),
+    ).toEqual({ ok: false, reason: "couple_picker" });
+    expect(
+      resolveCircleRecipient({
+        selfId: me,
+        circleType: "couple",
+        status: "active",
+        activeMemberIds: [me, summer],
+        request: { kind: "broadcast" },
+        allowBroadcast: true,
+      }),
+    ).toEqual({ ok: false, reason: "broadcast_refused" });
+  });
+
+  it("lets a larger circle pick one person or everyone, never a letter to everyone", () => {
+    expect(
+      resolveCircleRecipient({
+        selfId: me,
+        circleType: "friends",
+        status: "active",
+        activeMemberIds: [me, summer, third],
+        request: { kind: "member", userId: third },
+        allowBroadcast: true,
+      }),
+    ).toEqual({ ok: true, toUserId: third, mode: "chosen" });
+    expect(
+      resolveCircleRecipient({
+        selfId: me,
+        circleType: "family",
+        status: "active",
+        activeMemberIds: [me, summer, third],
+        request: { kind: "broadcast" },
+        allowBroadcast: true,
+      }),
+    ).toEqual({ ok: true, toUserId: null, mode: "broadcast" });
+    expect(
+      resolveCircleRecipient({
+        selfId: me,
+        circleType: "group",
+        status: "active",
+        activeMemberIds: [me, summer, third],
+        request: { kind: "broadcast" },
+        allowBroadcast: false,
+      }),
+    ).toEqual({ ok: false, reason: "broadcast_refused" });
+    expect(
+      resolveCircleRecipient({
+        selfId: me,
+        circleType: "group",
+        status: "active",
+        activeMemberIds: [me, summer, third],
+        request: { kind: "auto" },
+        allowBroadcast: true,
+      }),
+    ).toEqual({ ok: false, reason: "needs_choice" });
+    expect(
+      resolveCircleRecipient({
+        selfId: me,
+        circleType: "group",
+        status: "active",
+        activeMemberIds: [me, summer, third],
+        request: { kind: "member", userId: me },
+        allowBroadcast: true,
+      }),
+    ).toEqual({ ok: false, reason: "not_member" });
+    expect(parseRecipientField(null)).toEqual({ kind: "auto" });
+    expect(parseRecipientField("everyone")).toEqual({ kind: "broadcast" });
+    expect(parseRecipientField(third)).toEqual({
+      kind: "member",
+      userId: third,
+    });
+    expect(parseRecipientField("nope")).toBeNull();
   });
 });
 
