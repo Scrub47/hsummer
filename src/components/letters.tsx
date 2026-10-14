@@ -1,0 +1,436 @@
+"use client";
+
+import { useActionState, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+
+import {
+  addLetterCategory,
+  deleteLetterCategory,
+  openLetter,
+  sendLetter,
+  type LetterActionState,
+} from "@/app/circles/letter-actions";
+import { useCircleLive } from "@/components/use-circle-live";
+import {
+  DEFAULT_LETTER_CATEGORIES,
+  LETTER_BODY_MAX,
+  LETTER_CATEGORY_MAX,
+  LETTER_DESIGNS,
+  LETTER_TITLE_MAX,
+  type LetterDesign,
+} from "@/lib/letters/fields";
+import type { LetterCard, LetterCategory } from "@/lib/letters/view";
+
+const initialState: LetterActionState = { error: null, saved: false };
+
+/**
+ * Dear <name>. In a couple the other person is the recipient. A letter
+ * they have not opened yet is a seal. Opening plays a short animation,
+ * then the words, and the wall gains a memory only the two of them see.
+ */
+export function Letters({
+  circleId,
+  partnerName,
+  canWrite,
+  pending,
+  letters,
+  categories,
+}: {
+  circleId: string;
+  partnerName: string | null;
+  canWrite: boolean;
+  pending: boolean;
+  letters: LetterCard[];
+  categories: LetterCategory[];
+}) {
+  const router = useRouter();
+  const refresh = () => router.refresh();
+  const live = useCircleLive(circleId, "letters", refresh);
+
+  return (
+    <section aria-labelledby="letters-heading" className="flex flex-col gap-6">
+      <div>
+        <h2 id="letters-heading" className="font-serif text-3xl tracking-tight">
+          Letters
+        </h2>
+        <p className="mt-3 max-w-xl text-sm leading-6 text-foreground/80">
+          {pending
+            ? "Letters open once you're both here. Share the invite link."
+            : canWrite && partnerName
+              ? `Write to ${partnerName}. It opens with their name. Until they break the seal, the words stay off this page.`
+              : "Letters go to one person. Choosing someone in a larger circle comes later."}
+        </p>
+        <p className="mt-2 text-sm text-foreground/70" role="status">
+          {live === "live"
+            ? "Live. A new letter shows up here."
+            : live === "connecting"
+              ? "Connecting live updates…"
+              : "Live updates aren't connected. A letter you send still sticks. Reload to see one written to you."}
+        </p>
+      </div>
+
+      {canWrite && partnerName ? (
+        <WriteLetter
+          circleId={circleId}
+          partnerName={partnerName}
+          categories={categories}
+        />
+      ) : null}
+
+      {canWrite ? (
+        <CategoryList circleId={circleId} categories={categories} />
+      ) : null}
+
+      {letters.length === 0 ? (
+        <p className="text-sm leading-6 text-foreground/70">
+          {canWrite && partnerName
+            ? `No letters yet. The first one starts Dear ${partnerName}.`
+            : "No letters yet."}
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-4">
+          {letters.map((letter) => (
+            <li key={letter.id}>
+              {letter.sealed ? (
+                <SealedLetter circleId={circleId} letter={letter} />
+              ) : (
+                <OpenedLetter letter={letter} />
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function WriteLetter({
+  circleId,
+  partnerName,
+  categories,
+}: {
+  circleId: string;
+  partnerName: string;
+  categories: LetterCategory[];
+}) {
+  const [state, formAction, pending] = useActionState(sendLetter, initialState);
+  const [design, setDesign] = useState<LetterDesign>("minimal");
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (state.saved) formRef.current?.reset();
+  }, [state.saved]);
+
+  return (
+    <form ref={formRef} action={formAction} className="flex flex-col gap-4">
+      <input type="hidden" name="circleId" value={circleId} />
+      <input type="hidden" name="design" value={design} />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-2">
+          <label htmlFor="letter-category" className="text-sm font-medium">
+            Open when
+          </label>
+          <select
+            id="letter-category"
+            name="category"
+            required
+            defaultValue="need-motivation"
+            className="h-12 rounded-2xl border border-line bg-background px-4 text-base"
+          >
+            {DEFAULT_LETTER_CATEGORIES.map((category) => (
+              <option key={category.slug} value={category.slug}>
+                {category.label}
+              </option>
+            ))}
+            {categories.map((category) => (
+              <option key={category.id} value={category.label}>
+                {category.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-2">
+          <label htmlFor="letter-title" className="text-sm font-medium">
+            Title
+          </label>
+          <input
+            id="letter-title"
+            name="title"
+            maxLength={LETTER_TITLE_MAX}
+            placeholder="Optional"
+            className="h-12 rounded-2xl border border-line bg-background px-4 text-base"
+          />
+        </div>
+      </div>
+      <fieldset className="flex flex-col gap-3">
+        <legend className="text-sm font-medium">Design</legend>
+        <div className="flex flex-wrap gap-2">
+          {LETTER_DESIGNS.map((item) => (
+            <label
+              key={item.value}
+              className={`flex h-10 cursor-pointer items-center rounded-full border px-4 text-sm font-medium ${
+                design === item.value
+                  ? "border-pine bg-pine text-white"
+                  : "border-line bg-card"
+              }`}
+            >
+              <input
+                type="radio"
+                name="design-choice"
+                value={item.value}
+                checked={design === item.value}
+                onChange={() => setDesign(item.value)}
+                className="sr-only"
+              />
+              {item.label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <div className="flex flex-col gap-2">
+        <label htmlFor="letter-body" className="text-sm font-medium">
+          Letter
+        </label>
+        <textarea
+          id="letter-body"
+          name="body"
+          required
+          rows={8}
+          maxLength={LETTER_BODY_MAX}
+          placeholder={`Dear ${partnerName},`}
+          className="rounded-2xl border border-line bg-background px-4 py-3 text-base leading-7"
+        />
+      </div>
+      {state.error ? (
+        <p className="text-sm text-accent" role="alert">
+          {state.error}
+        </p>
+      ) : null}
+      {state.saved && !state.error ? (
+        <p className="text-sm text-pine" role="status">
+          Sent to {partnerName}.
+        </p>
+      ) : null}
+      <button
+        type="submit"
+        disabled={pending}
+        className="h-12 rounded-full bg-accent px-5 text-base font-medium text-accent-ink disabled:opacity-60"
+      >
+        {pending ? "Sending…" : "Send the letter"}
+      </button>
+    </form>
+  );
+}
+
+function CategoryList({
+  circleId,
+  categories,
+}: {
+  circleId: string;
+  categories: LetterCategory[];
+}) {
+  const [state, formAction, pending] = useActionState(
+    addLetterCategory,
+    initialState,
+  );
+
+  return (
+    <div className="flex flex-col gap-3">
+      <form action={formAction} className="flex flex-col gap-3 sm:flex-row">
+        <input type="hidden" name="circleId" value={circleId} />
+        <label className="sr-only" htmlFor="letter-new-category">
+          New category
+        </label>
+        <input
+          id="letter-new-category"
+          name="label"
+          maxLength={LETTER_CATEGORY_MAX}
+          placeholder="Add a category"
+          className="h-12 flex-1 rounded-2xl border border-line bg-background px-4 text-base"
+        />
+        <button
+          type="submit"
+          disabled={pending}
+          className="h-12 rounded-full border border-line bg-card px-5 text-sm font-medium disabled:opacity-60"
+        >
+          {pending ? "Adding…" : "Add category"}
+        </button>
+      </form>
+      {state.error ? (
+        <p className="text-sm text-accent" role="alert">
+          {state.error}
+        </p>
+      ) : null}
+      {categories.length > 0 ? (
+        <ul className="flex flex-wrap gap-2" aria-label="Custom categories">
+          {categories.map((category) => (
+            <li key={category.id}>
+              <RemoveCategory circleId={circleId} category={category} />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+function RemoveCategory({
+  circleId,
+  category,
+}: {
+  circleId: string;
+  category: LetterCategory;
+}) {
+  const [state, formAction, pending] = useActionState(
+    deleteLetterCategory,
+    initialState,
+  );
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="circleId" value={circleId} />
+      <input type="hidden" name="id" value={category.id} />
+      <button
+        type="submit"
+        disabled={pending}
+        className="rounded-full border border-line bg-card px-3 py-1 text-sm"
+        aria-label={`Remove category ${category.label}`}
+      >
+        {category.label}
+        <span aria-hidden> ×</span>
+      </button>
+      {state.error ? (
+        <span className="sr-only" role="alert">
+          {state.error}
+        </span>
+      ) : null}
+    </form>
+  );
+}
+
+function OpenedLetter({ letter }: { letter: LetterCard }) {
+  return (
+    <article
+      id={`letter-${letter.id}`}
+      className="letter-sheet"
+      data-design={letter.design}
+    >
+      <p className="text-sm font-medium text-pine">{letter.categoryLabel}</p>
+      <h3 className="mt-3 font-serif text-4xl tracking-tight">
+        {letter.dearName}
+      </h3>
+      {letter.title ? (
+        <p className="mt-3 text-base font-medium">{letter.title}</p>
+      ) : null}
+      {letter.body ? (
+        <p className="mt-4 text-base leading-7 whitespace-pre-wrap">
+          {letter.body}
+        </p>
+      ) : null}
+      <p className="mt-4 text-sm text-foreground/70">
+        {letter.status === "cancelled"
+          ? "Cancelled."
+          : letter.status === "scheduled"
+            ? "Not delivered yet."
+            : letter.mine
+              ? letter.openedAt
+                ? "You wrote this. They've opened it."
+                : "You wrote this. The seal is still on it."
+              : `From ${letter.fromName}.`}
+      </p>
+    </article>
+  );
+}
+
+function SealedLetter({
+  circleId,
+  letter,
+}: {
+  circleId: string;
+  letter: LetterCard;
+}) {
+  const router = useRouter();
+  const [phase, setPhase] = useState<"sealed" | "opening" | "open">("sealed");
+  const [body, setBody] = useState<string | null>(null);
+  const [title, setTitle] = useState<string | null>(letter.title);
+  const [error, setError] = useState<string | null>(null);
+  const timer = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    };
+  }, []);
+
+  function onOpen() {
+    if (phase !== "sealed") return;
+    setError(null);
+    setPhase("opening");
+    const reduced = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    timer.current = window.setTimeout(
+      () => {
+        void openLetter(circleId, letter.id).then((result) => {
+          if (result.error || result.body == null) {
+            setError(result.error ?? "That letter couldn't be opened.");
+            setPhase("sealed");
+            return;
+          }
+          setBody(result.body);
+          setTitle(result.title);
+          setPhase("open");
+          router.refresh();
+        });
+      },
+      reduced ? 0 : 700,
+    );
+  }
+
+  if (phase === "open" && body) {
+    return (
+      <OpenedLetter
+        letter={{
+          ...letter,
+          sealed: false,
+          body,
+          title,
+          openedAt: letter.openedAt ?? new Date().toISOString(),
+        }}
+      />
+    );
+  }
+
+  return (
+    <article
+      id={`letter-${letter.id}`}
+      className={`letter-sheet ${phase === "opening" ? "is-opening" : ""}`}
+      data-design={letter.design}
+    >
+      <p className="text-sm font-medium text-pine">{letter.categoryLabel}</p>
+      <h3 className="mt-3 font-serif text-4xl tracking-tight">
+        {letter.dearName}
+      </h3>
+      <p className="mt-3 max-w-md text-sm leading-6 text-foreground/70">
+        From {letter.fromName}. The words are inside.
+      </p>
+      <div className="mt-6 flex flex-col items-start gap-3">
+        <button
+          type="button"
+          className={`letter-seal ${phase === "opening" ? "is-opening" : ""}`}
+          aria-label="Open letter"
+          aria-busy={phase === "opening"}
+          disabled={phase !== "sealed"}
+          onClick={onOpen}
+        >
+          <span aria-hidden>{phase === "opening" ? "…" : "Open"}</span>
+        </button>
+        {error ? (
+          <p className="text-sm text-accent" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    </article>
+  );
+}

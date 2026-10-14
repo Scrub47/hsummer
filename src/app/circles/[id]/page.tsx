@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { BucketList } from "@/components/bucket-list";
 import { CircleMoods } from "@/components/circle-moods";
 import { InvitePanel } from "@/components/invite-panel";
+import { Letters } from "@/components/letters";
 import { MemoryWall } from "@/components/memory-wall";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
@@ -13,6 +14,7 @@ import { SignedInHeader } from "@/components/signed-in-header";
 import { ThinkingOfYou } from "@/components/thinking-of-you";
 import { loadBucketItems } from "@/lib/bucket/load";
 import { loadCircle } from "@/lib/circles/load";
+import { loadLetters } from "@/lib/letters/load";
 import { calendarDate } from "@/lib/memories/fields";
 import { loadMemories } from "@/lib/memories/load";
 import { loadCurrentMoods } from "@/lib/moods/load";
@@ -51,13 +53,14 @@ export default async function CirclePage({
     circle.members.map((member) => [member.userId, member.displayName]),
   );
   const zone = self?.timezone ?? "UTC";
-  const [pings, bucket, moods, memories] = await Promise.all([
+  const [pings, bucket, moods, memories, letters] = await Promise.all([
     showThinkingOfYou
       ? loadRecentPings(session, circle.id, names, zone)
       : Promise.resolve([]),
     loadBucketItems(session, circle.id, names),
     loadCurrentMoods(session, circle.id, zone),
     loadMemories(session, circle.id, names),
+    loadLetters(session, circle.id, names),
   ]);
 
   const memoryPhotos =
@@ -89,7 +92,8 @@ export default async function CirclePage({
             <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
               This circle is waiting for one more person. Share the invite link.
               You can set a mood, add to the memory wall, and start the bucket
-              list now. Thinking of You stays closed until you both are here.
+              list now. Letters and Thinking of You stay closed until you both
+              are here.
             </p>
           ) : (
             <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
@@ -97,8 +101,8 @@ export default async function CirclePage({
                 ? `You're here with ${others.map((member) => member.displayName).join(", ")}.`
                 : "You're the only one here right now."}{" "}
               {showThinkingOfYou
-                ? "Set a mood, add a memory, tap Thinking of You — it goes to your partner — or add to the bucket list."
-                : "Set a mood, add a memory, or add to the bucket list. Letters come in a later week."}
+                ? "Set a mood, write a letter, add a memory, tap Thinking of You — it goes to your partner — or add to the bucket list."
+                : "Set a mood, add a memory, or add to the bucket list."}
             </p>
           )}
         </div>
@@ -122,6 +126,23 @@ export default async function CirclePage({
             Moods aren&apos;t in the database yet. Apply{" "}
             <code>supabase/migrations/20261123120000_current_moods.sql</code> in
             the Supabase SQL editor, then reload this page.
+          </p>
+        )}
+
+        {letters.ok ? (
+          <Letters
+            circleId={circle.id}
+            partnerName={partner?.displayName ?? null}
+            canWrite={showThinkingOfYou}
+            pending={circle.status === "pending"}
+            letters={letters.letters}
+            categories={letters.categories}
+          />
+        ) : (
+          <p className="max-w-xl text-sm leading-6 text-foreground/70">
+            Letters aren&apos;t in the database yet. Apply{" "}
+            <code>supabase/migrations/20261221120000_letters.sql</code> in the
+            Supabase SQL editor, then reload this page.
           </p>
         )}
 

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { authorLabel } from "@/lib/bucket/fields";
+import { authorLabel, isCircleId } from "@/lib/bucket/fields";
 import {
   MEMORIES_BUCKET,
   MEMORY_QUOTA_BYTES,
@@ -33,12 +33,7 @@ export async function loadMemories(
   names: ReadonlyMap<string, string>,
 ): Promise<{ ok: true; wall: MemoryWall } | { ok: false; wall: null }> {
   const [rows, viewers, usage] = await Promise.all([
-    session.supabase
-      .from("memories")
-      .select(
-        "id, created_by, kind, body, photo_path, photo_bytes, tags, visibility, occurred_on, created_at",
-      )
-      .eq("circle_id", circleId),
+    selectMemories(session, circleId),
     session.supabase
       .from("memory_viewers")
       .select("memory_id, user_id")
@@ -90,11 +85,14 @@ async function toCard(
     visibility: string;
     occurred_on: string;
     created_at: string;
+    letter_id?: string | null;
   },
   names: ReadonlyMap<string, string>,
   viewersByMemory: ReadonlyMap<string, string[]>,
 ): Promise<MemoryCard | null> {
-  if (row.kind !== "photo" && row.kind !== "note") return null;
+  if (row.kind !== "photo" && row.kind !== "note" && row.kind !== "letter") {
+    return null;
+  }
   if (!isMemoryVisibility(row.visibility)) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(row.occurred_on)) return null;
 
@@ -120,6 +118,39 @@ async function toCard(
     createdAt: row.created_at,
     author: authorLabel(row.created_by, session.userId, names),
     mine,
+    letterId:
+      row.kind === "letter" &&
+      typeof row.letter_id === "string" &&
+      isCircleId(row.letter_id)
+        ? row.letter_id
+        : null,
+  };
+}
+
+/**
+ * Asks for letter_id, then retries without it when that column is not in
+ * the database yet. The wall keeps working until the week 11 SQL is applied.
+ */
+async function selectMemories(session: Session, circleId: string) {
+  const columns =
+    "id, created_by, kind, body, photo_path, photo_bytes, tags, visibility, occurred_on, created_at";
+  const withLetter = await session.supabase
+    .from("memories")
+    .select(`${columns}, letter_id`)
+    .eq("circle_id", circleId);
+
+  if (!withLetter.error) return withLetter;
+  if (!/letter_id/i.test(withLetter.error.message ?? "")) return withLetter;
+
+  const plain = await session.supabase
+    .from("memories")
+    .select(columns)
+    .eq("circle_id", circleId);
+  if (plain.error || !plain.data) return plain;
+
+  return {
+    data: plain.data.map((row) => ({ ...row, letter_id: null })),
+    error: null,
   };
 }
 

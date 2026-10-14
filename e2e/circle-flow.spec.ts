@@ -8,7 +8,7 @@ import { expect, test, type Page } from "@playwright/test";
  * 127.0.0.1 or localhost. Do not point this file at production.
  */
 
-test("sign in, create a couple circle, invite, join, ping, set a mood, and add a memory", async ({
+test("sign in, create a couple circle, invite, join, ping, set a mood, add a memory, and open a letter", async ({
   page,
   browser,
   baseURL,
@@ -179,6 +179,42 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, and add a
       .getByRole("button", { name: "Remove Secret dock" })
       .click();
     await expect(wall(page).getByText("Secret dock")).toHaveCount(0);
+
+    const isaacLetters = letters(page);
+    await isaacLetters.getByLabel("Open when").selectOption("need-motivation");
+    await isaacLetters.getByLabel("Title").fill("For the ferry");
+    await isaacLetters.getByLabel("Letter").fill("The ferry is still ours.");
+    await isaacLetters.getByText("Kawaii", { exact: true }).click();
+    await isaacLetters.getByRole("button", { name: "Send the letter" }).click();
+    await expect(
+      isaacLetters.getByRole("status").filter({ hasText: "Sent to Summer" }),
+    ).toBeVisible();
+    await expect(
+      isaacLetters.getByRole("heading", { name: "Dear Summer" }),
+    ).toBeVisible();
+    await expect(
+      isaacLetters.getByText("The ferry is still ours."),
+    ).toBeVisible();
+
+    await partnerPage.reload();
+    const summerLetters = letters(partnerPage);
+    await expect(
+      summerLetters.getByText("The ferry is still ours."),
+    ).toHaveCount(0);
+    await summerLetters.getByRole("button", { name: "Open letter" }).click();
+    await expect(
+      summerLetters.getByText("The ferry is still ours."),
+    ).toBeVisible();
+    await expect(
+      summerLetters.getByRole("heading", { name: "Dear Summer" }),
+    ).toBeVisible();
+    await expect(wall(partnerPage).getByText("Opened letter")).toBeVisible();
+
+    await page.reload();
+    await expect(wall(page).getByText("Opened letter")).toBeVisible();
+    await expect(
+      wall(page).getByRole("link", { name: "Read the letter" }),
+    ).toBeVisible();
   } finally {
     await partner.close();
   }
@@ -188,6 +224,12 @@ function moods(page: Page) {
   return page
     .locator("section")
     .filter({ has: page.getByRole("heading", { name: "Mood" }) });
+}
+
+function letters(page: Page) {
+  return page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Letters" }) });
 }
 
 function wall(page: Page) {

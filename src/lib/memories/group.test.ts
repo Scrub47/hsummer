@@ -21,6 +21,7 @@ function card(overrides: Partial<MemoryCard> = {}): MemoryCard {
     createdAt: "2026-10-14T18:00:00.000Z",
     author: "you",
     mine: true,
+    letterId: null,
     ...overrides,
   };
 }

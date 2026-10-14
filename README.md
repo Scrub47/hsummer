@@ -2,7 +2,7 @@
 
 Made for couples, built for groups, friends, and families.
 
-A private shared space for people who are far apart. Couples are the first audience. The same Circle holds a couple, a few friends, or a family, and the database already isolates each person. Group screens come later. This repository is the app through the memory wall: sign-in, profiles, couple circles, Thinking of You, a bucket list, moods, and photos and notes.
+A private shared space for people who are far apart. Couples are the first audience. The same Circle holds a couple, a few friends, or a family, and the database already isolates each person. Group screens come later. This repository is the app through letters: sign-in, profiles, couple circles, Thinking of You, a bucket list, moods, photos and notes, and a letter that opens with your partner's name.
 
 ## Screenshots
 
@@ -24,8 +24,9 @@ These slots are empty on purpose. Add a PNG under `docs/screenshots/` and drop i
 - Keep a shared bucket list (restaurants, movies, plans) that updates live.
 - Set a mood. It shows in the circle. A notification is sent only if you check the share box.
 - Add notes and photos to the memory wall. Group them by month and tag. Show them to the whole circle, or only to the people you pick. Photo links expire after five minutes.
+- Write a letter. It opens with your partner's name. They break a seal to read it. The memory of that letter stays between the two of you. A push, if their phone is subscribed, says only "You have a new letter."
 
-Not in this version: letters, countdowns, the photo booth, group-circle screens, leaving a circle, account deletion, and a personal export. See [HOW_IT_WORKS.md](./HOW_IT_WORKS.md) for how the code is put together.
+Not in this version: countdowns, scheduled letter delivery, the photo booth, group-circle screens, leaving a circle, account deletion, and a personal export. See [HOW_IT_WORKS.md](./HOW_IT_WORKS.md) for how the code is put together.
 
 ## Tech stack
 
@@ -87,16 +88,18 @@ Create a project in Oregon (`us-west-2`). Copy the project URL and keys into `.e
 
 Apply each file in `supabase/migrations` once, in filename order, in the SQL editor. Do not run a file twice.
 
-| File                                                 | What it adds                               |
-| ---------------------------------------------------- | ------------------------------------------ |
-| `20261012120000_profiles_and_push_subscriptions.sql` | profiles, push subscriptions               |
-| `20261019120000_account_private_and_avatars.sql`     | private settings, private `avatars` bucket |
-| `20261026120000_circles_and_invites.sql`             | circles, members, invites                  |
-| `20261102120000_pings.sql`                           | Thinking of You                            |
-| `20261109120000_bucket_items_and_rate_limits.sql`    | bucket list, tighter rate limits           |
-| `20261116120000_backup_bucket.sql`                   | private `backups` bucket                   |
-| `20261123120000_current_moods.sql`                   | moods                                      |
-| `20261130120000_memories.sql`                        | memory wall, private `memories` bucket     |
+| File                                                 | What it adds                                |
+| ---------------------------------------------------- | ------------------------------------------- |
+| `20261012120000_profiles_and_push_subscriptions.sql` | profiles, push subscriptions                |
+| `20261019120000_account_private_and_avatars.sql`     | private settings, private `avatars` bucket  |
+| `20261026120000_circles_and_invites.sql`             | circles, members, invites                   |
+| `20261102120000_pings.sql`                           | Thinking of You                             |
+| `20261109120000_bucket_items_and_rate_limits.sql`    | bucket list, tighter rate limits            |
+| `20261116120000_backup_bucket.sql`                   | private `backups` bucket                    |
+| `20261123120000_current_moods.sql`                   | moods                                       |
+| `20261130120000_memories.sql`                        | memory wall, private `memories` bucket      |
+| `20261207120000_security_hardening.sql`              | narrower column grants, auth attempt counts |
+| `20261221120000_letters.sql`                         | letters, custom categories, letter memories |
 
 In **Authentication → URL Configuration**, set the Site URL and add redirect URLs:
 

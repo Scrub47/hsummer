@@ -22,6 +22,9 @@ export const TEST_NOTIFICATION_BODY =
 export const PING_NOTIFICATION_BODY = "Thinking of you.";
 export const PING_SECRET_NOTIFICATION_BODY = "Missing you.";
 
+/** A letter arrived. The lock screen does not say who, or what it says. */
+export const LETTER_NOTIFICATION_BODY = "You have a new letter.";
+
 const CIRCLE_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -47,6 +50,21 @@ export function buildPingNotification(
     body: input.secretVariant
       ? PING_SECRET_NOTIFICATION_BODY
       : PING_NOTIFICATION_BODY,
+    url: new URL(path, base.origin).toString(),
+  };
+}
+
+export function buildLetterNotification(
+  origin: string,
+  circleId: string,
+): TestNotification {
+  const base = new URL(origin);
+  const path = CIRCLE_ID_PATTERN.test(circleId)
+    ? `/circles/${circleId}`
+    : "/home";
+  return {
+    title: "Hsummer",
+    body: LETTER_NOTIFICATION_BODY,
     url: new URL(path, base.origin).toString(),
   };
 }

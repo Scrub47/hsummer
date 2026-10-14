@@ -11,9 +11,10 @@ import { isPlaceholder } from "@/lib/env";
  * without baking it into a static page.
  *
  * The secret key bypasses row level security. Profile edits, the test push,
- * and the ping insert run as the signed-in user, so RLS applies. Thinking of
- * You uses the key for one thing: read the recipient's push subscriptions and
- * delete a device the push service has retired. Scheduled letter delivery is
+ * the ping insert, and the letter insert run as the signed-in user, so RLS
+ * applies. Thinking of You and a new letter use the key for one thing: read
+ * the recipient's push subscriptions and delete a device the push service has
+ * retired. Scheduled delivery, which would set delivered_at from QStash, is
  * the next planned caller.
  */
 

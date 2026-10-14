@@ -31,6 +31,87 @@ a {
   text-underline-offset: 0.18em;
 }
 
+.letter-sheet {
+  border: 1px solid var(--line);
+  border-radius: 1.5rem;
+  background: var(--card);
+  padding: 1.25rem 1.25rem 1.5rem;
+}
+
+.letter-sheet[data-design="kawaii"] {
+  border-color: #e7b7c6;
+  background: #fff5f7;
+  box-shadow: 0 12px 32px rgb(196 85 42 / 8%);
+}
+
+.letter-sheet[data-design="retro-film"] {
+  border-color: #2a2118;
+  border-radius: 0.35rem;
+  background: #f3e2bc;
+  color: #2a2118;
+}
+
+.letter-seal {
+  display: grid;
+  width: 5.75rem;
+  height: 5.75rem;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle at 35% 30%,
+    #e07a52,
+    var(--accent) 55%,
+    #8d3418
+  );
+  color: var(--accent-ink);
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  box-shadow:
+    inset 0 0 0 4px rgb(255 248 243 / 35%),
+    0 8px 18px rgb(28 25 21 / 16%);
+}
+
+.letter-seal.is-opening {
+  animation: hsummer-seal-break 0.7s ease forwards;
+}
+
+.letter-sheet.is-opening {
+  animation: hsummer-sheet-open 0.7s ease;
+}
+
+@keyframes hsummer-seal-break {
+  0% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  55% {
+    transform: scale(1.08) rotate(-12deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.15) rotate(16deg);
+    opacity: 0;
+  }
+}
+
+@keyframes hsummer-sheet-open {
+  from {
+    transform: perspective(800px) rotateX(12deg);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .letter-seal.is-opening,
+  .letter-sheet.is-opening {
+    animation: none;
+  }
+}
+
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,

@@ -2,7 +2,7 @@
 
 This is the map of the repository as it stands after the memory wall. It is written for reading the code, not as a changelog.
 
-Hsummer is a private space shared by a Circle: a couple, a few friends, or a family. Profiles came first. Who may read one is a single function, and that function now includes people who share an active circle. Circles, memberships, invite links, pings, a shared bucket list, a current mood per person, and a memory wall are in the database. A 1:1 ping is readable only by the sender and the recipient. A bucket item is readable and editable by every active member of that circle. A mood is readable by active members and writable only by the person it belongs to. A memory is readable by every active member when its visibility is the whole circle, and only by the author plus the people they picked when visibility is selected. Letters are not built yet.
+Hsummer is a private space shared by a Circle: a couple, a few friends, or a family. Profiles came first. Who may read one is a single function, and that function now includes people who share an active circle. Circles, memberships, invite links, pings, a shared bucket list, a current mood per person, and a memory wall are in the database. A 1:1 ping is readable only by the sender and the recipient. A bucket item is readable and editable by every active member of that circle. A mood is readable by active members and writable only by the person it belongs to. A memory is readable by every active member when its visibility is the whole circle, and only by the author plus the people they picked when visibility is selected. A letter is readable by the sender, and by the recipient only after it is delivered. Opening it adds one memory that only those two can see.
 
 ## Shape of the app
 
@@ -20,6 +20,7 @@ Next.js (App Router) on Vercel
   src/app/circles/bucket-actions.ts  add, edit, remove a bucket item
   src/app/circles/mood-actions.ts    set or clear your current mood
   src/app/circles/memory-actions.ts  add or remove a memory; strip photo EXIF
+  src/app/circles/letter-actions.ts  write a letter, add a category, open the seal
   src/app/join/actions.ts          redeem an invite link
   src/app/api/push/*               save a device, send a test push
   src/app/api/pings                Thinking of You, then push the partner
@@ -29,11 +30,12 @@ Supabase
   Auth (auth.users holds the email)
   Postgres: profiles, account_private, circles, members, invites,
             pings, bucket_items, current_moods, memories,
-            memory_viewers, push_subscriptions
-  Realtime: bucket_items, current_moods, and memories
+            memory_viewers, letters, letter_categories,
+            push_subscriptions
+  Realtime: bucket_items, current_moods, memories, and letters
   Storage: private buckets "avatars", "memories", and "backups"
   Row Level Security: circle rows for active members; a 1:1 ping
-                      only for its sender and recipient
+                      or letter only for its sender and recipient
 ```
 
 Next.js serves both the UI and the server routes, so there is one TypeScript codebase. Supabase holds the data and the login session. Vercel hosts the Next.js app. The browser's push service (Apple, Google, Mozilla) delivers notifications; our server only talks to the endpoint the browser gave us.
@@ -195,6 +197,22 @@ The page asks Storage for a signed URL that lasts five minutes (`MEMORY_SIGNED_U
 
 `public.circle_memory_bytes(circle id)` returns the sum for an active member and null for anyone else, so the usage line is the whole circle and not only the photos this person can see. Realtime on `memories` refreshes the page. Adding a viewer bumps `updated_at` so that change is included.
 
+## Letters
+
+`letters` is one person writing to one other person in the same circle. The page calls it Dear and then their name. That name is the recipient's display name, read when the page renders, not stored on the row. In a couple there is no recipient field. `resolveCouplePartner` is the same helper Thinking of You uses, so a pending circle and a group both refuse the write. The group picker is a later phase. The database still allows a letter to any other active member, which is how the isolation test builds a 3-person circle.
+
+Seven categories are in code and in `private.letter_category_known`: need motivation, need help, feeling sad, feeling lonely, distance is too hard, when we fight, when you miss me. A circle adds more in `letter_categories`. Those rows are readable by every active member. They are labels, not letter text. A built-in name cannot be added again. Ten new labels per person per 10 minutes.
+
+The body is up to 8,000 characters. An optional title is up to 80 and cannot contain `@`. Design is `minimal`, `kawaii`, or `retro-film`, which only changes the paper on the page. `circle_type` is not in any letter policy.
+
+Who can read a row: the sender, always; the recipient only when `delivered_at` is set; nobody else. A member who has set `left_at` fails `is_active_member` and gets nothing. A signed-in insert cannot set `delivered_at`, `opened_at`, `status`, `scheduled_for`, or `qstash_message_id`. The before-insert trigger delivers the letter immediately (`status = delivered`, `delivered_at = now()`) and allows 10 letters per 10 minutes. Upstash, when both of its variables are set, checks `letter:{user id}` first. A direct insert never reaches Upstash.
+
+`scheduled_for` and `qstash_message_id` are on the table for the next week. This week does not call QStash. A service-role insert may leave a row scheduled, which is how the test proves the recipient sees zero rows before `delivered_at`. The sender can cancel that row. A delivered row matches no update policy, so the writer cannot edit it after it is sent.
+
+The recipient's page does not include the body until they open it. The open button plays a short seal animation, then `open_letter` sets `opened_at` and inserts one `memories` row with `kind = letter`, `visibility = selected`, and the recipient in `memory_viewers`. The memory stores the title, or the words "A letter", not the body. The author of that memory is the sender, so both people can read it and a third member cannot. A second open returns the same memory. The sender cannot add another viewer or flip the memory to the whole circle. The push, when VAPID is configured, says "You have a new letter." and nothing else.
+
+Leaving a circle does not yet cancel a letter that is still waiting. That belongs with the leave flow.
+
 ## Push
 
 A push has three pieces.
@@ -265,7 +283,7 @@ GitHub Actions runs three jobs on every pull request and on `main`. The first ru
 
 Playwright's smoke project loads the landing page and the sign-in page with placeholder keys forced in, clicks the magic-link button, checks that `/home`, `/profile`, and `/circles` redirect when nobody is signed in, and checks that `POST /api/test/sign-in` is 404. It does not create a user.
 
-The local project (`playwright.local.config.ts`) throws unless `NEXT_PUBLIC_SUPABASE_URL` is a local http URL and both API keys are set. It starts its own server with `E2E_TEST_AUTH=1` and refuses to reuse a server that is already running, so it cannot attach to a dev server pointed at production. The spec opens `/sign-in`, posts to the test route, creates a couple circle named "Me & Summer", reads the invite link, opens that link signed out, signs in as the second person, confirms **Join circle**, and taps **Thinking of You**. The partner's recent list shows the ping. It then sets a mood with the share box off (the partner sees it, and the recent list does not gain a "Feeling" row) and sets another mood with the box on (the recent list shows the emoji). It adds two notes in different months, a note only the author can see, and a one-pixel PNG. The tag filter hides the other month. The partner sees the shared note and the photo, and does not see the private note. VAPID stays a placeholder, so the button's status line says notifications are not configured, and the row is still saved.
+The local project (`playwright.local.config.ts`) throws unless `NEXT_PUBLIC_SUPABASE_URL` is a local http URL and both API keys are set. It starts its own server with `E2E_TEST_AUTH=1` and refuses to reuse a server that is already running, so it cannot attach to a dev server pointed at production. The spec opens `/sign-in`, posts to the test route, creates a couple circle named "Me & Summer", reads the invite link, opens that link signed out, signs in as the second person, confirms **Join circle**, and taps **Thinking of You**. It also writes a letter, checks the partner cannot see the body, and opens the seal. The partner's recent list shows the ping. It then sets a mood with the share box off (the partner sees it, and the recent list does not gain a "Feeling" row) and sets another mood with the box on (the recent list shows the emoji). It adds two notes in different months, a note only the author can see, and a one-pixel PNG. The tag filter hides the other month. The partner sees the shared note and the photo, and does not see the private note. VAPID stays a placeholder, so the button's status line says notifications are not configured, and the row is still saved.
 
 A separate workflow, `.github/workflows/db-backup.yml`, is the weekly dump. It is not part of the pull-request jobs. See Backups below.
 
@@ -287,80 +305,85 @@ The restore drill is in the README. Short version: decrypt, `npx supabase db res
 
 Cache Components (the Next.js 16 default for new apps) are off. Signed-in pages depend on the request cookie, and there is no public data worth caching yet. The comment is in `next.config.ts`.
 
-Letters and QStash are later weeks. Copying the `avatars` and `memories` buckets into the weekly backup is later too. The database dump is what week 6 stores. `completed_at` is set when a bucket item is marked done, and that does not add a memory. The wall is notes and photos added by hand. Join is limited by `private.join_attempts`, now serialized. Pings, invites, and memories are each limited by their own insert trigger. Upstash, when its two variables are set, checks the same caps first and is not required. Memory photos are stripped of EXIF before they are stored. A JPEG, or a photo the phone labeled HEIC, is drawn to a canvas in the browser first so the pixels are upright and the file is under 2 MB. A small PNG or WebP is uploaded as-is and stripped on the server. Profile photos go through the same canvas step, and the server removes EXIF and text chunks before the avatar object is saved. A signed photo URL lasts five minutes. While a photo is on screen, the page asks for a new one before that, and again when the phone wakes. An image that already failed does that once. Avatar URLs last an hour and refresh the same way. The age-confirmation column is null until that screen exists. The group-circle create form, recipient pickers, and whole-circle pings from the app are later. The leave screen is later too; leaving is possible through the membership column so the status rule and the access cutoff can be tested. `POST /api/pings` still refuses a mood field. The share checkbox is what writes `mood-share`, and only for the partner in an active couple.
+Scheduled letter delivery (QStash) and Still Us countdowns are later weeks. Copying the `avatars` and `memories` buckets into the weekly backup is later too. The database dump is what week 6 stores. `completed_at` is set when a bucket item is marked done, and that does not add a memory. The wall is notes and photos added by hand. Join is limited by `private.join_attempts`, now serialized. Pings, invites, and memories are each limited by their own insert trigger. Upstash, when its two variables are set, checks the same caps first and is not required. Memory photos are stripped of EXIF before they are stored. A JPEG, or a photo the phone labeled HEIC, is drawn to a canvas in the browser first so the pixels are upright and the file is under 2 MB. A small PNG or WebP is uploaded as-is and stripped on the server. Profile photos go through the same canvas step, and the server removes EXIF and text chunks before the avatar object is saved. A signed photo URL lasts five minutes. While a photo is on screen, the page asks for a new one before that, and again when the phone wakes. An image that already failed does that once. Avatar URLs last an hour and refresh the same way. The age-confirmation column is null until that screen exists. The group-circle create form, recipient pickers, and whole-circle pings from the app are later. The leave screen is later too; leaving is possible through the membership column so the status rule and the access cutoff can be tested. `POST /api/pings` still refuses a mood field. The share checkbox is what writes `mood-share`, and only for the partner in an active couple.
 
 ## File map
 
-| Path                                     | What it is                                                      |
-| ---------------------------------------- | --------------------------------------------------------------- |
-| `src/app/page.tsx`                       | Landing page                                                    |
-| `src/app/sign-in/page.tsx`               | Sign-in page (server), renders the form                         |
-| `src/app/sign-in/actions.ts`             | Magic link and Google, after the auth rate limit                |
-| `src/app/privacy/page.tsx`               | Privacy explanation for the beta. Not legal advice.             |
-| `src/app/terms/page.tsx`                 | Terms explanation for the beta. Not legal advice.               |
-| `src/components/site-footer.tsx`         | Copyright line, privacy link, terms link                        |
-| `src/lib/security/headers.ts`            | CSP, HSTS, and the other document headers                       |
-| `src/lib/auth/attempt.ts`                | Auth rate limit: Upstash, then `consume_auth_attempt`           |
-| `src/lib/auth/turnstile.ts`              | Checks the Google sign-in widget token with Cloudflare          |
-| `SECURITY_AUDIT.md`                      | Item-by-item audit and where each control lives                 |
-| `SECURITY.md`                            | How to report a vulnerability in private                        |
-| `src/app/home/page.tsx`                  | Signed-in home. Shows the profile, circles, and the test push.  |
-| `src/app/circles/page.tsx`               | List circles and create a couple circle                         |
-| `src/app/circles/[id]/page.tsx`          | Mood, memory wall, bucket list, invite, and Thinking of You     |
-| `src/app/circles/memory-actions.ts`      | Add or remove a memory. Strips EXIF, then uploads.              |
-| `src/components/memory-wall.tsx`         | The wall, month groups, tag filter, and the add form            |
-| `src/components/refresh-signed-urls.tsx` | Asks for new signed URLs before they expire                     |
-| `src/lib/memories/prepare-photo.ts`      | Browser resize, HEIC, and JPEG orientation                      |
-| `src/lib/circles/invite-token.ts`        | Keeps the raw invite token in localStorage                      |
-| `src/lib/memories/fields.ts`             | Sizes, tags, dates, the five-minute URL, write-error sentences  |
-| `src/lib/memories/photo.ts`              | Magic-byte check and EXIF / text-chunk stripping                |
-| `src/lib/memories/group.ts`              | Month groups and the tag filter                                 |
-| `src/lib/memories/load.ts`               | Load the wall and sign each photo for five minutes              |
-| `src/app/circles/mood-actions.ts`        | Set or clear your current mood. Share calls the ping sender.    |
-| `src/components/circle-moods.tsx`        | The mood buttons, the share box, and the Realtime subscription  |
-| `src/lib/moods/fields.ts`                | The six moods, write-error sentences, and the saved-status line |
-| `src/lib/moods/load.ts`                  | Load the circle's current moods                                 |
-| `src/app/circles/bucket-actions.ts`      | Add, edit, and remove a bucket item                             |
-| `src/components/bucket-list.tsx`         | The list, the add form, and the Realtime subscription           |
-| `src/components/bucket-item.tsx`         | One item: edit, status, and remove                              |
-| `src/lib/bucket/fields.ts`               | Categories, dates, links, and write-error sentences             |
-| `src/lib/bucket/load.ts`                 | Load and sort the circle's items                                |
-| `src/lib/rate-limit/enforce.ts`          | Optional Upstash check, with a Postgres fallback                |
-| `src/app/api/pings/route.ts`             | Send Thinking of You to the partner                             |
-| `src/components/thinking-of-you.tsx`     | The button, including the hidden `Missing<name>` control        |
-| `src/components/recent-pings.tsx`        | The short list of pings this person is allowed to see           |
-| `src/lib/pings/fields.ts`                | Request shape, partner resolution, rate-limit numbers           |
-| `src/lib/pings/send.ts`                  | Insert under RLS, then push to every device of the recipient    |
-| `src/lib/pings/load.ts`                  | Recent pings for the circle page                                |
-| `src/lib/supabase/admin.ts`              | Secret-key client, used to deliver and prune partner devices    |
-| `src/app/circles/actions.ts`             | Create, rename, regenerate invite                               |
-| `src/app/join/[token]/page.tsx`          | Sign in, then confirm the invite                                |
-| `src/app/join/actions.ts`                | Redeem the token                                                |
-| `src/lib/circles/fields.ts`              | Names, token shape, rate-limit numbers                          |
-| `src/lib/circles/load.ts`                | Load a circle, its members, and signed avatars                  |
-| `src/app/profile/page.tsx`               | View and edit the signed-in user's profile                      |
-| `src/app/profile/actions.ts`             | Save profile, remove photo                                      |
-| `src/components/profile-form.tsx`        | Name, timezone, and photo fields                                |
-| `src/components/profile-avatar.tsx`      | Round photo or initial                                          |
-| `src/components/signed-in-header.tsx`    | Home, Profile, and sign-out                                     |
-| `src/components/sign-in-form.tsx`        | Google button and magic-link form                               |
-| `src/components/push-panel.tsx`          | Enable, test, and disable notifications                         |
-| `src/lib/profile/fields.ts`              | Name, timezone, and image checks                                |
-| `src/lib/profile/stored-avatar.ts`       | Strips EXIF from a profile photo before upload                  |
-| `src/lib/profile/load.ts`                | Load the caller's profile and a signed avatar URL               |
-| `src/app/auth/callback/route.ts`         | Exchange the auth code or token hash                            |
-| `src/app/auth/sign-out/route.ts`         | Clear the session                                               |
-| `src/app/api/push/subscribe/route.ts`    | Save or delete this device                                      |
-| `src/app/api/push/test/route.ts`         | Send the test push and prune dead rows                          |
-| `src/lib/supabase/`                      | Browser client, server client, proxy, session helper            |
-| `src/lib/database.types.ts`              | Hand-written types for the tables                               |
-| `src/app/api/test/sign-in/route.ts`      | Local-only Playwright sign-in. 404 everywhere else.             |
-| `src/lib/auth/local-supabase.ts`         | The URL and flag gate for that route                            |
-| `e2e/circle-flow.spec.ts`                | Sign in, create, invite, join, ping against local Supabase      |
-| `playwright.local.config.ts`             | Refuses to start unless the Supabase URL is local               |
-| `scripts/backup-lib.mjs`                 | Session-pooler check, retention of 8 dumps, upload errors       |
-| `scripts/upload-backup.mjs`              | Uploads the encrypted dump and deletes older ones               |
-| `.github/workflows/db-backup.yml`        | Weekly `pg_dump`, encrypt, upload to the private bucket         |
-| `supabase/migrations/`                   | SQL applied to the database                                     |
-| `supabase/tests/rls.test.ts`             | Two-user RLS checks, including the backups bucket               |
-| `supabase/config.toml`                   | Local Supabase CLI config                                       |
+| Path                                     | What it is                                                           |
+| ---------------------------------------- | -------------------------------------------------------------------- |
+| `src/app/page.tsx`                       | Landing page                                                         |
+| `src/app/sign-in/page.tsx`               | Sign-in page (server), renders the form                              |
+| `src/app/sign-in/actions.ts`             | Magic link and Google, after the auth rate limit                     |
+| `src/app/privacy/page.tsx`               | Privacy explanation for the beta. Not legal advice.                  |
+| `src/app/terms/page.tsx`                 | Terms explanation for the beta. Not legal advice.                    |
+| `src/components/site-footer.tsx`         | Copyright line, privacy link, terms link                             |
+| `src/lib/security/headers.ts`            | CSP, HSTS, and the other document headers                            |
+| `src/lib/auth/attempt.ts`                | Auth rate limit: Upstash, then `consume_auth_attempt`                |
+| `src/lib/auth/turnstile.ts`              | Checks the Google sign-in widget token with Cloudflare               |
+| `SECURITY_AUDIT.md`                      | Item-by-item audit and where each control lives                      |
+| `SECURITY.md`                            | How to report a vulnerability in private                             |
+| `src/app/home/page.tsx`                  | Signed-in home. Shows the profile, circles, and the test push.       |
+| `src/app/circles/page.tsx`               | List circles and create a couple circle                              |
+| `src/app/circles/[id]/page.tsx`          | Letters, mood, memory wall, bucket list, invite, and Thinking of You |
+| `src/app/circles/letter-actions.ts`      | Write a letter, add a category, and open the seal                    |
+| `src/components/letters.tsx`             | The Dear form, the seal, and the opened letter                       |
+| `src/lib/letters/fields.ts`              | Categories, designs, sizes, and write-error sentences                |
+| `src/lib/letters/load.ts`                | Load letters. Omits a sealed body from the recipient's page          |
+| `src/lib/letters/notify.ts`              | Push "You have a new letter." to the recipient's devices             |
+| `src/app/circles/memory-actions.ts`      | Add or remove a memory. Strips EXIF, then uploads.                   |
+| `src/components/memory-wall.tsx`         | The wall, month groups, tag filter, and the add form                 |
+| `src/components/refresh-signed-urls.tsx` | Asks for new signed URLs before they expire                          |
+| `src/lib/memories/prepare-photo.ts`      | Browser resize, HEIC, and JPEG orientation                           |
+| `src/lib/circles/invite-token.ts`        | Keeps the raw invite token in localStorage                           |
+| `src/lib/memories/fields.ts`             | Sizes, tags, dates, the five-minute URL, write-error sentences       |
+| `src/lib/memories/photo.ts`              | Magic-byte check and EXIF / text-chunk stripping                     |
+| `src/lib/memories/group.ts`              | Month groups and the tag filter                                      |
+| `src/lib/memories/load.ts`               | Load the wall and sign each photo for five minutes                   |
+| `src/app/circles/mood-actions.ts`        | Set or clear your current mood. Share calls the ping sender.         |
+| `src/components/circle-moods.tsx`        | The mood buttons, the share box, and the Realtime subscription       |
+| `src/lib/moods/fields.ts`                | The six moods, write-error sentences, and the saved-status line      |
+| `src/lib/moods/load.ts`                  | Load the circle's current moods                                      |
+| `src/app/circles/bucket-actions.ts`      | Add, edit, and remove a bucket item                                  |
+| `src/components/bucket-list.tsx`         | The list, the add form, and the Realtime subscription                |
+| `src/components/bucket-item.tsx`         | One item: edit, status, and remove                                   |
+| `src/lib/bucket/fields.ts`               | Categories, dates, links, and write-error sentences                  |
+| `src/lib/bucket/load.ts`                 | Load and sort the circle's items                                     |
+| `src/lib/rate-limit/enforce.ts`          | Optional Upstash check, with a Postgres fallback                     |
+| `src/app/api/pings/route.ts`             | Send Thinking of You to the partner                                  |
+| `src/components/thinking-of-you.tsx`     | The button, including the hidden `Missing<name>` control             |
+| `src/components/recent-pings.tsx`        | The short list of pings this person is allowed to see                |
+| `src/lib/pings/fields.ts`                | Request shape, partner resolution, rate-limit numbers                |
+| `src/lib/pings/send.ts`                  | Insert under RLS, then push to every device of the recipient         |
+| `src/lib/pings/load.ts`                  | Recent pings for the circle page                                     |
+| `src/lib/supabase/admin.ts`              | Secret-key client, used to deliver and prune partner devices         |
+| `src/app/circles/actions.ts`             | Create, rename, regenerate invite                                    |
+| `src/app/join/[token]/page.tsx`          | Sign in, then confirm the invite                                     |
+| `src/app/join/actions.ts`                | Redeem the token                                                     |
+| `src/lib/circles/fields.ts`              | Names, token shape, rate-limit numbers                               |
+| `src/lib/circles/load.ts`                | Load a circle, its members, and signed avatars                       |
+| `src/app/profile/page.tsx`               | View and edit the signed-in user's profile                           |
+| `src/app/profile/actions.ts`             | Save profile, remove photo                                           |
+| `src/components/profile-form.tsx`        | Name, timezone, and photo fields                                     |
+| `src/components/profile-avatar.tsx`      | Round photo or initial                                               |
+| `src/components/signed-in-header.tsx`    | Home, Profile, and sign-out                                          |
+| `src/components/sign-in-form.tsx`        | Google button and magic-link form                                    |
+| `src/components/push-panel.tsx`          | Enable, test, and disable notifications                              |
+| `src/lib/profile/fields.ts`              | Name, timezone, and image checks                                     |
+| `src/lib/profile/stored-avatar.ts`       | Strips EXIF from a profile photo before upload                       |
+| `src/lib/profile/load.ts`                | Load the caller's profile and a signed avatar URL                    |
+| `src/app/auth/callback/route.ts`         | Exchange the auth code or token hash                                 |
+| `src/app/auth/sign-out/route.ts`         | Clear the session                                                    |
+| `src/app/api/push/subscribe/route.ts`    | Save or delete this device                                           |
+| `src/app/api/push/test/route.ts`         | Send the test push and prune dead rows                               |
+| `src/lib/supabase/`                      | Browser client, server client, proxy, session helper                 |
+| `src/lib/database.types.ts`              | Hand-written types for the tables                                    |
+| `src/app/api/test/sign-in/route.ts`      | Local-only Playwright sign-in. 404 everywhere else.                  |
+| `src/lib/auth/local-supabase.ts`         | The URL and flag gate for that route                                 |
+| `e2e/circle-flow.spec.ts`                | Sign in, create, invite, join, ping against local Supabase           |
+| `playwright.local.config.ts`             | Refuses to start unless the Supabase URL is local                    |
+| `scripts/backup-lib.mjs`                 | Session-pooler check, retention of 8 dumps, upload errors            |
+| `scripts/upload-backup.mjs`              | Uploads the encrypted dump and deletes older ones                    |
+| `.github/workflows/db-backup.yml`        | Weekly `pg_dump`, encrypt, upload to the private bucket              |
+| `supabase/migrations/`                   | SQL applied to the database                                          |
+| `supabase/tests/rls.test.ts`             | Two-user RLS checks, including the backups bucket                    |
+| `supabase/config.toml`                   | Local Supabase CLI config                                            |
