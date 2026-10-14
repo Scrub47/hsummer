@@ -41,7 +41,7 @@ Next.js serves both the UI and the server routes, so there is one TypeScript cod
 ## Request path
 
 1. Every document and API request goes through `src/proxy.ts` (this used to be called middleware). The matcher skips images, the service worker, and Next's own static files.
-2. `src/lib/supabase/proxy.ts` builds a server Supabase client that reads and writes cookies on that request. It calls `auth.getClaims()`, which verifies the JWT and refreshes it when it is about to expire.
+2. `src/lib/supabase/proxy.ts` builds a server Supabase client that reads and writes cookies on that request. It calls `auth.getClaims()`, which verifies the JWT and refreshes it when it is about to expire. The same function sets the cookie flags (`SameSite=Lax`, `Secure` only when the request is https, `HttpOnly` off because the browser client has to read the token) and a per-request Content-Security-Policy nonce. `src/app/layout.tsx` waits on `connection()` so Next can stamp that nonce.
 3. Server Components cannot write cookies. If the proxy did not refresh the token, the next request would present a used refresh token and Supabase would sign the user out. That is why the refresh lives in the proxy even though each page also checks the user.
 4. The proxy redirects `/home`, `/profile`, and `/circles` to `/sign-in` when there is no verified user, and it keeps the path in `next` so sign-in can come back. `/join/...` stays public: the page itself asks the person to sign in, then confirm. That redirect is a convenience. The pages and the push routes call `getClaims()` again. Do not trust `getSession()` on the server: it reads the cookie without checking the signature.
 
@@ -49,10 +49,18 @@ If the Supabase URL or key is missing, or still the placeholder from `.env.examp
 
 ## Auth
 
-Sign-in is passwordless. The profile work does not change this.
+Sign-in is passwordless in the product. Google and the magic link are the two buttons. The app does not collect or hash a password. Accounts created through the app never get one, because sign-up and sign-in only call those two actions. Magic link is part of Supabase's Email provider, so that provider stays enabled. The local Supabase config still allows a password because the RLS suite creates users and signs them in that way.
 
-- **Google** uses `signInWithOAuth`. Supabase sends the browser to Google and back to `/auth/callback?code=`.
-- **Magic link** uses `signInWithOtp`. The email either comes back with a `code` (same browser, PKCE cookie) or a `token_hash` (works across devices, after the email template change in the README). `src/app/auth/callback/route.ts` handles both. The magic-link call sends the browser's IANA timezone in user metadata so the signup trigger can store it.
+The form used to call `signInWithOtp` and `signInWithOAuth` from the browser. It now posts to `src/app/sign-in/actions.ts`.
+
+- **Google** calls `signInWithOAuth` with `skipBrowserRedirect`. The action checks the returned URL is on the Supabase project's `/auth/v1/` path, then the browser navigates there. Supabase sends the person to Google and back to `/auth/callback?code=`.
+- **Magic link** calls `signInWithOtp`. The email either comes back with a `code` (same browser, PKCE cookie) or a `token_hash` (works across devices, after the email template change in the README). `src/app/auth/callback/route.ts` checks the query with zod, then handles both. The magic-link call sends the browser's IANA timezone in user metadata so the signup trigger can store it.
+
+Before either call, the action counts the try. The caps are 5 magic links per IP hash, 3 per email hash, and 10 Google starts per IP hash, all inside 15 minutes. The bucket is a hash (`hsummer-auth-email-v1:` or the existing IP hash), not the address. Upstash is used when it is configured and answers. Otherwise `consume_auth_attempt` writes `private.auth_attempts`. In production, if neither limiter can answer, the action refuses. A person who calls the Auth API directly never hits this function. Supabase's own auth rate limit, and Turnstile when it is turned on, are what cover that path.
+
+Turnstile is off unless `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is set to a real site key. The widget then has to render before either button calls the action. Magic link forwards the token to Supabase, and Auth checks it on `POST /otp` only after captcha is enabled in the dashboard with the matching secret. Auth does not check captcha on `GET /authorize`, and a Turnstile token can be used once, so Google is checked by `src/lib/auth/turnstile.ts` with `TURNSTILE_SECRET_KEY` (a server secret, also pasted into the Supabase dashboard). With the site key empty, the sign-in page looks as it did, and the unconfigured smoke test still gets the "isn't configured" alert without calling the action.
+
+`getSession()` in `src/lib/supabase/session.ts` is the server helper, and the name is the confusing part. The body calls `getClaims()`, which checks the JWT. Do not replace that with `auth.getSession()` on the server. The browser's Realtime hook does call `getSession()`, and that one only supplies the access token to the socket.
 
 The callback only redirects to a path on our own origin. `safeNextPath` rejects `https://somewhere-else` and `//somewhere-else`, so a link cannot bounce a signed-in browser to another site.
 
@@ -253,7 +261,7 @@ The loaders are covered the same way, with a fake client instead of a database. 
 - the partner can open a memory photo with a signed URL, an outsider cannot, the public object URL is not available, and a URL signed for two seconds stops working after it expires
 - a member who sets `left_at` immediately loses the wall, the 11th memory inside 10 minutes is rejected, and a circle already at 100 MB of `photo_bytes` refuses another photo while still accepting a note
 
-GitHub Actions runs two jobs on every pull request and on `main`. The first runs lint, format, typecheck, `npm test`, the production build with placeholder keys, and the Playwright smoke test. The second starts local Supabase (mailpit stays on; studio, analytics, and realtime stay off), runs `npm run test:rls`, exports the local URL and keys, builds the app with those keys inlined, and runs `npm run test:e2e:local`. `npm test` stays free of Docker. Neither job has the hosted project's keys.
+GitHub Actions runs three jobs on every pull request and on `main`. The first runs `node scripts/audit-deps.mjs`, lint, format, typecheck, `npm test`, the production build with placeholder keys, and the Playwright smoke test. The audit fails on a production high or critical advisory. The only ignored high is dev-only `braces` through `eslint-config-next`, which has no patched release. The second starts local Supabase (mailpit stays on; studio, analytics, and realtime stay off), runs `npm run test:rls`, exports the local URL and keys, builds the app with those keys inlined, and runs `npm run test:e2e:local`. `npm test` stays free of Docker. Neither of those jobs has the hosted project's keys. The third checks out full history and runs gitleaks. Dependabot opens weekly update PRs for npm and GitHub Actions.
 
 Playwright's smoke project loads the landing page and the sign-in page with placeholder keys forced in, clicks the magic-link button, checks that `/home`, `/profile`, and `/circles` redirect when nobody is signed in, and checks that `POST /api/test/sign-in` is 404. It does not create a user.
 
@@ -287,6 +295,15 @@ Letters and QStash are later weeks. Copying the `avatars` and `memories` buckets
 | ---------------------------------------- | --------------------------------------------------------------- |
 | `src/app/page.tsx`                       | Landing page                                                    |
 | `src/app/sign-in/page.tsx`               | Sign-in page (server), renders the form                         |
+| `src/app/sign-in/actions.ts`             | Magic link and Google, after the auth rate limit                |
+| `src/app/privacy/page.tsx`               | Privacy explanation for the beta. Not legal advice.             |
+| `src/app/terms/page.tsx`                 | Terms explanation for the beta. Not legal advice.               |
+| `src/components/site-footer.tsx`         | Copyright line, privacy link, terms link                        |
+| `src/lib/security/headers.ts`            | CSP, HSTS, and the other document headers                       |
+| `src/lib/auth/attempt.ts`                | Auth rate limit: Upstash, then `consume_auth_attempt`           |
+| `src/lib/auth/turnstile.ts`              | Checks the Google sign-in widget token with Cloudflare          |
+| `SECURITY_AUDIT.md`                      | Item-by-item audit and where each control lives                 |
+| `SECURITY.md`                            | How to report a vulnerability in private                        |
 | `src/app/home/page.tsx`                  | Signed-in home. Shows the profile, circles, and the test push.  |
 | `src/app/circles/page.tsx`               | List circles and create a couple circle                         |
 | `src/app/circles/[id]/page.tsx`          | Mood, memory wall, bucket list, invite, and Thinking of You     |
