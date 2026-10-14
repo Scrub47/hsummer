@@ -1264,6 +1264,266 @@ describe("bucket list stays inside the circle", () => {
   });
 });
 
+describe("current moods stay inside the circle", () => {
+  let partner: Client;
+  let third: Client;
+  let outsider: Client;
+  let leaver: Client;
+  let partnerId = "";
+  let thirdId = "";
+  let leaverId = "";
+  let circleId = "";
+
+  beforeAll(async () => {
+    const nonce = crypto.randomUUID();
+    partnerId = await createUser(admin, {
+      email: `rls-mood-partner-${nonce}@example.com`,
+      displayName: "Mood Partner",
+      timezone: "America/Los_Angeles",
+    });
+    thirdId = await createUser(admin, {
+      email: `rls-mood-third-${nonce}@example.com`,
+      displayName: "Mood Third",
+      timezone: "America/Chicago",
+    });
+    leaverId = await createUser(admin, {
+      email: `rls-mood-leaver-${nonce}@example.com`,
+      displayName: "Mood Leaver",
+      timezone: "UTC",
+    });
+    const outsiderId = await createUser(admin, {
+      email: `rls-mood-out-${nonce}@example.com`,
+      displayName: "Mood Outsider",
+      timezone: "UTC",
+    });
+    partner = (
+      await signIn(apiUrl, anonKey, `rls-mood-partner-${nonce}@example.com`)
+    ).client;
+    third = (
+      await signIn(apiUrl, anonKey, `rls-mood-third-${nonce}@example.com`)
+    ).client;
+    leaver = (
+      await signIn(apiUrl, anonKey, `rls-mood-leaver-${nonce}@example.com`)
+    ).client;
+    outsider = (
+      await signIn(apiUrl, anonKey, `rls-mood-out-${nonce}@example.com`)
+    ).client;
+    expect(outsiderId).toBeTruthy();
+
+    const circle = await admin
+      .from("circles")
+      .insert({
+        name: "Mood circle",
+        circle_type: "group",
+        created_by: ownerId,
+      })
+      .select("id")
+      .single();
+    expect(circle.error).toBeNull();
+    circleId = circle.data?.id ?? "";
+    const seats = await admin.from("circle_members").insert([
+      { circle_id: circleId, user_id: ownerId },
+      { circle_id: circleId, user_id: partnerId },
+      { circle_id: circleId, user_id: thirdId },
+      { circle_id: circleId, user_id: leaverId },
+    ]);
+    expect(seats.error).toBeNull();
+  });
+
+  it("lets members read, lets only the owner upsert, and hides an outsider", async () => {
+    const first = await partner
+      .from("current_moods")
+      .upsert(
+        { user_id: partnerId, circle_id: circleId, emoji: "😊" },
+        { onConflict: "user_id,circle_id" },
+      )
+      .select("user_id, emoji, circle_id")
+      .single();
+    expect(first.error).toBeNull();
+    expect(first.data).toMatchObject({
+      user_id: partnerId,
+      emoji: "😊",
+      circle_id: circleId,
+    });
+
+    const again = await partner
+      .from("current_moods")
+      .upsert(
+        { user_id: partnerId, circle_id: circleId, emoji: "😌" },
+        { onConflict: "user_id,circle_id" },
+      )
+      .select("emoji")
+      .single();
+    expect(again.error).toBeNull();
+    expect(again.data?.emoji).toBe("😌");
+
+    const rows = await owner
+      .from("current_moods")
+      .select("user_id, emoji")
+      .eq("circle_id", circleId)
+      .eq("user_id", partnerId);
+    expect(rows.data).toEqual([{ user_id: partnerId, emoji: "😌" }]);
+
+    const thirdRead = await third
+      .from("current_moods")
+      .select("emoji")
+      .eq("user_id", partnerId)
+      .eq("circle_id", circleId);
+    expect(thirdRead.data).toEqual([{ emoji: "😌" }]);
+
+    const hidden = await outsider
+      .from("current_moods")
+      .select("emoji")
+      .eq("circle_id", circleId);
+    expect(hidden.error).toBeNull();
+    expect(hidden.data).toEqual([]);
+
+    const planted = await outsider
+      .from("current_moods")
+      .upsert(
+        { user_id: partnerId, circle_id: circleId, emoji: "✨" },
+        { onConflict: "user_id,circle_id" },
+      );
+    expect(planted.error).toBeTruthy();
+
+    const spoofed = await third
+      .from("current_moods")
+      .upsert(
+        { user_id: partnerId, circle_id: circleId, emoji: "✨" },
+        { onConflict: "user_id,circle_id" },
+      );
+    expect(spoofed.error).toBeTruthy();
+
+    const attacked = await third
+      .from("current_moods")
+      .update({ emoji: "✨" })
+      .eq("user_id", partnerId)
+      .eq("circle_id", circleId)
+      .select("emoji");
+    expect(attacked.error).toBeNull();
+    expect(attacked.data).toEqual([]);
+
+    const moved = await partner
+      .from("current_moods")
+      .update({ user_id: thirdId })
+      .eq("user_id", partnerId)
+      .eq("circle_id", circleId);
+    expect(moved.error).toBeTruthy();
+
+    const still = await owner
+      .from("current_moods")
+      .select("emoji")
+      .eq("user_id", partnerId)
+      .eq("circle_id", circleId)
+      .single();
+    expect(still.data?.emoji).toBe("😌");
+
+    const email = await partner.from("current_moods").upsert(
+      {
+        user_id: partnerId,
+        circle_id: circleId,
+        emoji: "a@example.com",
+      },
+      { onConflict: "user_id,circle_id" },
+    );
+    expect(email.error).toBeTruthy();
+
+    const removed = await third
+      .from("current_moods")
+      .delete()
+      .eq("user_id", partnerId)
+      .eq("circle_id", circleId)
+      .select("user_id");
+    expect(removed.error).toBeNull();
+    expect(removed.data).toEqual([]);
+    const kept = await partner
+      .from("current_moods")
+      .select("emoji")
+      .eq("user_id", partnerId)
+      .single();
+    expect(kept.data?.emoji).toBe("😌");
+  });
+
+  it("hides a mood-share ping from a third member of the circle", async () => {
+    const ping = await partner
+      .from("pings")
+      .insert({
+        circle_id: circleId,
+        from_user_id: partnerId,
+        to_user_id: ownerId,
+        ping_type: "mood-share",
+        mood_emoji: "😌",
+        secret_variant: false,
+      })
+      .select("id, mood_emoji, ping_type")
+      .single();
+    expect(ping.error).toBeNull();
+    expect(ping.data?.ping_type).toBe("mood-share");
+    const pingId = ping.data?.id ?? "";
+
+    const ownerRead = await owner
+      .from("pings")
+      .select("mood_emoji")
+      .eq("id", pingId)
+      .single();
+    expect(ownerRead.data?.mood_emoji).toBe("😌");
+
+    const thirdView = await third.from("pings").select("id").eq("id", pingId);
+    expect(thirdView.data).toEqual([]);
+
+    const outside = await outsider.from("pings").select("id").eq("id", pingId);
+    expect(outside.data).toEqual([]);
+  });
+
+  it("drops the mood the moment someone leaves", async () => {
+    const inserted = await leaver
+      .from("current_moods")
+      .upsert(
+        { user_id: leaverId, circle_id: circleId, emoji: "😔" },
+        { onConflict: "user_id,circle_id" },
+      )
+      .select("emoji")
+      .single();
+    expect(inserted.error).toBeNull();
+
+    const goodbye = await leaver
+      .from("circle_members")
+      .update({ left_at: new Date().toISOString() })
+      .eq("circle_id", circleId)
+      .eq("user_id", leaverId);
+    expect(goodbye.error).toBeNull();
+
+    const hidden = await leaver
+      .from("current_moods")
+      .select("emoji")
+      .eq("circle_id", circleId);
+    expect(hidden.data).toEqual([]);
+
+    const fromOwner = await owner
+      .from("current_moods")
+      .select("emoji")
+      .eq("circle_id", circleId)
+      .eq("user_id", leaverId);
+    expect(fromOwner.data).toEqual([]);
+
+    const again = await leaver
+      .from("current_moods")
+      .upsert(
+        { user_id: leaverId, circle_id: circleId, emoji: "✨" },
+        { onConflict: "user_id,circle_id" },
+      );
+    expect(again.error).toBeTruthy();
+
+    const stored = await admin
+      .from("current_moods")
+      .select("emoji")
+      .eq("circle_id", circleId)
+      .eq("user_id", leaverId)
+      .single();
+    expect(stored.data?.emoji).toBe("😔");
+  });
+});
+
 describe("the backups bucket stays private", () => {
   it("lets the secret key upload a dump and hides it from a signed-in user", async () => {
     const object = `weekly/rls-${crypto.randomUUID()}.bin`;

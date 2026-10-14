@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { MOODS } from "@/lib/moods/fields";
 import {
   buildPingNotification,
   buildTestNotification,
@@ -49,6 +50,10 @@ describe("buildPingNotification", () => {
     });
     expect(JSON.stringify(notification)).not.toContain("@");
     expect(JSON.stringify(notification)).not.toContain("Summer");
+    for (const mood of MOODS) {
+      expect(notification.body).not.toContain(mood.emoji);
+      expect(notification.body).not.toContain(mood.label);
+    }
   });
 
   it("switches the secret variant to Missing you and still omits the name", () => {

@@ -1,8 +1,9 @@
 /**
  * Hand-written slice of the generated Supabase types.
  *
- * Profiles, account settings, circles, invites, pings, the bucket list, and
- * push subscriptions live here. When the schema grows, replace this file with
+ * Profiles, account settings, circles, invites, pings, the bucket list,
+ * current moods, and push subscriptions live here. When the schema grows,
+ * replace this file with
  * `supabase gen types typescript`. `circle_invites.token_hash` is omitted:
  * authenticated clients are not granted that column. Pings have no client
  * update or delete grant; the Update shape is only what a test may attempt.
@@ -213,6 +214,26 @@ export type Database = {
           created_by?: string | null;
           completed_at?: string | null;
           created_at?: string;
+        };
+        Relationships: [];
+      };
+      current_moods: {
+        Row: {
+          user_id: string;
+          circle_id: string;
+          emoji: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          circle_id: string;
+          emoji: string;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          circle_id?: string;
+          emoji?: string;
         };
         Relationships: [];
       };

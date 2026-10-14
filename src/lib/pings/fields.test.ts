@@ -5,6 +5,7 @@ import {
   PING_BROADCAST_ERROR,
   PING_LIMIT,
   PING_RATE_LIMIT_MESSAGE,
+  circlePingInsert,
   missingName,
   parsePingRequest,
   partnerReasonMessage,
@@ -34,6 +35,10 @@ describe("Thinking of You requests", () => {
       parsePingRequest({ circleId, pingType: "mood-share" }),
     ).toMatchObject({
       ok: false,
+    });
+    expect(parsePingRequest({ circleId, moodEmoji: "😊" })).toMatchObject({
+      ok: false,
+      status: 400,
     });
   });
 
@@ -118,5 +123,76 @@ describe("rate limit and copy", () => {
     expect(pingPhrase(false, "Summer")).toBe("Thinking of you");
     expect(missingName("  ")).toBe("Missing them");
     expect(pingPhrase(true, "Summer")).not.toContain("@");
+  });
+});
+
+describe("shared mood ping row", () => {
+  const fromUserId = "22222222-2222-4222-8222-222222222222";
+  const toUserId = "33333333-3333-4333-8333-333333333333";
+
+  it("builds a mood-share row and leaves Thinking of You unchanged", () => {
+    expect(
+      circlePingInsert({
+        circleId,
+        fromUserId,
+        toUserId,
+        secretVariant: false,
+        moodEmoji: "😌",
+      }),
+    ).toEqual({
+      ok: true,
+      row: {
+        circle_id: circleId,
+        from_user_id: fromUserId,
+        to_user_id: toUserId,
+        ping_type: "mood-share",
+        mood_emoji: "😌",
+        secret_variant: false,
+      },
+    });
+    expect(
+      circlePingInsert({
+        circleId,
+        fromUserId,
+        toUserId,
+        secretVariant: true,
+        moodEmoji: null,
+      }).ok &&
+        circlePingInsert({
+          circleId,
+          fromUserId,
+          toUserId,
+          secretVariant: true,
+          moodEmoji: null,
+        }),
+    ).toMatchObject({
+      ok: true,
+      row: {
+        ping_type: "thinking-of-you",
+        mood_emoji: null,
+        secret_variant: true,
+      },
+    });
+  });
+
+  it("refuses an unknown emoji and refuses mixing a mood with Missing", () => {
+    expect(
+      circlePingInsert({
+        circleId,
+        fromUserId,
+        toUserId,
+        secretVariant: false,
+        moodEmoji: "not-a-mood",
+      }).ok,
+    ).toBe(false);
+    expect(
+      circlePingInsert({
+        circleId,
+        fromUserId,
+        toUserId,
+        secretVariant: true,
+        moodEmoji: "😊",
+      }).ok,
+    ).toBe(false);
   });
 });

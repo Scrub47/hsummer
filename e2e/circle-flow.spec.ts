@@ -8,12 +8,12 @@ import { expect, test, type Page } from "@playwright/test";
  * 127.0.0.1 or localhost. Do not point this file at production.
  */
 
-test("sign in, create a couple circle, invite, join, and ping", async ({
+test("sign in, create a couple circle, invite, join, ping, and set a mood", async ({
   page,
   browser,
   baseURL,
 }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(120_000);
   const nonce = crypto.randomUUID();
   const ownerEmail = `e2e-owner-${nonce}@example.com`;
   const partnerEmail = `e2e-partner-${nonce}@example.com`;
@@ -80,10 +80,42 @@ test("sign in, create a couple circle, invite, join, and ping", async ({
     await partnerPage.reload();
     await expect(recent(partnerPage)).toContainText("Isaac");
     await expect(recent(partnerPage)).toContainText("Thinking of you");
+
+    await page.getByRole("button", { name: "Good" }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: /No notification was sent/ }),
+    ).toBeVisible();
+    await expect(moods(page)).toContainText("Good");
+    await expect(recent(page)).not.toContainText("Feeling");
+
+    await partnerPage.reload();
+    await expect(moods(partnerPage)).toContainText("Isaac");
+    await expect(moods(partnerPage)).toContainText("Good");
+    await expect(recent(partnerPage)).not.toContainText("Feeling");
+
+    await page
+      .getByRole("checkbox", { name: /Also send this as a ping/ })
+      .check();
+    await page.getByRole("button", { name: "Calm" }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: /shared with Summer/ }),
+    ).toBeVisible();
+    await expect(recent(page)).toContainText("Feeling");
+    await expect(recent(page)).toContainText("😌");
+
+    await partnerPage.reload();
+    await expect(moods(partnerPage)).toContainText("Calm");
+    await expect(recent(partnerPage)).toContainText("Feeling");
   } finally {
     await partner.close();
   }
 });
+
+function moods(page: Page) {
+  return page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Mood" }) });
+}
 
 function recent(page: Page) {
   return page

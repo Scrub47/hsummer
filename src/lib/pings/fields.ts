@@ -9,7 +9,13 @@
  *
  * A whole-circle ping (to_user_id null) is a real row shape. The app does not
  * send one until group UX. BROADCAST_PINGS_ENABLED is that flag.
+ *
+ * A shared mood is the same insert with ping_type mood-share. The public
+ * POST route still refuses a mood field. The circle page builds that row
+ * only when the share box is checked.
  */
+
+import { isMoodEmoji, type MoodEmoji } from "@/lib/moods/fields";
 
 export const BROADCAST_PINGS_ENABLED = false;
 
@@ -150,6 +156,59 @@ export function partnerReasonMessage(
     case "archived":
       return { status: 404, error: "That circle isn't available." };
   }
+}
+
+export type CirclePingRow = {
+  circle_id: string;
+  from_user_id: string;
+  to_user_id: string;
+  ping_type: "thinking-of-you" | "mood-share";
+  mood_emoji: string | null;
+  secret_variant: boolean;
+};
+
+/**
+ * The row Thinking of You and a shared mood both insert.
+ * A mood share is not the Missing variant, and the emoji has to be one of
+ * the current-mood palette. The public POST route still refuses a mood
+ * field; the circle page calls this from the share checkbox.
+ */
+export function circlePingInsert(input: {
+  circleId: string;
+  fromUserId: string;
+  toUserId: string;
+  secretVariant: boolean;
+  moodEmoji: string | null;
+}): { ok: true; row: CirclePingRow } | { ok: false; error: string } {
+  if (input.moodEmoji != null) {
+    if (input.secretVariant || !isMoodEmoji(input.moodEmoji)) {
+      return { ok: false, error: "That mood isn't one you can share." };
+    }
+    const emoji: MoodEmoji = input.moodEmoji;
+    return {
+      ok: true,
+      row: {
+        circle_id: input.circleId,
+        from_user_id: input.fromUserId,
+        to_user_id: input.toUserId,
+        ping_type: "mood-share",
+        mood_emoji: emoji,
+        secret_variant: false,
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    row: {
+      circle_id: input.circleId,
+      from_user_id: input.fromUserId,
+      to_user_id: input.toUserId,
+      ping_type: "thinking-of-you",
+      mood_emoji: null,
+      secret_variant: input.secretVariant,
+    },
+  };
 }
 
 /** Maps a Postgres exception from the insert trigger onto an HTTP response. */
