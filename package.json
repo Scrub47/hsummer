@@ -17,6 +17,7 @@
     "test:rls": "vitest run --config vitest.rls.config.mts",
     "test:e2e": "playwright test",
     "test:e2e:local": "playwright test --config playwright.local.config.ts",
+    "audit:deps": "node scripts/audit-deps.mjs",
     "generate:vapid": "node scripts/generate-vapid-keys.mjs",
     "generate:icons": "node scripts/generate-icons.mjs"
   },
@@ -29,7 +30,8 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "server-only": "^0.0.1",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.0",

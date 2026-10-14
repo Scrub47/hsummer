@@ -4,6 +4,7 @@ import {
   authorLabel,
   isBucketCategory,
   isBucketStatus,
+  parseBucketLink,
   type BucketStatus,
 } from "@/lib/bucket/fields";
 import type { BucketItemView } from "@/lib/bucket/view";
@@ -66,6 +67,7 @@ function toView(
   if (!isBucketCategory(row.category) || !isBucketStatus(row.status)) {
     return null;
   }
+  const link = parseBucketLink(row.link);
   return {
     id: row.id,
     title: row.title,
@@ -74,7 +76,7 @@ function toView(
     plannedDate: row.planned_date,
     completedAt: row.completed_at,
     notes: row.notes,
-    link: row.link,
+    link: link.ok ? link.value : null,
     createdBy: row.created_by,
     author: authorLabel(row.created_by, selfId, names),
     createdAt: row.created_at,

@@ -7,6 +7,8 @@
  * address cannot land on `profiles`.
  */
 
+import { z } from "zod";
+
 export const AVATARS_BUCKET = "avatars";
 export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 export const AVATAR_SIGNED_URL_SECONDS = 60 * 60;
@@ -34,18 +36,16 @@ export type ProfileEdit = {
 
 type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
 
+const displayNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((value) => [...value].length <= 80 && !value.includes("@"));
+
 export function parseDisplayName(value: unknown): Parsed<string> {
-  if (typeof value !== "string")
-    return { ok: false, error: DISPLAY_NAME_ERROR };
-  const displayName = value.trim();
-  if (
-    displayName.length === 0 ||
-    [...displayName].length > 80 ||
-    displayName.includes("@")
-  ) {
-    return { ok: false, error: DISPLAY_NAME_ERROR };
-  }
-  return { ok: true, value: displayName };
+  const parsed = displayNameSchema.safeParse(value);
+  if (!parsed.success) return { ok: false, error: DISPLAY_NAME_ERROR };
+  return { ok: true, value: parsed.data };
 }
 
 export function isIanaTimeZone(value: string): boolean {
@@ -58,11 +58,15 @@ export function isIanaTimeZone(value: string): boolean {
   }
 }
 
+const timezoneSchema = z
+  .string()
+  .trim()
+  .refine((value) => isIanaTimeZone(value));
+
 export function parseTimezone(value: unknown): Parsed<string> {
-  if (typeof value !== "string") return { ok: false, error: TIMEZONE_ERROR };
-  const timezone = value.trim();
-  if (!isIanaTimeZone(timezone)) return { ok: false, error: TIMEZONE_ERROR };
-  return { ok: true, value: timezone };
+  const parsed = timezoneSchema.safeParse(value);
+  if (!parsed.success) return { ok: false, error: TIMEZONE_ERROR };
+  return { ok: true, value: parsed.data };
 }
 
 /** Browser zone, or null when the runtime cannot name one we can store. */
@@ -88,6 +92,8 @@ export function sniffAvatar(bytes: Uint8Array): Parsed<AvatarImage> {
     return { ok: false, error: AVATAR_ERROR };
   }
 
+  // Magic bytes only. EXIF removal stays in stored-avatar.ts, which the
+  // profile form does not import, so the stripper stays out of the browser.
   if (isJpeg(bytes)) {
     return {
       ok: true,

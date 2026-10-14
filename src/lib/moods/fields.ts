@@ -7,6 +7,8 @@
  * Thinking of You rate limit and the same lock-screen sentence.
  */
 
+import { z } from "zod";
+
 import { isCircleId } from "@/lib/bucket/fields";
 
 export const MOODS = [
@@ -27,8 +29,10 @@ export const MOOD_FORBIDDEN = "You can't set that mood.";
 
 export type MoodPush = "sent" | "unconfigured" | "none" | "failed";
 
+const moodEmojiSchema = z.enum(["😊", "😌", "🥰", "😴", "😔", "✨"]);
+
 export function isMoodEmoji(value: string): value is MoodEmoji {
-  return MOODS.some((mood) => mood.emoji === value);
+  return moodEmojiSchema.safeParse(value).success;
 }
 
 export function moodLabel(emoji: string): string | null {

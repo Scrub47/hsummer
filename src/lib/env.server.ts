@@ -68,3 +68,15 @@ export function getUpstashConfig(): { url: string; token: string } | null {
 
   return { url, token };
 }
+
+/**
+ * Cloudflare Turnstile secret. Server only. When the public site key is set,
+ * Google sign-in checks the widget token with this secret, because Supabase
+ * Auth does not run captcha on the OAuth `/authorize` redirect. Magic link
+ * sends the token to Supabase instead, and the dashboard holds the same
+ * secret. A Turnstile token is single-use, so this app must not check it
+ * and also send it to Supabase.
+ */
+export function getTurnstileSecret(): string | null {
+  return readSecret(process.env.TURNSTILE_SECRET_KEY);
+}

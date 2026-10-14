@@ -1,8 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 import type { Database } from "@/lib/database.types";
 import { getSupabaseBrowserConfig } from "@/lib/env";
+import { isHttpsRequest } from "@/lib/security/headers";
+import { supabaseCookieOptions } from "@/lib/supabase/cookie-options";
 
 /**
  * Server Supabase client for Server Components, Server Actions, and route
@@ -18,8 +20,14 @@ export async function createClient() {
   if (!config) return null;
 
   const cookieStore = await cookies();
+  const headerList = await headers();
+  const secure = isHttpsRequest({
+    url: "http://localhost",
+    headers: headerList,
+  });
 
   return createServerClient<Database>(config.url, config.key, {
+    cookieOptions: supabaseCookieOptions(secure),
     cookies: {
       getAll() {
         return cookieStore.getAll();

@@ -316,6 +316,9 @@ export type Database = {
           created_at?: string;
         };
         Update: {
+          // user_id is granted so the upsert can send it. The guard trigger
+          // rejects a change. The type keeps it so a tamper test can try.
+          user_id?: string;
           endpoint?: string;
           p256dh?: string;
           auth?: string;
@@ -361,6 +364,21 @@ export type Database = {
       circle_memory_bytes: {
         Args: { target: string };
         Returns: number;
+      };
+      consume_auth_attempt: {
+        Args: {
+          attempt_bucket: string;
+          attempt_limit: number;
+          attempt_window: number;
+        };
+        Returns: boolean;
+      };
+      security_audit_gaps: {
+        Args: Record<string, never>;
+        Returns: {
+          kind: string;
+          object_name: string;
+        }[];
       };
     };
   };

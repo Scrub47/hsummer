@@ -1,17 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { createClient } from "@/lib/supabase/client";
-import { getSupabaseBrowserConfig } from "@/lib/env";
-
-function callbackUrl(nextPath: string | undefined): string {
-  const callback = new URL("/auth/callback", window.location.origin);
-  if (nextPath && nextPath !== "/home") {
-    callback.searchParams.set("next", nextPath);
-  }
-  return callback.toString();
-}
+import { requestMagicLink, startGoogleSignIn } from "@/app/sign-in/actions";
+import { getSupabaseBrowserConfig, getTurnstileSiteKey } from "@/lib/env";
 
 const ERROR_COPY: Record<string, string> = {
   "not-configured":
@@ -34,8 +26,46 @@ export function SignInForm({
     errorCode ? "error" : "ok",
   );
   const [pending, setPending] = useState<"google" | "email" | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileRef = useRef<HTMLDivElement>(null);
+  const turnstileSiteKey = getTurnstileSiteKey();
 
   const configured = getSupabaseBrowserConfig() !== null;
+
+  useEffect(() => {
+    const sitekey = turnstileSiteKey;
+    if (!sitekey || !turnstileRef.current) return;
+    const key = sitekey;
+    const container = turnstileRef.current;
+    let widgetId = "";
+    let cancelled = false;
+
+    function render() {
+      if (cancelled || !container || !window.turnstile) return;
+      widgetId = window.turnstile.render(container, {
+        sitekey: key,
+        callback: (token) => setCaptchaToken(token),
+        "expired-callback": () => setCaptchaToken(null),
+        "error-callback": () => setCaptchaToken(null),
+      });
+    }
+
+    if (window.turnstile) {
+      render();
+    } else {
+      const script = document.createElement("script");
+      script.src =
+        "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      script.async = true;
+      script.onload = render;
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      cancelled = true;
+      if (widgetId && window.turnstile) window.turnstile.remove(widgetId);
+    };
+  }, [turnstileSiteKey]);
 
   async function signInWithGoogle() {
     setMessage(null);
@@ -45,23 +75,28 @@ export function SignInForm({
       return;
     }
 
-    const supabase = createClient();
-    if (!supabase) return;
+    if (turnstileSiteKey && !captchaToken) {
+      setMessageTone("error");
+      setMessage("Complete the check, then try again.");
+      return;
+    }
 
     setPending("google");
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: callbackUrl(nextPath),
-      },
+    const result = await startGoogleSignIn({
+      nextPath,
+      captchaToken: captchaToken ?? undefined,
     });
-    setPending(null);
-    if (error) {
+    if (!result.ok) {
+      setPending(null);
       setMessageTone("error");
-      setMessage(
-        "Google sign-in didn't start. Check that the Google provider is enabled.",
-      );
+      setMessage(result.error);
+      return;
     }
+    if (result.kind !== "google") {
+      setPending(null);
+      return;
+    }
+    window.location.assign(result.url);
   }
 
   async function signInWithEmail(event: React.FormEvent<HTMLFormElement>) {
@@ -73,26 +108,24 @@ export function SignInForm({
       return;
     }
 
-    const supabase = createClient();
-    if (!supabase) return;
+    if (turnstileSiteKey && !captchaToken) {
+      setMessageTone("error");
+      setMessage("Complete the check, then try again.");
+      return;
+    }
 
     setPending("email");
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: {
-        emailRedirectTo: callbackUrl(nextPath),
-        data: {
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        },
-      },
+    const result = await requestMagicLink({
+      email,
+      nextPath,
+      captchaToken: captchaToken ?? undefined,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
     setPending(null);
 
-    if (error) {
+    if (!result.ok) {
       setMessageTone("error");
-      setMessage(
-        "The magic link couldn't be sent. Check the email address and try again.",
-      );
+      setMessage(result.error);
       return;
     }
 
@@ -129,6 +162,10 @@ export function SignInForm({
         {pending === "google" ? "Redirecting…" : "Continue with Google"}
       </button>
 
+      {turnstileSiteKey ? (
+        <div ref={turnstileRef} className="min-h-16" />
+      ) : null}
+
       <form onSubmit={signInWithEmail} className="flex flex-col gap-3">
         <label htmlFor="email" className="text-sm font-medium">
           Email
@@ -154,4 +191,21 @@ export function SignInForm({
       </form>
     </div>
   );
+}
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        container: HTMLElement,
+        options: {
+          sitekey: string;
+          callback: (token: string) => void;
+          "expired-callback": () => void;
+          "error-callback": () => void;
+        },
+      ) => string;
+      remove: (widgetId: string) => void;
+    };
+  }
 }

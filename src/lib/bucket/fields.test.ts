@@ -53,6 +53,9 @@ describe("bucket list fields", () => {
     expect(parsePlannedDate("2026-02-31")).toMatchObject({ ok: false });
     expect(parsePlannedDate("12/01/2026")).toMatchObject({ ok: false });
     expect(parseBucketLink("javascript:alert(1)")).toMatchObject({ ok: false });
+    expect(parseBucketLink("https://user:secret@example.com/a")).toMatchObject({
+      ok: false,
+    });
     expect(parseBucketLink("https://example.com/a b")).toMatchObject({
       ok: false,
     });

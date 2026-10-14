@@ -7,6 +7,8 @@
  * in Upstash first.
  */
 
+import { z } from "zod";
+
 import { isCircleId } from "@/lib/bucket/fields";
 
 export const MEMORIES_BUCKET = "memories";
@@ -126,6 +128,8 @@ export function parseTags(value: unknown): Parsed<string[]> {
   return { ok: true, value: tags };
 }
 
+const memoryVisibilitySchema = z.enum(["circle", "selected"]);
+
 export function parseMemoryForm(input: {
   body: unknown;
   tags: unknown;
@@ -140,9 +144,8 @@ export function parseMemoryForm(input: {
   const occurredOn = parseOccurredOn(input.occurredOn, input.now);
   if (!occurredOn.ok) return occurredOn;
 
-  const visibility =
-    typeof input.visibility === "string" ? input.visibility : "";
-  if (!isMemoryVisibility(visibility)) {
+  const visibility = memoryVisibilitySchema.safeParse(input.visibility);
+  if (!visibility.success) {
     return { ok: false, error: VISIBILITY_ERROR };
   }
 
@@ -171,8 +174,8 @@ export function parseMemoryForm(input: {
         body: text,
         photo: null,
         tags: tags.value,
-        visibility,
-        viewerIds: visibility === "selected" ? viewerIds : [],
+        visibility: visibility.data,
+        viewerIds: visibility.data === "selected" ? viewerIds : [],
         occurredOn: occurredOn.value,
       },
     };
@@ -189,8 +192,8 @@ export function parseMemoryForm(input: {
       body: text,
       photo: input.photo,
       tags: tags.value,
-      visibility,
-      viewerIds: visibility === "selected" ? viewerIds : [],
+      visibility: visibility.data,
+      viewerIds: visibility.data === "selected" ? viewerIds : [],
       occurredOn: occurredOn.value,
     },
   };

@@ -6,6 +6,8 @@
  * ideas; idea, then planned, then done.
  */
 
+import { z } from "zod";
+
 export const BUCKET_CATEGORIES = [
   { value: "restaurant", label: "Restaurants" },
   { value: "movie", label: "Movies" },
@@ -118,8 +120,9 @@ export function parsePlannedDate(value: unknown): Parsed<string | null> {
 
 export function parseBucketLink(value: unknown): Parsed<string | null> {
   if (value === null || value === undefined) return { ok: true, value: null };
-  if (typeof value !== "string") return { ok: false, error: LINK_ERROR };
-  const link = value.trim();
+  const parsed = z.string().safeParse(value);
+  if (!parsed.success) return { ok: false, error: LINK_ERROR };
+  const link = parsed.data.trim();
   if (link.length === 0) return { ok: true, value: null };
   if (link.length > BUCKET_LINK_MAX || /\s/.test(link)) {
     return { ok: false, error: LINK_ERROR };
@@ -127,6 +130,9 @@ export function parseBucketLink(value: unknown): Parsed<string | null> {
   try {
     const url = new URL(link);
     if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return { ok: false, error: LINK_ERROR };
+    }
+    if (url.username || url.password) {
       return { ok: false, error: LINK_ERROR };
     }
   } catch {
