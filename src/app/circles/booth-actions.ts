@@ -172,4 +172,3 @@ async function discardStrip(
     await session.supabase.storage.from(MEMORIES_BUCKET).remove([...removable]);
   }
 }
-
