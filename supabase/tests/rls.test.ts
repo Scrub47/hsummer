@@ -3189,11 +3189,12 @@ describe("a pass booth stays between its two people until the strip is finished"
       .createSignedUrl(paths[0] ?? "", 60);
     expect(signed.data?.signedUrl).toBeTruthy();
 
-    const wrongFrame = await partner.storage.from("memories").upload(
-      paths[0] ?? "",
-      jpeg,
-      { contentType: "image/jpeg", upsert: false },
-    );
+    const wrongFrame = await partner.storage
+      .from("memories")
+      .upload(paths[0] ?? "", jpeg, {
+        contentType: "image/jpeg",
+        upsert: false,
+      });
     expect(wrongFrame.error).not.toBeNull();
 
     const thirdSubmit = await third.rpc("submit_pass_shots", {

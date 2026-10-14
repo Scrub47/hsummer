@@ -66,7 +66,9 @@ export function PassBooth({
   turns: PassTurn[];
   unavailable: boolean;
 }) {
-  const yours = turns.find((turn) => turn.waitingOnYou && turn.status === "open");
+  const yours = turns.find(
+    (turn) => turn.waitingOnYou && turn.status === "open",
+  );
   const waiting = turns.filter(
     (turn) => turn.status === "open" && !turn.waitingOnYou,
   );
@@ -80,11 +82,11 @@ export function PassBooth({
         frame is in. It closes after 7 days if it is still open.
       </p>
       {unavailable ? (
-        <p className="text-sm leading-6 text-foreground/70">{PASS_UNAVAILABLE}</p>
+        <p className="text-sm leading-6 text-foreground/70">
+          {PASS_UNAVAILABLE}
+        </p>
       ) : null}
-      {yours ? (
-        <TurnShoot circleId={circleId} turn={yours} />
-      ) : null}
+      {yours ? <TurnShoot circleId={circleId} turn={yours} /> : null}
       {waiting.map((turn) => (
         <WaitingCard key={turn.sessionId} circleId={circleId} turn={turn} />
       ))}
@@ -111,13 +113,7 @@ export function PassBooth({
   );
 }
 
-function WaitingCard({
-  circleId,
-  turn,
-}: {
-  circleId: string;
-  turn: PassTurn;
-}) {
+function WaitingCard({ circleId, turn }: { circleId: string; turn: PassTurn }) {
   const [state, formAction, pending] = useActionState(
     cancelPassBooth,
     initialState,
@@ -397,7 +393,9 @@ function Capture({
     setError(null);
     if (list.length !== needed) {
       setError(
-        needed === 1 ? "This turn needs 1 photo." : `This turn needs ${needed} photos.`,
+        needed === 1
+          ? "This turn needs 1 photo."
+          : `This turn needs ${needed} photos.`,
       );
       return;
     }
@@ -543,7 +541,10 @@ function Capture({
             Use the camera
           </button>
           <div className="flex flex-col gap-2">
-            <label htmlFor={`pass-library-${hidden.sessionId ?? "start"}`} className="text-sm font-medium">
+            <label
+              htmlFor={`pass-library-${hidden.sessionId ?? "start"}`}
+              className="text-sm font-medium"
+            >
               Photos for your frames
             </label>
             <input

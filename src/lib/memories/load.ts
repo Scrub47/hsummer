@@ -305,7 +305,10 @@ async function loadBooths(
     if (!isBoothTheme(row.theme) || !isBoothLayout(row.frame_layout)) continue;
     const people = (contributors.data ?? [])
       .filter((contributor) => contributor.session_id === row.id)
-      .sort((a, b) => minPosition(a.assigned_positions) - minPosition(b.assigned_positions));
+      .sort(
+        (a, b) =>
+          minPosition(a.assigned_positions) - minPosition(b.assigned_positions),
+      );
     const shared = uniformFilter(people.map((person) => person.filter_id));
     const frames = (shots.data ?? [])
       .filter((shot) => shot.session_id === row.id)

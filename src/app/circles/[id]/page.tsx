@@ -65,16 +65,16 @@ export default async function CirclePage({
   }
   const [pings, bucket, moods, memories, letters, stillUs, pass] =
     await Promise.all([
-    showThinkingOfYou
-      ? loadRecentPings(session, circle.id, names, zone)
-      : Promise.resolve([]),
-    loadBucketItems(session, circle.id, names),
-    loadCurrentMoods(session, circle.id, zone),
-    loadMemories(session, circle.id, names),
-    loadLetters(session, circle.id, names),
-    loadStillUs(session, circle.id, zone),
-    loadPassBooth(session, circle.id, names, zone),
-  ]);
+      showThinkingOfYou
+        ? loadRecentPings(session, circle.id, names, zone)
+        : Promise.resolve([]),
+      loadBucketItems(session, circle.id, names),
+      loadCurrentMoods(session, circle.id, zone),
+      loadMemories(session, circle.id, names),
+      loadLetters(session, circle.id, names),
+      loadStillUs(session, circle.id, zone),
+      loadPassBooth(session, circle.id, names, zone),
+    ]);
   const yourTurn =
     pass.ok &&
     pass.turns.some((turn) => turn.waitingOnYou && turn.status === "open");
@@ -115,8 +115,8 @@ export default async function CirclePage({
               This circle is waiting for one more person. Share the invite link.
               You can set a mood, set the Still Us date, open the photo booth,
               add to the memory wall, and start the bucket list now. Letters,
-              Thinking of You, and Pass the booth stay closed until you both
-              are here.
+              Thinking of You, and Pass the booth stay closed until you both are
+              here.
             </p>
           ) : (
             <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
@@ -189,8 +189,8 @@ export default async function CirclePage({
           <h2 className="font-serif text-3xl tracking-tight">Photo booth</h2>
           <p className="max-w-xl text-sm leading-6 text-foreground/80">
             Take a strip on this phone, or pass one back and forth. Nothing is
-            saved while you shoot alone. A passed booth is saved for everyone
-            in the circle once the last frame is in.
+            saved while you shoot alone. A passed booth is saved for everyone in
+            the circle once the last frame is in.
           </p>
           {yourTurn ? (
             <p className="text-sm font-medium text-pine">

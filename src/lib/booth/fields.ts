@@ -70,8 +70,7 @@ export const PASS_EXPIRED = "That booth expired before it was finished.";
 export const PASS_CANCELLED = "That booth was cancelled.";
 export const PASS_WAITING =
   "Passed on. They'll get a notification to take their frames.";
-export const PASS_FINISHED =
-  "The strip is on the memory wall for both of you.";
+export const PASS_FINISHED = "The strip is on the memory wall for both of you.";
 
 export type PassFrame = {
   position: number;
