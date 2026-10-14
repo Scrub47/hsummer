@@ -5,7 +5,6 @@ import {
   useEffect,
   useRef,
   useState,
-  useTransition,
   type ReactNode,
 } from "react";
 import Link from "next/link";
@@ -412,7 +411,6 @@ function Review({
     saveSoloBooth,
     initialState,
   );
-  const [, startSaving] = useTransition();
   const bundle = themeBundle(theme);
 
   return (
@@ -451,18 +449,14 @@ function Review({
       </div>
       <form
         className="flex flex-col gap-4 rounded-3xl border border-line bg-card p-5"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const data = new FormData(event.currentTarget);
+        action={(formData) => {
           shots.forEach((blob, index) => {
-            data.append(
+            formData.append(
               "shot",
               new File([blob], `shot-${index}.jpg`, { type: "image/jpeg" }),
             );
           });
-          startSaving(() => {
-            formAction(data);
-          });
+          formAction(formData);
         }}
       >
         <input type="hidden" name="circleId" value={circleId} />
