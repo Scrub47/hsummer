@@ -56,7 +56,7 @@ export function PushPanel() {
         return;
       }
 
-      const registration = await navigator.serviceWorker.ready;
+      const registration = await readyWithin(navigator.serviceWorker.ready);
       const existing = await registration.pushManager.getSubscription();
       const subscription =
         existing ??
@@ -84,7 +84,7 @@ export function PushPanel() {
     } catch {
       setStatus({
         tone: "error",
-        text: "Couldn't subscribe this device. On iPhone, install Hsummer to the Home Screen first.",
+        text: "Couldn't subscribe this device. On iPhone, open Hsummer from the Home Screen icon, then try again.",
       });
     } finally {
       setPending(null);
@@ -139,7 +139,7 @@ export function PushPanel() {
     if (!("serviceWorker" in navigator)) return;
     setPending("disable");
     try {
-      const registration = await navigator.serviceWorker.ready;
+      const registration = await readyWithin(navigator.serviceWorker.ready);
       const subscription = await registration.pushManager.getSubscription();
       if (!subscription) {
         setStatus({ tone: "ok", text: "This device was not subscribed." });
@@ -210,6 +210,26 @@ export function PushPanel() {
       ) : null}
     </section>
   );
+}
+
+/** `serviceWorker.ready` never settles when registration failed. */
+function readyWithin(pending: Promise<ServiceWorkerRegistration>) {
+  return new Promise<ServiceWorkerRegistration>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error("service_worker_timeout")),
+      10_000,
+    );
+    pending.then(
+      (registration) => {
+        clearTimeout(timer);
+        resolve(registration);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 /**

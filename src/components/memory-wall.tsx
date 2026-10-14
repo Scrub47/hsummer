@@ -15,11 +15,14 @@ import {
   deleteMemory,
   type MemoryActionState,
 } from "@/app/circles/memory-actions";
+import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
 import { useCircleLive } from "@/components/use-circle-live";
 import {
+  CAPTION_ERROR,
   MEMORY_CAPTION_MAX,
   MEMORY_NOTE_MAX,
   MEMORY_QUOTA_BYTES,
+  MEMORY_SIGNED_URL_SECONDS,
   formatMemoryUsage,
 } from "@/lib/memories/fields";
 import {
@@ -61,9 +64,14 @@ export function MemoryWall({
   const [tag, setTag] = useState<string | null>(null);
   const tags = memoryTagList(memories);
   const months = groupMemories(memories, tag);
+  const hasPhoto = memories.some((memory) => memory.photoUrl);
 
   return (
     <section aria-labelledby="memory-heading" className="flex flex-col gap-6">
+      <RefreshSignedUrls
+        enabled={hasPhoto}
+        seconds={MEMORY_SIGNED_URL_SECONDS}
+      />
       <div>
         <h2 id="memory-heading" className="font-serif text-3xl tracking-tight">
           Memory wall
@@ -174,6 +182,16 @@ function AddMemoryForm({
         startPreparing(async () => {
           const data = new FormData(form);
           const photo = data.get("photo");
+          const note = data.get("body");
+          if (
+            photo instanceof File &&
+            photo.size > 0 &&
+            typeof note === "string" &&
+            [...note.trim()].length > MEMORY_CAPTION_MAX
+          ) {
+            setLocalError(CAPTION_ERROR);
+            return;
+          }
           if (photo instanceof File && photo.size > 0) {
             const prepared = await prepareMemoryPhoto(photo);
             if (!prepared.ok) {
@@ -313,11 +331,13 @@ function MemoryCardView({
   circleId: string;
   memory: MemoryCard;
 }) {
+  const router = useRouter();
   const [state, formAction, pending] = useActionState(
     deleteMemory,
     initialState,
   );
   const label = memory.body?.trim() || "this photo";
+  const refreshedUrl = useRef<string | null>(null);
 
   return (
     <li className="flex flex-col gap-3 rounded-3xl border border-line bg-card p-5">
@@ -333,6 +353,13 @@ function MemoryCardView({
           alt={memory.body?.trim() || `Photo from ${memory.author}`}
           referrerPolicy="no-referrer"
           className="max-h-96 w-full rounded-2xl object-cover"
+          onError={() => {
+            if (!memory.photoUrl || refreshedUrl.current === memory.photoUrl) {
+              return;
+            }
+            refreshedUrl.current = memory.photoUrl;
+            router.refresh();
+          }}
         />
       ) : null}
       {memory.body ? (

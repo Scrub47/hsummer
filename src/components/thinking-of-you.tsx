@@ -94,7 +94,12 @@ export function ThinkingOfYou({
           }
           void send(false);
         }}
-        onPointerDown={() => {
+        onPointerDown={(event) => {
+          try {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          } catch {
+            // A mouse that has already left cannot be captured.
+          }
           clearTimer();
           longPressSent.current = false;
           timer.current = setTimeout(() => {
@@ -103,10 +108,9 @@ export function ThinkingOfYou({
           }, LONG_PRESS_MS);
         }}
         onPointerUp={clearTimer}
-        onPointerLeave={clearTimer}
         onPointerCancel={clearTimer}
         onContextMenu={(event) => event.preventDefault()}
-        className="inline-flex h-16 w-full items-center justify-center rounded-full bg-accent px-6 font-serif text-2xl text-accent-ink select-none disabled:opacity-60"
+        className="inline-flex h-16 w-full touch-manipulation items-center justify-center rounded-full bg-accent px-6 font-serif text-2xl text-accent-ink select-none disabled:opacity-60"
         style={{ WebkitTouchCallout: "none" }}
       >
         {pending ? "Sending…" : "Thinking of You"}

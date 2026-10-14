@@ -9,6 +9,7 @@ import {
   newAvatarObjectPath,
   profileEditFromForm,
 } from "@/lib/profile/fields";
+import { avatarForStorage } from "@/lib/profile/stored-avatar";
 import { getSession } from "@/lib/supabase/session";
 
 export type ProfileFormState = {
@@ -65,7 +66,9 @@ export async function updateProfile(
   if (edit.value.avatar === "remove") {
     nextPath = null;
   } else if (edit.value.avatar !== "keep") {
-    const image = edit.value.avatar;
+    const stored = avatarForStorage(edit.value.avatar);
+    if (!stored.ok) return { error: stored.error, savedAt: null };
+    const image = stored.value;
     uploadedPath = newAvatarObjectPath(session.userId, image.extension);
     const bytes = new ArrayBuffer(image.bytes.byteLength);
     new Uint8Array(bytes).set(image.bytes);

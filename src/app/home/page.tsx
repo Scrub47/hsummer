@@ -4,9 +4,11 @@ import { redirect } from "next/navigation";
 
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { PushPanel } from "@/components/push-panel";
+import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
 import { SignedInHeader } from "@/components/signed-in-header";
 import { loadCircle, loadCircles } from "@/lib/circles/load";
 import { loadCurrentMoods } from "@/lib/moods/load";
+import { AVATAR_SIGNED_URL_SECONDS } from "@/lib/profile/fields";
 import { loadOwnProfile } from "@/lib/profile/load";
 import { getSession } from "@/lib/supabase/session";
 
@@ -37,8 +39,16 @@ export default async function HomePage() {
   const moodCircle = homeMoods?.[0] ?? null;
   const moodRows = homeMoods?.[1].ok ? homeMoods[1].moods : null;
 
+  const avatarLinks =
+    Boolean(profile?.avatarUrl) ||
+    Boolean(moodCircle?.members.some((member) => member.avatarUrl));
+
   return (
     <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-6 py-10">
+      <RefreshSignedUrls
+        enabled={avatarLinks}
+        seconds={AVATAR_SIGNED_URL_SECONDS}
+      />
       <SignedInHeader current="home" />
       <main className="flex flex-1 flex-col gap-10 py-16">
         <div>
