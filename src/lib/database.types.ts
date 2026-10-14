@@ -2,8 +2,8 @@
  * Hand-written slice of the generated Supabase types.
  *
  * Profiles, account settings, circles, invites, pings, the bucket list,
- * current moods, and push subscriptions live here. When the schema grows,
- * replace this file with
+ * current moods, the memory wall, and push subscriptions live here. When the
+ * schema grows, replace this file with
  * `supabase gen types typescript`. `circle_invites.token_hash` is omitted:
  * authenticated clients are not granted that column. Pings have no client
  * update or delete grant; the Update shape is only what a test may attempt.
@@ -237,6 +237,67 @@ export type Database = {
         };
         Relationships: [];
       };
+      memories: {
+        Row: {
+          id: string;
+          circle_id: string;
+          created_by: string | null;
+          kind: "photo" | "note";
+          body: string | null;
+          photo_path: string | null;
+          photo_bytes: number;
+          tags: string[];
+          visibility: "circle" | "selected";
+          occurred_on: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          circle_id: string;
+          created_by?: string | null;
+          kind: "photo" | "note";
+          body?: string | null;
+          photo_path?: string | null;
+          photo_bytes?: number;
+          tags?: string[];
+          visibility?: "circle" | "selected";
+          occurred_on?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          body?: string | null;
+          tags?: string[];
+          visibility?: "circle" | "selected";
+          occurred_on?: string;
+          circle_id?: string;
+          kind?: "photo" | "note";
+          photo_path?: string | null;
+          photo_bytes?: number;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      memory_viewers: {
+        Row: {
+          memory_id: string;
+          circle_id: string;
+          user_id: string;
+        };
+        Insert: {
+          memory_id: string;
+          circle_id: string;
+          user_id: string;
+        };
+        Update: {
+          memory_id?: string;
+          circle_id?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       push_subscriptions: {
         Row: {
           id: string;
@@ -296,6 +357,10 @@ export type Database = {
           token: string;
           expires_at: string;
         }[];
+      };
+      circle_memory_bytes: {
+        Args: { target: string };
+        Returns: number;
       };
     };
   };

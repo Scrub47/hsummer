@@ -1562,6 +1562,413 @@ describe("the backups bucket stays private", () => {
   });
 });
 
+describe("the memory wall stays inside its visibility", () => {
+  let author: Client;
+  let partner: Client;
+  let third: Client;
+  let outsider: Client;
+  let leaver: Client;
+  let authorId = "";
+  let partnerId = "";
+  let thirdId = "";
+  let leaverId = "";
+  let circleId = "";
+
+  beforeAll(async () => {
+    const nonce = crypto.randomUUID();
+    authorId = await createUser(admin, {
+      email: `rls-memory-author-${nonce}@example.com`,
+      displayName: "Memory Author",
+      timezone: "America/Los_Angeles",
+    });
+    partnerId = await createUser(admin, {
+      email: `rls-memory-partner-${nonce}@example.com`,
+      displayName: "Memory Partner",
+      timezone: "America/Los_Angeles",
+    });
+    thirdId = await createUser(admin, {
+      email: `rls-memory-third-${nonce}@example.com`,
+      displayName: "Memory Third",
+      timezone: "UTC",
+    });
+    leaverId = await createUser(admin, {
+      email: `rls-memory-leaver-${nonce}@example.com`,
+      displayName: "Memory Leaver",
+      timezone: "UTC",
+    });
+    await createUser(admin, {
+      email: `rls-memory-out-${nonce}@example.com`,
+      displayName: "Memory Outsider",
+      timezone: "UTC",
+    });
+    author = (
+      await signIn(apiUrl, anonKey, `rls-memory-author-${nonce}@example.com`)
+    ).client;
+    partner = (
+      await signIn(apiUrl, anonKey, `rls-memory-partner-${nonce}@example.com`)
+    ).client;
+    third = (
+      await signIn(apiUrl, anonKey, `rls-memory-third-${nonce}@example.com`)
+    ).client;
+    outsider = (
+      await signIn(apiUrl, anonKey, `rls-memory-out-${nonce}@example.com`)
+    ).client;
+    leaver = (
+      await signIn(apiUrl, anonKey, `rls-memory-leaver-${nonce}@example.com`)
+    ).client;
+
+    const created = await rpc(author, "create_circle", {
+      circle_name: "Memory group",
+      circle_type: "group",
+    });
+    circleId = created.circle_id as string;
+    const token = created.token as string;
+    for (const member of [partner, third, leaver]) {
+      const joined = await rpc(member, "redeem_invite", {
+        raw_token: token,
+        ip_hash: freshIp(),
+      });
+      expect(joined.invite_state).toBe("joined");
+    }
+  });
+
+  it("lets members read a circle memory and hides it from an outsider", async () => {
+    const inserted = await author
+      .from("memories")
+      .insert({
+        circle_id: circleId,
+        kind: "note",
+        body: "The ferry was late",
+        visibility: "circle",
+        occurred_on: utcDay(0),
+        tags: ["Summer", "ferry"],
+      })
+      .select("id, created_by, tags, body")
+      .single();
+    expect(inserted.error).toBeNull();
+    expect(inserted.data?.created_by).toBe(authorId);
+    expect([...(inserted.data?.tags ?? [])].sort()).toEqual([
+      "ferry",
+      "summer",
+    ]);
+    expect(inserted.data).not.toHaveProperty("email");
+
+    const seen = await partner
+      .from("memories")
+      .select("id, body")
+      .eq("id", inserted.data!.id);
+    expect(seen.data).toEqual([
+      { id: inserted.data!.id, body: "The ferry was late" },
+    ]);
+
+    const also = await third
+      .from("memories")
+      .select("id")
+      .eq("id", inserted.data!.id);
+    expect(also.data).toHaveLength(1);
+
+    const hidden = await outsider
+      .from("memories")
+      .select("id")
+      .eq("circle_id", circleId);
+    expect(hidden.error).toBeNull();
+    expect(hidden.data).toEqual([]);
+
+    const edited = await partner
+      .from("memories")
+      .update({ body: "Stolen" })
+      .eq("id", inserted.data!.id)
+      .select("id");
+    expect(edited.error).toBeNull();
+    expect(edited.data).toEqual([]);
+
+    const removed = await partner
+      .from("memories")
+      .delete()
+      .eq("id", inserted.data!.id)
+      .select("id");
+    expect(removed.data).toEqual([]);
+  });
+
+  it("shows a selected memory only to the author and the people they picked", async () => {
+    const inserted = await author
+      .from("memories")
+      .insert({
+        circle_id: circleId,
+        kind: "note",
+        body: "Just us",
+        visibility: "selected",
+        occurred_on: utcDay(0),
+      })
+      .select("id")
+      .single();
+    expect(inserted.error).toBeNull();
+    const memoryId = inserted.data!.id;
+
+    const self = await author.from("memory_viewers").insert({
+      memory_id: memoryId,
+      circle_id: circleId,
+      user_id: authorId,
+    });
+    expect(self.error).toBeTruthy();
+
+    const listed = await author.from("memory_viewers").insert({
+      memory_id: memoryId,
+      circle_id: circleId,
+      user_id: partnerId,
+    });
+    expect(listed.error).toBeNull();
+
+    const partnerSees = await partner
+      .from("memories")
+      .select("body")
+      .eq("id", memoryId);
+    expect(partnerSees.data).toEqual([{ body: "Just us" }]);
+
+    const thirdSees = await third
+      .from("memories")
+      .select("id")
+      .eq("id", memoryId);
+    expect(thirdSees.data).toEqual([]);
+
+    const list = await partner
+      .from("memory_viewers")
+      .select("user_id")
+      .eq("memory_id", memoryId);
+    expect(list.data).toEqual([{ user_id: partnerId }]);
+
+    const authorList = await author
+      .from("memory_viewers")
+      .select("user_id")
+      .eq("memory_id", memoryId);
+    expect(authorList.data).toEqual([{ user_id: partnerId }]);
+
+    const planted = await partner.from("memory_viewers").insert({
+      memory_id: memoryId,
+      circle_id: circleId,
+      user_id: thirdId,
+    });
+    expect(planted.error).toBeTruthy();
+  });
+
+  it("serves a photo with a signed URL that stops working, and not a public one", async () => {
+    const memoryId = crypto.randomUUID();
+    const objectPath = `${circleId}/${memoryId}.png`;
+    const inserted = await author
+      .from("memories")
+      .insert({
+        id: memoryId,
+        circle_id: circleId,
+        kind: "photo",
+        photo_path: objectPath,
+        photo_bytes: png.byteLength,
+        visibility: "circle",
+        occurred_on: utcDay(0),
+        body: "Pixel",
+      })
+      .select("id")
+      .single();
+    expect(inserted.error).toBeNull();
+
+    const uploaded = await author.storage
+      .from("memories")
+      .upload(objectPath, png, { contentType: "image/png", upsert: false });
+    expect(uploaded.error).toBeNull();
+
+    const orphan = await author.storage
+      .from("memories")
+      .upload(`${circleId}/${crypto.randomUUID()}.png`, png, {
+        contentType: "image/png",
+      });
+    expect(orphan.error).toBeTruthy();
+
+    const planted = await partner.storage
+      .from("memories")
+      .upload(objectPath, png, { contentType: "image/png", upsert: true });
+    expect(planted.error).toBeTruthy();
+
+    const signed = await partner.storage
+      .from("memories")
+      .createSignedUrl(objectPath, 60);
+    expect(signed.error).toBeNull();
+    expect(signed.data?.signedUrl).toBeTruthy();
+    const downloaded = await fetch(signed.data!.signedUrl);
+    expect(downloaded.status).toBe(200);
+
+    const outsiderSigned = await outsider.storage
+      .from("memories")
+      .createSignedUrl(objectPath, 60);
+    expect(outsiderSigned.data?.signedUrl ?? null).toBeNull();
+
+    const pub = await fetch(
+      `${apiUrl}/storage/v1/object/public/memories/${objectPath}`,
+    );
+    expect(pub.ok).toBe(false);
+
+    const brief = await author.storage
+      .from("memories")
+      .createSignedUrl(objectPath, 2);
+    expect(brief.data?.signedUrl).toBeTruthy();
+    const fresh = await fetch(brief.data!.signedUrl);
+    expect(fresh.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 8000));
+    const stale = await fetch(brief.data!.signedUrl);
+    expect(stale.ok).toBe(false);
+
+    const removed = await author
+      .from("memories")
+      .delete()
+      .eq("id", memoryId)
+      .select("id");
+    expect(removed.error).toBeNull();
+    expect(removed.data).toHaveLength(1);
+    const after = await partner.storage
+      .from("memories")
+      .createSignedUrl(objectPath, 60);
+    expect(after.data?.signedUrl ?? null).toBeNull();
+    const leftover = await admin.storage.from("memories").download(objectPath);
+    expect(leftover.data).toBeNull();
+    expect(leftover.error).toBeTruthy();
+  });
+
+  it("drops a member who leaves and still allows a note when photo space is full", async () => {
+    const before = await leaver
+      .from("memories")
+      .select("id")
+      .eq("circle_id", circleId);
+    expect(before.error).toBeNull();
+    expect((before.data ?? []).length).toBeGreaterThan(0);
+
+    const goodbye = await leaver
+      .from("circle_members")
+      .update({ left_at: new Date().toISOString() })
+      .eq("circle_id", circleId)
+      .eq("user_id", leaverId);
+    expect(goodbye.error).toBeNull();
+
+    const hidden = await leaver
+      .from("memories")
+      .select("id")
+      .eq("circle_id", circleId);
+    expect(hidden.data).toEqual([]);
+
+    const again = await leaver.from("memories").insert({
+      circle_id: circleId,
+      kind: "note",
+      body: "After leaving",
+      occurred_on: utcDay(0),
+    });
+    expect(again.error).toBeTruthy();
+  });
+
+  it("stops the 11th memory inside 10 minutes", async () => {
+    const nonce = crypto.randomUUID();
+    const limiterId = await createUser(admin, {
+      email: `rls-memory-limit-${nonce}@example.com`,
+      displayName: "Memory Limit",
+      timezone: "UTC",
+    });
+    const limiter = (
+      await signIn(apiUrl, anonKey, `rls-memory-limit-${nonce}@example.com`)
+    ).client;
+    const created = await rpc(limiter, "create_circle", {
+      circle_name: "Limit wall",
+      circle_type: "group",
+    });
+    const limitedCircle = created.circle_id as string;
+    expect(limiterId).toBeTruthy();
+
+    for (let index = 0; index < 10; index += 1) {
+      const inserted = await limiter.from("memories").insert({
+        circle_id: limitedCircle,
+        kind: "note",
+        body: `Note ${index}`,
+        occurred_on: utcDay(0),
+      });
+      expect(inserted.error, `note ${index}`).toBeNull();
+    }
+
+    const blocked = await limiter.from("memories").insert({
+      circle_id: limitedCircle,
+      kind: "note",
+      body: "One too many",
+      occurred_on: utcDay(0),
+    });
+    expect(blocked.error?.message).toContain("hsummer_rate_limited");
+  });
+
+  it("refuses another photo when the circle is at 100 MB and still takes a note", async () => {
+    const nonce = crypto.randomUUID();
+    const quotaId = await createUser(admin, {
+      email: `rls-memory-quota-${nonce}@example.com`,
+      displayName: "Memory Quota",
+      timezone: "UTC",
+    });
+    const quota = (
+      await signIn(apiUrl, anonKey, `rls-memory-quota-${nonce}@example.com`)
+    ).client;
+    const created = await rpc(quota, "create_circle", {
+      circle_name: "Full wall",
+      circle_type: "group",
+    });
+    const fullCircle = created.circle_id as string;
+    const ago = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const seeded = await admin.from("memories").insert(
+      Array.from({ length: 50 }, () => {
+        const id = crypto.randomUUID();
+        return {
+          id,
+          circle_id: fullCircle,
+          created_by: quotaId,
+          kind: "photo" as const,
+          photo_path: `${fullCircle}/${id}.jpg`,
+          photo_bytes: 2 * 1024 * 1024,
+          visibility: "circle" as const,
+          occurred_on: utcDay(0),
+          created_at: ago,
+        };
+      }),
+    );
+    expect(seeded.error).toBeNull();
+
+    const photoId = crypto.randomUUID();
+    const blocked = await quota.from("memories").insert({
+      id: photoId,
+      circle_id: fullCircle,
+      kind: "photo",
+      photo_path: `${fullCircle}/${photoId}.jpg`,
+      photo_bytes: 1,
+      occurred_on: utcDay(0),
+    });
+    expect(blocked.error?.message).toContain("hsummer_storage_quota");
+
+    const note = await quota.from("memories").insert({
+      circle_id: fullCircle,
+      kind: "note",
+      body: "Still room for words",
+      occurred_on: utcDay(0),
+    });
+    expect(note.error).toBeNull();
+
+    const usage = await quota.rpc("circle_memory_bytes", {
+      target: fullCircle,
+    });
+    expect(usage.error).toBeNull();
+    expect(Number(usage.data)).toBe(100 * 1024 * 1024);
+
+    const outsiderUsage = await outsider.rpc("circle_memory_bytes", {
+      target: fullCircle,
+    });
+    expect(outsiderUsage.data).toBeNull();
+  });
+});
+
+function utcDay(daysAgo: number): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - daysAgo);
+  return date.toISOString().slice(0, 10);
+}
+
 describe("invite creation is rate limited", () => {
   it("stops the 11th new link and allows one after the window", async () => {
     const nonce = crypto.randomUUID();

@@ -69,9 +69,9 @@ export function InvitePanel({
       <h2 className="font-serif text-2xl tracking-tight">Invite link</h2>
       {status === "pending" ? (
         <p className="mt-3 text-sm leading-6 text-foreground/80">
-          Share this with your person. The bucket list and moods are already
-          open. Thinking of You stays closed until you both are here. The link
-          expires in 7 days, and a couple link works once.
+          Share this with your person. The bucket list, moods, and memory wall
+          are already open. Thinking of You stays closed until you both are
+          here. The link expires in 7 days, and a couple link works once.
         </p>
       ) : (
         <p className="mt-3 text-sm leading-6 text-foreground/80">

@@ -14,7 +14,7 @@ import { createClient } from "@/lib/supabase/client";
  */
 export function useCircleLive(
   circleId: string,
-  table: "bucket_items" | "current_moods",
+  table: "bucket_items" | "current_moods" | "memories",
   onChange: () => void,
 ): "connecting" | "live" | "off" {
   const configured =
