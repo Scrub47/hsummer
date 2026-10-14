@@ -65,8 +65,8 @@ export function CircleCreateForm() {
         />
         <p className="text-sm leading-6 text-foreground/70">
           A couple starts with you. That invite link works once. A group,
-          family, or friends link can be used until it expires, or until you
-          set a limit.
+          family, or friends link can be used until it expires, or until you set
+          a limit.
         </p>
       </div>
       {state.error ? (

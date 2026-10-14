@@ -334,7 +334,9 @@ export function boothWriteFailure(
     message?.includes("submit_together_shots") ||
     message?.includes("finish_together_booth")
   ) {
-    return message?.includes("together") ? TOGETHER_UNAVAILABLE : PASS_UNAVAILABLE;
+    return message?.includes("together")
+      ? TOGETHER_UNAVAILABLE
+      : PASS_UNAVAILABLE;
   }
   if (
     code === "42883" ||
@@ -345,7 +347,10 @@ export function boothWriteFailure(
   ) {
     return BOOTH_UNAVAILABLE;
   }
-  if (message?.includes("hsummer_booth_open") || message?.includes("hsummer_together_open")) {
+  if (
+    message?.includes("hsummer_booth_open") ||
+    message?.includes("hsummer_together_open")
+  ) {
     return message.includes("hsummer_together_open")
       ? "A live booth is already open in this circle. Finish or cancel it first."
       : PASS_OPEN_MESSAGE;

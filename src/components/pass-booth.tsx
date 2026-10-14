@@ -125,7 +125,8 @@ function WaitingCard({ circleId, turn }: { circleId: string; turn: PassTurn }) {
     <div className="flex flex-col gap-3 rounded-3xl border border-line bg-card p-5">
       <p className="font-medium">Waiting for {turn.stillWaiting}</p>
       <p className="text-sm leading-6 text-foreground/70">
-        Your frames are in. {turn.stillWaiting} still {turn.stillWaiting.includes(",") ? "have" : "has"} theirs.
+        Your frames are in. {turn.stillWaiting} still{" "}
+        {turn.stillWaiting.includes(",") ? "have" : "has"} theirs.
         {turn.expiresLabel ? ` This closes ${turn.expiresLabel}.` : ""}
       </p>
       <form action={formAction} className="flex flex-col gap-3">
@@ -246,12 +247,17 @@ function StartPass({
         </p>
         {many ? (
           <fieldset className="flex flex-col gap-2">
-            <legend className="text-sm font-medium">Who is in this booth</legend>
+            <legend className="text-sm font-medium">
+              Who is in this booth
+            </legend>
             {people.map((person) => {
               const maxOthers = layout === "4-cut" ? 3 : 1;
               const checked = selected.includes(person.userId);
               return (
-                <label key={person.userId} className="flex items-center gap-3 text-sm">
+                <label
+                  key={person.userId}
+                  className="flex items-center gap-3 text-sm"
+                >
                   <input
                     type="checkbox"
                     checked={checked}
@@ -282,23 +288,23 @@ function StartPass({
           Choose who is in this booth.
         </p>
       ) : (
-      <Capture
-        key={`${theme}-${layout}-${filter}-${selected.join(",")}`}
-        title={`Your ${positions.length} frames`}
-        detail={many ? "Then pass it on." : `Then pass it to ${partnerName}.`}
-        theme={theme}
-        layout={layout}
-        lockStyle={false}
-        positions={positions}
-        existing={[]}
-        filter={filter}
-        action={startPassBooth}
-        hidden={{ circleId, theme, layout }}
-        participants={many ? selected : undefined}
-        caption
-        submitLabel={many ? "Pass it on" : `Pass it to ${partnerName}`}
-        doneHref={null}
-      />
+        <Capture
+          key={`${theme}-${layout}-${filter}-${selected.join(",")}`}
+          title={`Your ${positions.length} frames`}
+          detail={many ? "Then pass it on." : `Then pass it to ${partnerName}.`}
+          theme={theme}
+          layout={layout}
+          lockStyle={false}
+          positions={positions}
+          existing={[]}
+          filter={filter}
+          action={startPassBooth}
+          hidden={{ circleId, theme, layout }}
+          participants={many ? selected : undefined}
+          caption
+          submitLabel={many ? "Pass it on" : `Pass it to ${partnerName}`}
+          doneHref={null}
+        />
       )}
     </div>
   );

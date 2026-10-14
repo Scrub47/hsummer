@@ -222,7 +222,9 @@ export async function setCircleMute(
   }
   if (circle.data.is_demo) {
     return {
-      error: demoWriteMessage("hsummer_demo_readonly") ?? "This demo circle is only for looking.",
+      error:
+        demoWriteMessage("hsummer_demo_readonly") ??
+        "This demo circle is only for looking.",
       saved: false,
     };
   }

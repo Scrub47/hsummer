@@ -226,7 +226,11 @@ export async function loadTogetherBooth(
   if (sessions.error || !sessions.data?.[0]) return null;
   const row = sessions.data[0];
   if (!isBoothTheme(row.theme) || !isBoothLayout(row.frame_layout)) return null;
-  if (row.status !== "open" && row.status !== "ready" && row.status !== "capturing") {
+  if (
+    row.status !== "open" &&
+    row.status !== "ready" &&
+    row.status !== "capturing"
+  ) {
     return null;
   }
 
@@ -236,7 +240,9 @@ export async function loadTogetherBooth(
     .eq("session_id", row.id);
   if (contributors.error || !contributors.data) return null;
 
-  const mine = contributors.data.find((person) => person.user_id === session.userId);
+  const mine = contributors.data.find(
+    (person) => person.user_id === session.userId,
+  );
   const positions = sortedPositions(mine?.assigned_positions);
   if (!mine || positions.length === 0) return null;
 

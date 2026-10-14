@@ -119,7 +119,10 @@ export async function deliverGroupPushes(input: {
   }
 }
 
-function isMissingWindow(message: string | undefined, code: string | undefined): boolean {
+function isMissingWindow(
+  message: string | undefined,
+  code: string | undefined,
+): boolean {
   return (
     code === "42P01" ||
     code === "PGRST205" ||

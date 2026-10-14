@@ -29,7 +29,7 @@ export function ThinkingOfYou({
   const [pending, setPending] = useState(false);
   const [status, setStatus] = useState<Status>(null);
   const [recipient, setRecipient] = useState(
-    people.length > 1 ? people[0]?.userId ?? "everyone" : "",
+    people.length > 1 ? (people[0]?.userId ?? "everyone") : "",
   );
   const inflight = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -95,8 +95,8 @@ export function ThinkingOfYou({
         people.length > 1
           ? recipient === "everyone"
             ? "everyone"
-            : (people.find((person) => person.userId === recipient)?.displayName ??
-              partnerName)
+            : (people.find((person) => person.userId === recipient)
+                ?.displayName ?? partnerName)
           : partnerName;
       setStatus({ tone: "ok", text: successText(body, label) });
       router.refresh();

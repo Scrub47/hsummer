@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 
 import { setCircleMute, type MuteState } from "@/app/circles/actions";
-import { muteStatus } from "@/lib/push/batch";
+import { currentMuteStatus } from "@/lib/push/batch";
 
 const initial: MuteState = { error: null, saved: false };
 
@@ -16,7 +16,7 @@ export function CircleMute({
   mutedUntil: string | null;
 }) {
   const [state, formAction, pending] = useActionState(setCircleMute, initial);
-  const status = muteStatus(mutedUntil, Date.now());
+  const status = currentMuteStatus(mutedUntil);
 
   return (
     <section className="flex flex-col gap-3">

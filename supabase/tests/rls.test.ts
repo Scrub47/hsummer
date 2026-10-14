@@ -3780,10 +3780,15 @@ describe("phase 4 keeps a third member out of what they were not picked for", ()
       displayName: "Phase Out",
       timezone: "UTC",
     });
-    host = (await signIn(apiUrl, anonKey, `rls-p4-host-${nonce}@example.com`)).client;
-    guest = (await signIn(apiUrl, anonKey, `rls-p4-guest-${nonce}@example.com`)).client;
-    third = (await signIn(apiUrl, anonKey, `rls-p4-third-${nonce}@example.com`)).client;
-    outsider = (await signIn(apiUrl, anonKey, `rls-p4-out-${nonce}@example.com`)).client;
+    host = (await signIn(apiUrl, anonKey, `rls-p4-host-${nonce}@example.com`))
+      .client;
+    guest = (await signIn(apiUrl, anonKey, `rls-p4-guest-${nonce}@example.com`))
+      .client;
+    third = (await signIn(apiUrl, anonKey, `rls-p4-third-${nonce}@example.com`))
+      .client;
+    outsider = (
+      await signIn(apiUrl, anonKey, `rls-p4-out-${nonce}@example.com`)
+    ).client;
     expect(outsiderId).toBeTruthy();
 
     const group = await rpc(host, "create_circle", {
@@ -3903,7 +3908,10 @@ describe("phase 4 keeps a third member out of what they were not picked for", ()
       .select("id")
       .single();
     expect(ping.error).toBeNull();
-    const seen = await third.from("pings").select("id").eq("id", ping.data?.id ?? "");
+    const seen = await third
+      .from("pings")
+      .select("id")
+      .eq("id", ping.data?.id ?? "");
     expect(seen.data?.[0]?.id).toBe(ping.data?.id);
     const outside = await outsider
       .from("pings")
@@ -3935,7 +3943,11 @@ describe("phase 4 keeps a third member out of what they were not picked for", ()
 
     const refused = await host.rpc("create_pass_booth_picked", {
       target_circle: groupId,
-      participant_ids: [hostId, guestId, "99999999-9999-4999-8999-999999999999"],
+      participant_ids: [
+        hostId,
+        guestId,
+        "99999999-9999-4999-8999-999999999999",
+      ],
       target_theme: "minimal",
       target_layout: "4-cut",
       target_filter: "none",

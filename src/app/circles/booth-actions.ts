@@ -267,7 +267,11 @@ export async function startPassBooth(
         })
       : await (async () => {
           const partner = passPartner(membership, session.userId);
-          if (!partner.ok) return { error: { message: partner.error, code: "app" }, data: null };
+          if (!partner.ok)
+            return {
+              error: { message: partner.error, code: "app" },
+              data: null,
+            };
           return session.supabase.rpc("create_pass_booth", {
             target_circle: parsed.value.circleId,
             partner_id: partner.partnerId,
@@ -968,7 +972,10 @@ function passPartner(
     if (resolved.reason === "needs_choice" || resolved.reason === "ambiguous") {
       return { ok: false, error: PASS_GROUP };
     }
-    return { ok: false, error: recipientReasonMessage(resolved.reason, "ping").error };
+    return {
+      ok: false,
+      error: recipientReasonMessage(resolved.reason, "ping").error,
+    };
   }
   if (!resolved.toUserId) return { ok: false, error: PASS_GROUP };
   return { ok: true, partnerId: resolved.toUserId };

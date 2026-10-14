@@ -16,7 +16,11 @@
 --     release_together_shots
 --   * booth_clock_samples — the offset each phone estimated
 --   * private channel policies so only that booth's people can join
---     the Realtime broadcast and presence topic
+--     the Realtime broadcast and presence topic. Those policies sit on
+--     realtime.messages, which this role can change only when it owns
+--     the table or can assume the owner. A local CI database often
+--     cannot, and then the block is skipped with a notice. The SQL
+--     editor on the hosted project applies them when it can.
 --
 -- Supabase's SQL editor may flag CREATE OR REPLACE FUNCTION. The only
 -- function replaced is private.memories_guard, appended at the bottom of
@@ -1340,12 +1344,31 @@ comment on function private.can_join_together_topic(text) is
   'True when the signed-in person is a contributor of the Live Together session named by the Realtime topic. Not granted to clients.';
 
 do $realtime$
+declare
+  owner_name name;
+  actor_name name := current_user;
 begin
   if to_regnamespace('realtime') is null
      or to_regprocedure('realtime.topic()') is null
+     or to_regclass('realtime.messages') is null
   then
     raise notice 'realtime.topic() is missing; together channel policies were skipped';
     return;
+  end if;
+
+  select pg_catalog.pg_get_userbyid(relowner)
+    into owner_name
+  from pg_catalog.pg_class
+  where oid = 'realtime.messages'::regclass;
+
+  if owner_name is not null and owner_name is distinct from actor_name then
+    begin
+      execute format('set local role %I', owner_name);
+    exception
+      when insufficient_privilege then
+        raise notice 'realtime.messages is owned by %, and this role cannot assume it; together channel policies were skipped', owner_name;
+        return;
+    end;
   end if;
 
   execute 'alter table realtime.messages enable row level security';
@@ -1371,6 +1394,10 @@ begin
       and private.can_join_together_topic(realtime.topic())
     )
   $policy$;
+
+  if owner_name is not null and owner_name is distinct from actor_name then
+    execute 'reset role';
+  end if;
 end
 $realtime$;
 

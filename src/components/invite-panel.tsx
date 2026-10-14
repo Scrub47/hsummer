@@ -17,7 +17,11 @@ import {
   COUPLE_CLOSED_MESSAGE,
   DEMO_READONLY_MESSAGE,
 } from "@/lib/account/copy";
-import { joinPath, type CircleStatus, type CircleType } from "@/lib/circles/fields";
+import {
+  joinPath,
+  type CircleStatus,
+  type CircleType,
+} from "@/lib/circles/fields";
 import { readInviteToken, writeInviteToken } from "@/lib/circles/invite-token";
 import type { CircleInviteView } from "@/lib/circles/load";
 
@@ -72,7 +76,9 @@ export function InvitePanel({
   const canRegenerate =
     !demo &&
     !closed &&
-    (circleType !== "couple" || status === "pending" || invite?.maxUses === null);
+    (circleType !== "couple" ||
+      status === "pending" ||
+      invite?.maxUses === null);
   const link =
     token && typeof window !== "undefined"
       ? `${window.location.origin}${joinPath(token)}`

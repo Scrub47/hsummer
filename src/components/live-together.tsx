@@ -41,6 +41,7 @@ import { applyFilter } from "@/lib/booth/filters";
 import { coverCrop, frameSlots, type Slot } from "@/lib/booth/layout";
 import { assignPositions } from "@/lib/booth/positions";
 import { themeBundle } from "@/lib/booth/themes";
+import { getSupabaseBrowserConfig } from "@/lib/env";
 import { createClient } from "@/lib/supabase/client";
 
 const openInitial: TogetherActionState = {
@@ -90,11 +91,7 @@ export function LiveTogether({
     );
   }
   return (
-    <OpenLobby
-      circleId={circleId}
-      people={people}
-      needsPicker={needsPicker}
-    />
+    <OpenLobby circleId={circleId} people={people} needsPicker={needsPicker} />
   );
 }
 
@@ -148,7 +145,9 @@ function OpenLobby({
             aria-pressed={layout === value}
             onClick={() => {
               setLayout(value);
-              setSelected((current) => current.slice(0, value === "4-cut" ? 3 : 1));
+              setSelected((current) =>
+                current.slice(0, value === "4-cut" ? 3 : 1),
+              );
             }}
             className={chip(layout === value)}
           >
@@ -160,7 +159,10 @@ function OpenLobby({
         <fieldset className="flex flex-col gap-2">
           <legend className="text-sm font-medium">Who is in this booth</legend>
           {people.map((person) => (
-            <label key={person.userId} className="flex items-center gap-3 text-sm">
+            <label
+              key={person.userId}
+              className="flex items-center gap-3 text-sm"
+            >
               <input
                 type="checkbox"
                 name="participant"
@@ -231,8 +233,8 @@ function Lobby({
     submitTogetherShots,
     passInitial,
   );
-  const [channel, setChannel] = useState<"connecting" | "live" | "off">(
-    "connecting",
+  const [channel, setChannel] = useState<"connecting" | "live" | "off">(() =>
+    getSupabaseBrowserConfig() ? "connecting" : "off",
   );
   const [here, setHere] = useState<string[]>([]);
   const [remoteCapture, setRemoteCapture] = useState<string | null>(null);
@@ -258,10 +260,7 @@ function Lobby({
 
   useEffect(() => {
     const supabase = createClient();
-    if (!supabase) {
-      setChannel("off");
-      return;
-    }
+    if (!supabase) return;
     let active = true;
     const topic = togetherTopic(lobby.sessionId);
     void supabase.auth.getSession().then(async ({ data }) => {
@@ -278,7 +277,8 @@ function Lobby({
       room
         .on("broadcast", { event: "lobby" }, ({ payload }) => {
           const next = payload as { captureAt?: string | null };
-          if (typeof next.captureAt === "string") setRemoteCapture(next.captureAt);
+          if (typeof next.captureAt === "string")
+            setRemoteCapture(next.captureAt);
         })
         .on("presence", { event: "sync" }, () => {
           const state = room.presenceState() as Record<
@@ -389,7 +389,8 @@ function Lobby({
       } catch (caught) {
         lastError = caught;
         const name = caught instanceof DOMException ? caught.name : "";
-        if (name === "NotAllowedError" || name === "PermissionDeniedError") break;
+        if (name === "NotAllowedError" || name === "PermissionDeniedError")
+          break;
       }
     }
     setError(cameraErrorCopy(lastError));
@@ -404,7 +405,9 @@ function Lobby({
     }
     const live = videoRef.current;
     if (!live || !slot || live.videoWidth === 0) {
-      setError("The camera isn't ready. Tap ready again, or pass the booth instead.");
+      setError(
+        "The camera isn't ready. Tap ready again, or pass the booth instead.",
+      );
       return;
     }
     shooting.current = true;
@@ -431,14 +434,18 @@ function Lobby({
     }
   }
 
-  const names = new Map(lobby.people.map((person) => [person.userId, person.displayName]));
+  const names = new Map(
+    lobby.people.map((person) => [person.userId, person.displayName]),
+  );
 
   return (
     <div className="flex flex-col gap-4">
       <p className="max-w-xl text-base leading-7 text-foreground/80">
         Tap ready when your camera is on. The photos are taken together once
         everyone is ready. This lobby closes
-        {lobby.expiresAt ? ` at ${formatWhen(lobby.expiresAt)}` : " after 10 minutes"}
+        {lobby.expiresAt
+          ? ` at ${formatWhen(lobby.expiresAt)}`
+          : " after 10 minutes"}
         .
       </p>
       <p className="text-sm text-foreground/70" role="status">
@@ -465,10 +472,7 @@ function Lobby({
       {waitingIds.length > 0 && !captureAt ? (
         <p className="text-sm text-foreground/70">
           Still waiting on{" "}
-          {waitingIds
-            .map((id) => names.get(id) ?? "someone")
-            .join(", ")}
-          .
+          {waitingIds.map((id) => names.get(id) ?? "someone").join(", ")}.
         </p>
       ) : null}
       <div className="relative overflow-hidden rounded-3xl bg-black">
@@ -497,7 +501,11 @@ function Lobby({
       ) : null}
       {!iAmReady && !captureAt ? (
         <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Your filter">
+          <div
+            className="flex flex-wrap gap-2"
+            role="group"
+            aria-label="Your filter"
+          >
             {BOOTH_FILTERS.map((value) => (
               <button
                 key={value}
@@ -610,7 +618,8 @@ function Lobby({
       ) : null}
       {!lobby.startedByMe && channel === "off" && !captureAt ? (
         <p className="text-sm text-foreground/70">
-          If this stays stuck, the person who started it can switch to Pass the booth.
+          If this stays stuck, the person who started it can switch to Pass the
+          booth.
         </p>
       ) : null}
     </div>
@@ -619,7 +628,9 @@ function Lobby({
 
 function chip(pressed: boolean): string {
   return `h-10 rounded-full border px-4 text-sm font-medium ${
-    pressed ? "border-pine bg-pine text-white" : "border-line bg-card text-foreground"
+    pressed
+      ? "border-pine bg-pine text-white"
+      : "border-line bg-card text-foreground"
   }`;
 }
 
@@ -654,7 +665,17 @@ async function frameToJpeg(
   const context = canvas.getContext("2d");
   if (!context) throw new Error("canvas");
   const crop = coverCrop(sourceWidth, sourceHeight, slot.width, slot.height);
-  context.drawImage(source, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, slot.width, slot.height);
+  context.drawImage(
+    source,
+    crop.sx,
+    crop.sy,
+    crop.sw,
+    crop.sh,
+    0,
+    0,
+    slot.width,
+    slot.height,
+  );
   if (filter !== "none") {
     const pixels = context.getImageData(0, 0, slot.width, slot.height);
     applyFilter(pixels.data, filter);

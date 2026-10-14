@@ -77,10 +77,10 @@ File: `supabase/migrations/20270215120000_group_circles_and_live_together.sql`. 
 
 Applying this file does not delete circles, letters, or photos.
 
-| Statement | Why it is there |
-| --- | --- |
-| `CREATE OR REPLACE FUNCTION private.memories_guard` | Replaces the function body so a finished Live Together strip can be saved the same way a pass strip is. It does not drop a table, column, policy, or row. Supabase may flag the replacement. |
-| `DELETE` inside `release_together_shots` | Function body only. It does not run when the file is applied. After a Live Together upload fails, it deletes that caller's own `booth_shots` rows for that session. Other people's frames stay. |
+| Statement                                           | Why it is there                                                                                                                                                                                 |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CREATE OR REPLACE FUNCTION private.memories_guard` | Replaces the function body so a finished Live Together strip can be saved the same way a pass strip is. It does not drop a table, column, policy, or row. Supabase may flag the replacement.    |
+| `DELETE` inside `release_together_shots`            | Function body only. It does not run when the file is applied. After a Live Together upload fails, it deletes that caller's own `booth_shots` rows for that session. Other people's frames stay. |
 
 `on delete cascade` appears only on the new foreign keys. Enabling RLS on `realtime.messages`, when that schema exists, does not delete messages.
 

@@ -4,7 +4,10 @@ import * as webpush from "web-push";
 
 import { getVapidConfig } from "@/lib/env.server";
 import { deliverGroupPushes } from "@/lib/push/group-delivery";
-import { buildPassNotification, buildTogetherNotification } from "@/lib/push/payload";
+import {
+  buildPassNotification,
+  buildTogetherNotification,
+} from "@/lib/push/payload";
 import { deliverTestPushes, subscriptionsToPrune } from "@/lib/push/prune";
 import { createAdminClient } from "@/lib/supabase/admin";
 

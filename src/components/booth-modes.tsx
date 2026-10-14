@@ -77,7 +77,13 @@ export function BoothModes({
         <LiveTogether
           circleId={circleId}
           canStart={canStart}
-          blocked={blocked === "pending" ? "pending" : blocked === "alone" ? "alone" : null}
+          blocked={
+            blocked === "pending"
+              ? "pending"
+              : blocked === "alone"
+                ? "alone"
+                : null
+          }
           people={people}
           needsPicker={needsPicker}
           selfId={selfId}

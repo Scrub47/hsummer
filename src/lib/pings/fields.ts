@@ -46,12 +46,14 @@ export type PartnerResolution =
     };
 
 export type RecipientRequest =
-  | { kind: "auto" }
-  | { kind: "member"; userId: string }
-  | { kind: "broadcast" };
+  { kind: "auto" } | { kind: "member"; userId: string } | { kind: "broadcast" };
 
 export type RecipientResolution =
-  | { ok: true; toUserId: string | null; mode: "partner" | "chosen" | "broadcast" }
+  | {
+      ok: true;
+      toUserId: string | null;
+      mode: "partner" | "chosen" | "broadcast";
+    }
   | {
       ok: false;
       reason:

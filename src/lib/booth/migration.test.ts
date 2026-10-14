@@ -105,7 +105,10 @@ describe("week 15 migration", () => {
 });
 
 const phase4 = readFileSync(
-  path.join(root, "supabase/migrations/20270215120000_group_circles_and_live_together.sql"),
+  path.join(
+    root,
+    "supabase/migrations/20270215120000_group_circles_and_live_together.sql",
+  ),
   "utf8",
 );
 

@@ -53,8 +53,7 @@ export default async function CirclePage({
     (member) => member.userId !== session.userId,
   );
   const partner = others.length === 1 ? others[0] : null;
-  const gestures =
-    circle.status === "active" && others.length >= 1;
+  const gestures = circle.status === "active" && others.length >= 1;
   const needsPicker = circleNeedsPicker(others.length);
   const self = circle.members.find(
     (member) => member.userId === session.userId,
@@ -89,7 +88,8 @@ export default async function CirclePage({
     );
   const waitingLabel = pass.ok
     ? pass.turns.find(
-        (turn) => turn.status === "open" && turn.startedByMe && !turn.waitingOnYou,
+        (turn) =>
+          turn.status === "open" && turn.startedByMe && !turn.waitingOnYou,
       )?.stillWaiting
     : null;
 

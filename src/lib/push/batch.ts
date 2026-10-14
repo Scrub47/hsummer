@@ -27,9 +27,10 @@ export function decideGroupPush(input: {
     return { decision: "muted", nextHeld: input.heldCount, stampSent: false };
   }
 
-  const held = Number.isInteger(input.heldCount) && input.heldCount > 0
-    ? input.heldCount
-    : 0;
+  const held =
+    Number.isInteger(input.heldCount) && input.heldCount > 0
+      ? input.heldCount
+      : 0;
   const recent =
     input.lastSentAtMs !== null &&
     input.nowMs - input.lastSentAtMs < GROUP_PUSH_WINDOW_MS &&
@@ -56,14 +57,22 @@ export function muteUntilFromChoice(
 ): string | null | undefined {
   if (choice === "off") return null;
   if (choice === "until-off") return MUTE_UNTIL_OFF;
-  if (choice === "hour") return new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+  if (choice === "hour")
+    return new Date(now.getTime() + 60 * 60 * 1000).toISOString();
   if (choice === "day") {
     return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
   }
   return undefined;
 }
 
-export function muteStatus(mutedUntil: string | null, nowMs: number): string | null {
+export function currentMuteStatus(mutedUntil: string | null): string | null {
+  return muteStatus(mutedUntil, Date.now());
+}
+
+export function muteStatus(
+  mutedUntil: string | null,
+  nowMs: number,
+): string | null {
   if (!isMuted(mutedUntil, nowMs) || !mutedUntil) return null;
   if (mutedUntil.startsWith("9999")) {
     return "Notifications from this circle are off until you turn them back on.";
