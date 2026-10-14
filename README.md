@@ -237,9 +237,9 @@ Do this once production already has weeks 1–4. One new file. No new bucket. No
 
 Do this once production already has weeks 1–5. One new file. No new app environment variable. The backup secrets go in GitHub, not in Vercel.
 
-The hosted project is in **Oregon (West US, `us-west-2`)**. Vercel functions run in **`pdx1`** (Portland). The backup does not run on Vercel. It runs on GitHub Actions, which can only reach IPv4. On the free plan the direct database host is IPv6-only, so the workflow uses the **Session pooler** in `us-west-2`.
+The hosted database is in **Northern California (West US, `us-west-1`)**. Vercel functions run in **`pdx1`** (Portland). The backup does not run on Vercel. It runs on GitHub Actions, which can only reach IPv4. On the free plan the direct database host is IPv6-only, so the workflow uses the **Session pooler** in `us-west-1`.
 
-1. Open the Supabase dashboard for the Oregon project → **SQL Editor** → **New query**.
+1. Open the Supabase dashboard for the hosted project → **SQL Editor** → **New query**.
 2. Do **not** paste or re-run any older file in `supabase/migrations`. Weeks 1–5 are already applied. Running them again will fail.
 3. Open `supabase/migrations/20261116120000_backup_bucket.sql`, paste the whole file, and run it **once**.
 4. Refresh **Storage**. A bucket named `backups` should be listed with public access off. Do not click **New bucket**. If you already created a `backups` bucket by hand, delete that bucket first or the script stops on the duplicate name. There is no policy for signed-in users. That is intentional. Only the secret key, used by the GitHub Action, can write a dump.
@@ -256,15 +256,15 @@ Add four repository secrets. On GitHub open this repo → **Settings** → **Sec
 
 `SUPABASE_DB_URL`, step by step:
 
-1. Open the Oregon project in the [Supabase dashboard](https://supabase.com/dashboard).
+1. Open the hosted project in the [Supabase dashboard](https://supabase.com/dashboard).
 2. Click **Connect** at the top of the page.
 3. Choose **Session pooler**. Do not choose **Direct connection**. Do not choose **Transaction pooler**.
-4. The host must contain `us-west-2` and the port must be **5432**. The username looks like `postgres.<project-ref>`. An example shape (the index before the region can differ; copy yours, don't type this):
+4. The host must contain `us-west-1` and the port must be **5432**. The username looks like `postgres.<project-ref>`. An example shape (the index before the region can differ; copy yours, don't type this):
 
-   `postgresql://postgres.<project-ref>:[YOUR-PASSWORD]@aws-0-us-west-2.pooler.supabase.com:5432/postgres`
+   `postgresql://postgres.<project-ref>:[YOUR-PASSWORD]@aws-0-us-west-1.pooler.supabase.com:5432/postgres`
 
 5. Replace `[YOUR-PASSWORD]` with the database password. It is on **Project Settings → Database**, in the database password section. If you don't know it, reset it there and wait a minute before running the workflow. If the password contains `&`, `#`, `?`, `@`, or a space, percent-encode that character (`@` becomes `%40`, and so on).
-6. Paste the finished URI into the `SUPABASE_DB_URL` secret. The workflow rejects port 6543, a `db.<project-ref>.supabase.co` host, and any pooler host that is not `us-west-2`.
+6. Paste the finished URI into the `SUPABASE_DB_URL` secret. The workflow rejects port 6543, a `db.<project-ref>.supabase.co` host, and any pooler host that is not `us-west-1`.
 
 Run it once by hand. On GitHub open **Actions** → **Weekly database backup** → **Run workflow** → branch `main` (after this pull request is merged; until then you can run it from this branch) → **Run workflow**. A green run means the encrypted file is in Storage. Open **Storage** → `backups` → `weekly` and confirm a file named like `hsummer-20261116T110000Z-abcd1234.tgz.gpg`. The schedule after that is Mondays at 11:00 UTC (3:00 AM Pacific Standard Time, 4:00 AM during daylight time). GitHub can pause scheduled workflows on a public repo that has been idle. If a Monday run does not appear, use **Run workflow** again.
 
