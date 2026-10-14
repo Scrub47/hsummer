@@ -42,12 +42,14 @@ export type Database = {
           user_id: string;
           age_confirmed_at: string | null;
           notification_prefs: Record<string, boolean>;
+          is_demo: boolean;
           created_at: string;
         };
         Insert: {
           user_id: string;
           age_confirmed_at?: string | null;
           notification_prefs?: Record<string, boolean>;
+          is_demo?: boolean;
           created_at?: string;
         };
         Update: {
@@ -64,6 +66,8 @@ export type Database = {
           created_by: string | null;
           created_at: string;
           status: "pending" | "active" | "archived";
+          archived_at: string | null;
+          is_demo: boolean;
         };
         Insert: {
           id?: string;
@@ -72,6 +76,8 @@ export type Database = {
           created_by?: string | null;
           created_at?: string;
           status?: "pending" | "active" | "archived";
+          archived_at?: string | null;
+          is_demo?: boolean;
         };
         Update: {
           name?: string | null;
@@ -367,14 +373,14 @@ export type Database = {
       booth_shots: {
         Row: {
           session_id: string;
-          user_id: string;
+          user_id: string | null;
           position: number;
           storage_path: string;
           byte_size: number;
         };
         Insert: {
           session_id: string;
-          user_id: string;
+          user_id?: string | null;
           position: number;
           storage_path: string;
           byte_size: number;
@@ -428,7 +434,7 @@ export type Database = {
           id: string;
           circle_id: string;
           from_user_id: string | null;
-          to_user_id: string;
+          to_user_id: string | null;
           category: string;
           title: string | null;
           body: string;
@@ -446,7 +452,7 @@ export type Database = {
           id?: string;
           circle_id: string;
           from_user_id?: string | null;
-          to_user_id: string;
+          to_user_id?: string | null;
           category: string;
           title?: string | null;
           body: string;
@@ -467,7 +473,7 @@ export type Database = {
           // Not granted. Present so a test can try to move them.
           delivered_at?: string | null;
           opened_at?: string | null;
-          to_user_id?: string;
+          to_user_id?: string | null;
           from_user_id?: string | null;
           scheduled_for?: string | null;
           qstash_message_id?: string | null;
@@ -702,6 +708,30 @@ export type Database = {
           kind: string;
           object_name: string;
         }[];
+      };
+      leave_circle: {
+        Args: { target_circle: string; remove_content: boolean };
+        Returns: { message_id: string | null }[];
+      };
+      delete_own_account: {
+        Args: { remove_content: boolean };
+        Returns: { message_id: string | null }[];
+      };
+      purge_archived_circles: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
+      sweep_quiet_circles: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
+      seed_demo_circle: {
+        Args: { photo_bytes: number };
+        Returns: {
+          circleId: string;
+          photoPath: string;
+          boothPaths: string[];
+        };
       };
     };
   };
