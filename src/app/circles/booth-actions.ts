@@ -441,11 +441,15 @@ export async function submitPassTurn(
   if (done.data.status === "complete") {
     return { error: null, notice: PASS_FINISHED };
   }
-  if (done.data.status === "expired") return { error: PASS_EXPIRED, notice: null };
+  if (done.data.status === "expired")
+    return { error: PASS_EXPIRED, notice: null };
   if (done.data.status === "cancelled") {
     return { error: PASS_CANCELLED, notice: null };
   }
-  return { error: null, notice: "Your frames are in. The strip is still waiting." };
+  return {
+    error: null,
+    notice: "Your frames are in. The strip is still waiting.",
+  };
 }
 
 /** The person who started an open pass can close it. */
@@ -476,7 +480,10 @@ export async function cancelPassBooth(
   }
 
   revalidateBooth(parsed.value.circleId);
-  return { error: null, notice: "Cancelled. The unfinished frames were removed." };
+  return {
+    error: null,
+    notice: "Cancelled. The unfinished frames were removed.",
+  };
 }
 
 const togetherOpenSchema = z.object({

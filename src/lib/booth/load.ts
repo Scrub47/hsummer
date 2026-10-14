@@ -111,14 +111,17 @@ export async function loadPassBooth(
         .map((shot) => [shot.position, shot] as const),
     );
     const frames = await Promise.all(
-      Array.from({ length: shotCount(row.frame_layout) }, async (_, position) => {
-        const shot = shotByPosition.get(position);
-        const url =
-          shot && isBoothShotPath(shot.storage_path)
-            ? await signFrame(session, shot.storage_path)
-            : null;
-        return { position, url };
-      }),
+      Array.from(
+        { length: shotCount(row.frame_layout) },
+        async (_, position) => {
+          const shot = shotByPosition.get(position);
+          const url =
+            shot && isBoothShotPath(shot.storage_path)
+              ? await signFrame(session, shot.storage_path)
+              : null;
+          return { position, url };
+        },
+      ),
     );
     const still = others
       .filter((person) =>

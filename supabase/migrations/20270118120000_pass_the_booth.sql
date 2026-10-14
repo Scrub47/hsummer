@@ -73,6 +73,34 @@ create index booth_sessions_pass_open_idx
 -- ---------------------------------------------------------------------------
 --
 -- CREATE OR REPLACE keeps the grants from week 13. It does not delete rows.
+-- is_booth_contributor is security definer so the select policies can ask
+-- "is this person one of the two?" without selecting booth_contributors
+-- under RLS. A policy that reads its own table loops until Postgres errors.
+
+create function private.is_booth_contributor(target_session uuid, member uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select member is not null
+     and exists (
+       select 1
+       from public.booth_contributors
+       where session_id = target_session
+         and user_id = member
+     );
+$$;
+
+revoke all on function private.is_booth_contributor(uuid, uuid)
+  from public, anon, authenticated;
+
+grant execute on function private.is_booth_contributor(uuid, uuid)
+  to authenticated;
+
+comment on function private.is_booth_contributor(uuid, uuid) is
+  'True when member has a booth_contributors row for this session. Bypasses RLS so the select policies do not recurse.';
 
 create or replace function private.can_read_booth_object(object_name text)
 returns boolean
@@ -90,12 +118,7 @@ as $$
       and (
         session.mode = 'solo'
         or session.status = 'complete'
-        or exists (
-          select 1
-          from public.booth_contributors as contributor
-          where contributor.session_id = session.id
-            and contributor.user_id = (select auth.uid())
-        )
+        or private.is_booth_contributor(session.id, (select auth.uid()))
       )
   );
 $$;
@@ -155,12 +178,7 @@ create policy booth_sessions_select_member
     and (
       mode = 'solo'
       or status = 'complete'
-      or exists (
-        select 1
-        from public.booth_contributors as contributor
-        where contributor.session_id = id
-          and contributor.user_id = (select auth.uid())
-      )
+      or private.is_booth_contributor(id, (select auth.uid()))
     )
   );
 
@@ -182,12 +200,7 @@ create policy booth_contributors_select_member
         and (
           session.mode = 'solo'
           or session.status = 'complete'
-          or exists (
-            select 1
-            from public.booth_contributors as mine
-            where mine.session_id = session.id
-              and mine.user_id = (select auth.uid())
-          )
+          or private.is_booth_contributor(session.id, (select auth.uid()))
         )
     )
   );
@@ -210,12 +223,7 @@ create policy booth_shots_select_member
         and (
           session.mode = 'solo'
           or session.status = 'complete'
-          or exists (
-            select 1
-            from public.booth_contributors as mine
-            where mine.session_id = session.id
-              and mine.user_id = (select auth.uid())
-          )
+          or private.is_booth_contributor(session.id, (select auth.uid()))
         )
     )
   );

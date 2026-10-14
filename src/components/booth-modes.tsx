@@ -34,7 +34,9 @@ export function BoothModes({
   lobby: TogetherLobby | null;
   unavailable: boolean;
 }) {
-  const yourTurn = turns.some((turn) => turn.waitingOnYou && turn.status === "open");
+  const yourTurn = turns.some(
+    (turn) => turn.waitingOnYou && turn.status === "open",
+  );
   const [mode, setMode] = useState<"solo" | "pass" | "together">(
     lobby ? "together" : yourTurn ? "pass" : "solo",
   );
