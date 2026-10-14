@@ -38,7 +38,8 @@ export function fakeSession(input: {
     signedUrl: string | null;
     error: { message: string } | null;
   };
-  onSignedUrl?: () => void;
+  onSignedUrl?: (input: { path: string; expiresIn: number }) => void;
+  rpc?: QueryResult;
 }): Session {
   return {
     userId: input.userId,
@@ -48,11 +49,12 @@ export function fakeSession(input: {
         if (!result) throw new Error(`unexpected table ${table}`);
         return chain(result);
       },
+      rpc: async () => input.rpc ?? queryResult(0),
       storage: {
         from() {
           return {
-            createSignedUrl: async () => {
-              input.onSignedUrl?.();
+            createSignedUrl: async (path: string, expiresIn: number) => {
+              input.onSignedUrl?.({ path, expiresIn });
               const signed = input.signedUrl ?? {
                 signedUrl: null,
                 error: { message: "no signed url" },

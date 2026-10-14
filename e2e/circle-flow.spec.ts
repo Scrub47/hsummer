@@ -8,12 +8,12 @@ import { expect, test, type Page } from "@playwright/test";
  * 127.0.0.1 or localhost. Do not point this file at production.
  */
 
-test("sign in, create a couple circle, invite, join, ping, and set a mood", async ({
+test("sign in, create a couple circle, invite, join, ping, set a mood, and add a memory", async ({
   page,
   browser,
   baseURL,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const nonce = crypto.randomUUID();
   const ownerEmail = `e2e-owner-${nonce}@example.com`;
   const partnerEmail = `e2e-partner-${nonce}@example.com`;
@@ -106,6 +106,79 @@ test("sign in, create a couple circle, invite, join, ping, and set a mood", asyn
     await partnerPage.reload();
     await expect(moods(partnerPage)).toContainText("Calm");
     await expect(recent(partnerPage)).toContainText("Feeling");
+
+    const recentDay = utcDay(0);
+    const olderDay = utcDay(40);
+    await wall(page).getByLabel("Note").fill("Ferry to Bainbridge");
+    await wall(page).getByRole("textbox", { name: "Tags" }).fill("summer");
+    await wall(page).getByLabel("Date").fill(recentDay);
+    await wall(page).getByRole("button", { name: "Add to the wall" }).click();
+    await expect(wall(page).getByText("Ferry to Bainbridge")).toBeVisible();
+    await expect(
+      wall(page).getByRole("heading", { name: monthLabel(recentDay) }),
+    ).toBeVisible();
+
+    await wall(page).getByLabel("Note").fill("A cold walk");
+    await wall(page).getByRole("textbox", { name: "Tags" }).fill("winter");
+    await wall(page).getByLabel("Date").fill(olderDay);
+    await wall(page).getByRole("button", { name: "Add to the wall" }).click();
+    await expect(
+      wall(page).getByRole("heading", { name: monthLabel(olderDay) }),
+    ).toBeVisible();
+
+    await wall(page)
+      .getByRole("radio", { name: "Only selected people" })
+      .check();
+    await wall(page).getByLabel("Note").fill("Secret dock");
+    await wall(page).getByRole("textbox", { name: "Tags" }).fill("");
+    await wall(page).getByLabel("Date").fill(recentDay);
+    await wall(page).getByRole("button", { name: "Add to the wall" }).click();
+    await expect(wall(page).getByText("Secret dock")).toBeVisible();
+    await expect(
+      wall(page).getByText("Only you", { exact: true }),
+    ).toBeVisible();
+
+    await wall(page)
+      .getByLabel("Photo")
+      .setInputFiles({
+        name: "pixel.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+          "base64",
+        ),
+      });
+    await wall(page).getByLabel("Note").fill("Pixel");
+    await wall(page).getByRole("textbox", { name: "Tags" }).fill("summer");
+    await wall(page).getByLabel("Date").fill(recentDay);
+    await wall(page)
+      .getByRole("radio", { name: "Everyone in the circle" })
+      .check();
+    await wall(page).getByRole("button", { name: "Add to the wall" }).click();
+    await expect(wall(page).getByRole("img", { name: "Pixel" })).toBeVisible();
+
+    await wall(page)
+      .getByRole("button", { name: "summer", exact: true })
+      .click();
+    await expect(
+      wall(page).getByRole("heading", { name: monthLabel(olderDay) }),
+    ).toHaveCount(0);
+    await expect(wall(page).getByText("Ferry to Bainbridge")).toBeVisible();
+
+    await partnerPage.reload();
+    await expect(
+      wall(partnerPage).getByText("Ferry to Bainbridge"),
+    ).toBeVisible();
+    await expect(
+      wall(partnerPage).getByRole("img", { name: "Pixel" }),
+    ).toBeVisible();
+    await expect(wall(partnerPage).getByText("Secret dock")).toHaveCount(0);
+
+    await wall(page).getByRole("button", { name: "All", exact: true }).click();
+    await wall(page)
+      .getByRole("button", { name: "Remove Secret dock" })
+      .click();
+    await expect(wall(page).getByText("Secret dock")).toHaveCount(0);
   } finally {
     await partner.close();
   }
@@ -115,6 +188,27 @@ function moods(page: Page) {
   return page
     .locator("section")
     .filter({ has: page.getByRole("heading", { name: "Mood" }) });
+}
+
+function wall(page: Page) {
+  return page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Memory wall" }) });
+}
+
+function utcDay(daysAgo: number): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - daysAgo);
+  return date.toISOString().slice(0, 10);
+}
+
+function monthLabel(iso: string): string {
+  const [year, month] = iso.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(Date.UTC(year!, (month ?? 1) - 1, 1)));
 }
 
 function recent(page: Page) {

@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { BucketList } from "@/components/bucket-list";
 import { CircleMoods } from "@/components/circle-moods";
 import { InvitePanel } from "@/components/invite-panel";
+import { MemoryWall } from "@/components/memory-wall";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { RecentPings } from "@/components/recent-pings";
 import { RenameCircleForm } from "@/components/rename-circle-form";
@@ -11,6 +12,8 @@ import { SignedInHeader } from "@/components/signed-in-header";
 import { ThinkingOfYou } from "@/components/thinking-of-you";
 import { loadBucketItems } from "@/lib/bucket/load";
 import { loadCircle } from "@/lib/circles/load";
+import { calendarDate } from "@/lib/memories/fields";
+import { loadMemories } from "@/lib/memories/load";
 import { loadCurrentMoods } from "@/lib/moods/load";
 import { loadRecentPings } from "@/lib/pings/load";
 import { getSession } from "@/lib/supabase/session";
@@ -46,12 +49,13 @@ export default async function CirclePage({
     circle.members.map((member) => [member.userId, member.displayName]),
   );
   const zone = self?.timezone ?? "UTC";
-  const [pings, bucket, moods] = await Promise.all([
+  const [pings, bucket, moods, memories] = await Promise.all([
     showThinkingOfYou
       ? loadRecentPings(session, circle.id, names, zone)
       : Promise.resolve([]),
     loadBucketItems(session, circle.id, names),
     loadCurrentMoods(session, circle.id, zone),
+    loadMemories(session, circle.id, names),
   ]);
 
   return (
@@ -72,8 +76,8 @@ export default async function CirclePage({
           {circle.status === "pending" ? (
             <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
               This circle is waiting for one more person. Share the invite link.
-              You can set a mood and start the bucket list now. Thinking of You
-              stays closed until you both are here.
+              You can set a mood, add to the memory wall, and start the bucket
+              list now. Thinking of You stays closed until you both are here.
             </p>
           ) : (
             <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
@@ -81,8 +85,8 @@ export default async function CirclePage({
                 ? `You're here with ${others.map((member) => member.displayName).join(", ")}.`
                 : "You're the only one here right now."}{" "}
               {showThinkingOfYou
-                ? "Set a mood, tap Thinking of You — it goes to your partner — or add to the bucket list."
-                : "Set a mood or add to the bucket list. Letters come in a later week."}
+                ? "Set a mood, add a memory, tap Thinking of You — it goes to your partner — or add to the bucket list."
+                : "Set a mood, add a memory, or add to the bucket list. Letters come in a later week."}
             </p>
           )}
         </div>
@@ -106,6 +110,26 @@ export default async function CirclePage({
             Moods aren&apos;t in the database yet. Apply{" "}
             <code>supabase/migrations/20261123120000_current_moods.sql</code> in
             the Supabase SQL editor, then reload this page.
+          </p>
+        )}
+
+        {memories.ok ? (
+          <MemoryWall
+            circleId={circle.id}
+            memories={memories.wall.memories}
+            people={others.map((member) => ({
+              userId: member.userId,
+              displayName: member.displayName,
+            }))}
+            today={calendarDate(zone)}
+            usedBytes={memories.wall.usedBytes}
+            pending={circle.status === "pending"}
+          />
+        ) : (
+          <p className="max-w-xl text-sm leading-6 text-foreground/70">
+            The memory wall isn&apos;t in the database yet. Apply{" "}
+            <code>supabase/migrations/20261130120000_memories.sql</code> in the
+            Supabase SQL editor, then reload this page.
           </p>
         )}
 
