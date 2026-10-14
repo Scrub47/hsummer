@@ -226,7 +226,7 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     ).toBeVisible();
     await expect(still.getByText(/\d+ days|Today/)).toBeVisible();
 
-    await still.getByLabel("Checkpoint").fill("Flight booked");
+    await still.getByLabel("Checkpoint", { exact: true }).fill("Flight booked");
     await still.getByLabel("Checkpoint date").fill("2027-03-01");
     await still.getByLabel("When one of you marks it").check();
     await still.getByRole("button", { name: "Add checkpoint" }).click();
