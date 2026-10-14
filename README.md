@@ -1,70 +1,110 @@
 # Hsummer
 
-A private shared space for people who are far apart. Made for couples, built for groups, friends, and families.
+Made for couples, built for groups, friends, and families.
 
-Hsummer is a portfolio project. Couples are the first audience. The data model supports a Circle of any size (a couple, a friend group, a family). This repository has the app shell, sign-in, a test push notification, profiles, couple circles with invite links, Thinking of You, a shared bucket list, current moods, a memory wall, unit and end-to-end tests, and a weekly database backup. Group, family, and friends circles exist in the database and stay out of the create form until a later phase.
+A private shared space for people who are far apart. Couples are the first audience. The same Circle holds a couple, a few friends, or a family, and the database already isolates each person. Group screens come later. This repository is the app through the memory wall: sign-in, profiles, couple circles, Thinking of You, a bucket list, moods, and photos and notes.
 
-## Stack
+## Screenshots
 
-- [Next.js](https://nextjs.org/) App Router, React, and TypeScript (strict)
-- [Supabase](https://supabase.com/) Postgres, Auth, and Row Level Security
-- Installable PWA, Web Push (VAPID)
-- Deployed on [Vercel](https://vercel.com/)
-- [Vitest](https://vitest.dev/) unit tests, [Playwright](https://playwright.dev/) smoke tests, GitHub Actions
+These slots are empty on purpose. Add a PNG under `docs/screenshots/` and drop it in here when there is one worth showing.
 
-Pings, new invite links, and joining a circle are rate-limited in Postgres. Upstash Redis is optional: set both `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` to check the same limits in Redis first. Leave them empty and Postgres is the only limiter. Scheduled letters (QStash) are a later week.
+| Slot        | What to capture                                                                                          |
+| ----------- | -------------------------------------------------------------------------------------------------------- |
+| Home        | Signed-in home: name, mood, and the notification buttons. `docs/screenshots/home.png`                    |
+| Circle      | An active couple circle: mood, memory wall, bucket list, Thinking of You. `docs/screenshots/circle.png`  |
+| Memory wall | One month with a note and a photo, and the tag row. `docs/screenshots/memory-wall.png`                   |
+| iPhone      | The Home Screen icon, and a notification that says only "Thinking of you." `docs/screenshots/iphone.png` |
 
-## Local setup
+## What you can do
 
-You need Node.js 22 or newer.
+- Sign in with Google or an email magic link. There is no password.
+- Set a display name, a photo, and a timezone. Email stays in sign-in. Circle members never see it.
+- Create a couple circle and share one invite link. It works once. The circle stays pending until the second person joins.
+- Tap Thinking of You. It goes to your partner, with a push when their phone is subscribed. On an iPhone that requires the Home Screen app (iOS 16.4 or later).
+- Keep a shared bucket list (restaurants, movies, plans) that updates live.
+- Set a mood. It shows in the circle. A notification is sent only if you check the share box.
+- Add notes and photos to the memory wall. Group them by month and tag. Show them to the whole circle, or only to the people you pick. Photo links expire after five minutes.
+
+Not in this version: letters, countdowns, the photo booth, group-circle screens, leaving a circle, account deletion, and a personal export. See [HOW_IT_WORKS.md](./HOW_IT_WORKS.md) for how the code is put together.
+
+## Tech stack
+
+| Layer                 | Choice                                                                                   |
+| --------------------- | ---------------------------------------------------------------------------------------- |
+| App                   | Next.js (App Router) and TypeScript, on Vercel in `pdx1` (Portland)                      |
+| Database, auth, files | Supabase Postgres, Auth, Storage, and Realtime in Oregon (`us-west-2`)                   |
+| Rate limits           | Upstash Redis in `us-west-2`, optional. Postgres enforces the same caps when it is unset |
+| Push                  | Web Push (VAPID). iOS needs the installed app                                            |
+| Tests                 | Vitest, Playwright, and a Row Level Security suite against local Supabase                |
+| Backup                | Weekly GitHub Action: `pg_dump`, encrypt, upload to a private bucket                     |
+
+Do not move those regions. Preview and production on Vercel stay in `pdx1`. The Supabase project stays in Oregon. An Upstash database, if you create one, stays in `us-west-2`.
+
+## Run it locally
+
+You need Node.js 22 or newer. Local Supabase needs Docker.
 
 ```bash
 npm install
 cp .env.example .env.local
+npx supabase start
+npx supabase db reset
+```
+
+`supabase start` boots Postgres, Auth, and Storage on your machine. `db reset` applies every file in `supabase/migrations`, in order, and gives you a clean database. That is the database the app should talk to while you are developing.
+
+Point `.env.local` at that local stack. The script below prints the three values. It refuses to print anything unless the API URL is local.
+
+```bash
+node scripts/print-local-supabase-env.mjs
+```
+
+Paste what it prints into `.env.local`, replacing the placeholders:
+
+| Printed name                           | `.env.local` |
+| -------------------------------------- | ------------ |
+| `NEXT_PUBLIC_SUPABASE_URL`             | same name    |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | same name    |
+| `SUPABASE_SECRET_KEY`                  | same name    |
+
+The other names in `.env.example` can stay as they are for a first run. VAPID keys are only needed when you want a real push (`npm run generate:vapid`). Leave the Upstash lines empty. Set `NEXT_PUBLIC_SITE_URL=http://localhost:3000`.
+
+Restart the dev server after any `NEXT_PUBLIC_` change. Next.js bakes those into the browser bundle.
+
+```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The landing page and the sign-in page render with the placeholder values in `.env.example`. Sign-in shows a clear message instead of crashing. Nothing talks to Supabase until you replace those placeholders.
+Open [http://localhost:3000](http://localhost:3000). Sign-in, a circle, and the memory wall all talk to the local stack you just started.
 
-### 1. Create a Supabase project
+The checked-in `supabase/config.toml` already allow-lists `http://localhost:3000/auth/callback` and `http://127.0.0.1:3000/auth/callback`. Magic-link mail from the local stack is in the Inbucket URL that `supabase start` prints (usually [http://127.0.0.1:54324](http://127.0.0.1:54324)).
 
-Create a free project in the [Supabase dashboard](https://supabase.com/dashboard). A second project for production can wait.
+To stop the local stack: `npx supabase stop`.
 
-In **Project Settings → API keys**, copy:
+### Hosted Supabase instead
 
-| Dashboard                              | `.env.local`                           |
-| -------------------------------------- | -------------------------------------- |
-| Project URL                            | `NEXT_PUBLIC_SUPABASE_URL`             |
-| Publishable key (`sb_publishable_...`) | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` |
-| Secret key (`sb_secret_...`)           | `SUPABASE_SECRET_KEY`                  |
+Create a project in Oregon (`us-west-2`). Copy the project URL and keys into `.env.local` using the names in `.env.example`. The publishable key is the new name for the anon key. The secret key is the new name for the service-role key. If the dashboard still shows the legacy names, put them in `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`. The secret key bypasses Row Level Security and must never start with `NEXT_PUBLIC_`.
 
-The publishable key is the new name for the anon key. The secret key is the new name for the service-role key. If your project still shows the legacy names, put the anon key in `NEXT_PUBLIC_SUPABASE_ANON_KEY` and the service-role key in `SUPABASE_SERVICE_ROLE_KEY` instead. The app reads either name.
+Apply each file in `supabase/migrations` once, in filename order, in the SQL editor. Do not run a file twice.
 
-The secret key bypasses Row Level Security. It is server-only. Week 1 does not send it anywhere; a later week uses it for jobs that must bypass RLS. Never prefix it with `NEXT_PUBLIC_`.
+| File                                                 | What it adds                               |
+| ---------------------------------------------------- | ------------------------------------------ |
+| `20261012120000_profiles_and_push_subscriptions.sql` | profiles, push subscriptions               |
+| `20261019120000_account_private_and_avatars.sql`     | private settings, private `avatars` bucket |
+| `20261026120000_circles_and_invites.sql`             | circles, members, invites                  |
+| `20261102120000_pings.sql`                           | Thinking of You                            |
+| `20261109120000_bucket_items_and_rate_limits.sql`    | bucket list, tighter rate limits           |
+| `20261116120000_backup_bucket.sql`                   | private `backups` bucket                   |
+| `20261123120000_current_moods.sql`                   | moods                                      |
+| `20261130120000_memories.sql`                        | memory wall, private `memories` bucket     |
 
-### 2. Turn on sign-in
+In **Authentication → URL Configuration**, set the Site URL and add redirect URLs:
 
-In **Authentication → Sign In / Providers**:
+- `http://localhost:3000/auth/callback`
+- `http://127.0.0.1:3000/auth/callback`
+- `https://hsummer.vercel.app/auth/callback`
 
-- Email: leave it on. Magic link is the default email method. You do not need passwords.
-- Google: enable it. Create an OAuth client in Google Cloud (application type **Web application**).
-  - Authorized JavaScript origins: `http://localhost:3000` and `https://hsummer.vercel.app`
-  - Authorized redirect URI (this is Supabase, not the app):
-
-    `https://<your-project-ref>.supabase.co/auth/v1/callback`
-
-  Paste the client id and secret into the Supabase Google provider. Supabase has a click-through for this in the provider settings.
-
-In **Authentication → URL Configuration**:
-
-- Site URL: `https://hsummer.vercel.app` once that deployment exists. Until then, `http://localhost:3000` is fine. Magic-link emails use the Site URL when the template uses `{{ .SiteURL }}`.
-- Redirect URLs, add each of these exactly:
-
-  - `http://localhost:3000/auth/callback`
-  - `http://127.0.0.1:3000/auth/callback`
-  - `https://hsummer.vercel.app/auth/callback`
-
-The default magic-link email works when you open the link in the **same browser** that requested it. To open the link on a phone after requesting it on a laptop, change the **Magic Link** email template to:
+To open a magic link on a phone after requesting it on a laptop, change the Magic Link email template so the link is:
 
 ```html
 <a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=email">
@@ -72,270 +112,70 @@ The default magic-link email works when you open the link in the **same browser*
 </a>
 ```
 
-`{{ .SiteURL }}` is the Site URL above (your app), not the Supabase project URL. The callback route accepts both this `token_hash` form and the default `code` form.
+`{{ .SiteURL }}` is the Site URL above. The callback route accepts this `token_hash` form and the default `code` form. The default template only works in the same browser that requested the link.
 
-### 3. Apply the database migrations
+## Tests
 
-Migrations live in `supabase/migrations` and run in filename order.
+| Command                  | What it does                                                                                               |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `npm test`               | Vitest unit tests. No database.                                                                            |
+| `npm run test:e2e`       | Playwright smoke test. Placeholder keys, no Supabase.                                                      |
+| `npm run test:rls`       | Row Level Security suite. Needs local Supabase (`npx supabase start`).                                     |
+| `npm run test:e2e:local` | Playwright circle flow against local Supabase: sign in, create a couple, invite, join, ping, mood, memory. |
 
-| File                                                 | What it adds                                                     |
-| ---------------------------------------------------- | ---------------------------------------------------------------- |
-| `20261012120000_profiles_and_push_subscriptions.sql` | `profiles`, `push_subscriptions`, signup trigger, owner-only RLS |
-| `20261019120000_account_private_and_avatars.sql`     | `account_private`, private `avatars` bucket, profile read helper |
-| `20261026120000_circles_and_invites.sql`             | circles, members, invites, redemption, `is_active_member()`      |
-| `20261102120000_pings.sql`                           | `pings`, per-person RLS, couple broadcast guard, send cap        |
-| `20261109120000_bucket_items_and_rate_limits.sql`    | `bucket_items`, Realtime, invite cap, redeem locks               |
-| `20261116120000_backup_bucket.sql`                   | private `backups` bucket for the weekly dump                     |
-| `20261123120000_current_moods.sql`                   | `current_moods`, one row per person per circle, Realtime         |
-| `20261130120000_memories.sql`                        | `memories`, `memory_viewers`, private `memories` bucket          |
-
-There is no email column on `profiles` or `account_private`. The week 2 file is additive: run it once on a database that already has week 1. Do not edit or paste the week 1 file again.
-
-**Hosted project, SQL editor (no Docker):**
-
-1. Open the Supabase dashboard → **SQL Editor** → **New query**.
-2. If week 1 is not applied yet, paste `supabase/migrations/20261012120000_profiles_and_push_subscriptions.sql` and run it once.
-3. Paste `supabase/migrations/20261019120000_account_private_and_avatars.sql` and run it once. This creates the private Storage bucket named `avatars`. Do not also click **New bucket**. If you already created an `avatars` bucket by hand, delete that bucket first or this script stops on the duplicate name.
-4. Refresh **Storage**. `avatars` should be listed with public access off. Refresh **Table Editor** and confirm `account_private` exists and has no email column.
-5. Paste `supabase/migrations/20261026120000_circles_and_invites.sql` and run it once, then paste `supabase/migrations/20261102120000_pings.sql` and run it once, then paste `supabase/migrations/20261109120000_bucket_items_and_rate_limits.sql` and run it once. Stop if a file was already applied. Do not run a file twice. The week 5 file adds `bucket_items` to the Realtime publication when that publication already exists.
-
-**Hosted project, CLI:** use this only if week 1 was applied with `supabase db push` (so it is in the migration history). If you pasted week 1 into the SQL editor, use the SQL editor for week 2 as well. `db push` would try to run week 1 again and fail.
-
-```bash
-npx supabase login
-npx supabase link --project-ref <your-project-ref>
-npx supabase db push
-```
-
-**Local Supabase (optional, needs Docker):**
+The circle flow refuses to start if `NEXT_PUBLIC_SUPABASE_URL` is a hosted project. Run it like this:
 
 ```bash
 npx supabase start
 npx supabase db reset
-npm run test:rls
-```
-
-`supabase start` prints a local API URL and keys. Those go in `.env.local` if you want the app pointed at the local stack. The checked-in `supabase/config.toml` already allow-lists `http://localhost:3000/auth/callback`. `npm run test:rls` signs in as two local test users and checks that one cannot read the other's `account_private`, cannot see an email column, and cannot update the other's profile.
-
-The circle end-to-end test also uses that local stack. It will not start if the Supabase URL is a hosted project:
-
-```bash
-npx supabase start
 eval "$(node scripts/print-local-supabase-env.mjs)"
 npm run test:e2e:local
 ```
 
-### 4. Generate VAPID keys
+`E2E_TEST_AUTH` is set by that Playwright config. Do not set it in `.env.local` or on Vercel.
+
+Other commands: `npm run lint`, `npm run format`, `npm run typecheck`, `npm run build`, `npm run generate:vapid`.
+
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and on `main`.
+
+1. **check** — lint, format, typecheck, unit tests, production build with placeholder keys, Playwright smoke test.
+2. **RLS and local e2e** — starts local Supabase on the runner, runs the RLS suite, builds the app against that local API, and runs the circle flow.
+
+Neither job has the hosted project's keys.
+
+## Weekly backup
+
+Supabase's free plan does not take automatic backups. `.github/workflows/db-backup.yml` runs Mondays at 11:00 UTC, and whenever you start it from the Actions tab. It dumps the database with `pg_dump` (Postgres 17), encrypts the archive, and uploads it to the private `backups` bucket. The file is not a GitHub artifact, because this repository is public. The eight newest dumps are kept. Photo files are not in the dump.
+
+The Action reads four GitHub secrets, not Vercel env vars: `SUPABASE_DB_URL` (Session pooler URI, port 5432, host in `us-west-2` or the older `us-west-1`), `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `BACKUP_PASSPHRASE` (at least 16 characters). It rejects the transaction pooler (port 6543) and the direct database host.
+
+Restore a dump into local Supabase:
 
 ```bash
-npm run generate:vapid
+gpg --batch --yes --pinentry-mode loopback \
+  --decrypt --passphrase 'your passphrase' \
+  --output backup.tgz hsummer-YYYYMMDDTHHMMSSZ-aaaaaaaa.tgz.gpg
+tar xzf backup.tgz
+npx supabase start
+npx supabase db reset
+psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+  -v ON_ERROR_STOP=1 \
+  -c "SET session_replication_role = replica" \
+  -f auth-data.sql \
+  -f data.sql \
+  -c "SET session_replication_role = DEFAULT"
 ```
 
-That is a wrapper around `npx web-push generate-vapid-keys`. Put the two keys in `.env.local`:
+Do not load `schema.sql` after `db reset`. The local migrations already created the tables.
 
-- `NEXT_PUBLIC_VAPID_PUBLIC_KEY` — public, fine in the browser
-- `VAPID_PRIVATE_KEY` — server only
-- `VAPID_SUBJECT` — a real `mailto:you@school.edu` or an `https://` contact page. The example `mailto:you@example.com` is treated as unconfigured.
+## iPhone push
 
-Set `NEXT_PUBLIC_SITE_URL=http://localhost:3000` in `.env.local`. On Vercel, set it to `https://hsummer.vercel.app`.
+Web push on iOS works only from a site that was added to the Home Screen, and only on iOS 16.4 or later. A Safari tab will not prompt and will not deliver.
 
-Restart `npm run dev` after changing any `NEXT_PUBLIC_` variable. Next.js inlines those into the browser bundle.
+1. Deploy to `https://hsummer.vercel.app` (localhost on a laptop is not reachable from the phone).
+2. Open that URL in Safari → Share → **Add to Home Screen**.
+3. Open Hsummer from the new icon, sign in, tap **Enable notifications**, then **Send test notification**.
 
-### 5. Try it
-
-1. Sign in with Google or a magic link.
-2. Open `/home`. You should see a display name (from Google, or "New member") and a timezone. Magic-link sign-in sends the browser timezone. Google sign-in leaves timezone at `UTC` until you open the profile page.
-3. Open **Profile**. Change the display name, confirm the timezone (it fills in from this browser when the saved value is still UTC), and upload a JPEG, PNG, or WebP under 2 MB. Save. The photo is stored in the private `avatars` bucket and shown through a signed URL.
-4. Tap **Enable notifications**, allow the prompt, then **Send test notification**.
-
-The notification text is generic on purpose. Lock screens are visible to other people, so payloads never include names, letters, or anything else from a Circle.
-
-## Deploy to Vercel
-
-1. Push the repo to GitHub.
-2. Import it in the [Vercel dashboard](https://vercel.com/new) (framework preset: Next.js). **Name the project `hsummer`.** That name is what assigns `https://hsummer.vercel.app`. A custom domain such as hsummer.app can be added later; nothing in the app assumes one yet.
-3. Add every variable from `.env.example` for **Production** and **Preview**. Use the production Supabase project when you have one. Set `NEXT_PUBLIC_SITE_URL` to `https://hsummer.vercel.app` for Production (Preview can use the same value, or the preview's own origin if you add that origin to Supabase).
-4. Deploy. Public variables are read at **build** time, so change them and redeploy rather than only restarting.
-5. In Supabase **Authentication → URL Configuration**, set Site URL to `https://hsummer.vercel.app` and keep these redirect URLs:
-
-   - `http://localhost:3000/auth/callback`
-   - `http://127.0.0.1:3000/auth/callback`
-   - `https://hsummer.vercel.app/auth/callback`
-
-Preview deployments each get their own URL. Add the ones you actually sign in from, or Supabase will refuse the redirect.
-
-## Test push on an iPhone
-
-Web push on iOS works only from a site that was **added to the Home Screen**, and only on **iOS 16.4 or later**. A normal Safari tab will not prompt and will not deliver.
-
-1. Deploy to `https://hsummer.vercel.app` (or use a tunnel to your laptop). The page must be HTTPS. Localhost is the only exception, and an iPhone cannot use your laptop's localhost.
-2. On the iPhone, open `https://hsummer.vercel.app` in Safari.
-3. Share → **Add to Home Screen**. The app shows this hint when it detects iOS and is not already installed.
-4. Open Hsummer from the new icon, sign in, tap **Enable notifications**, then **Send test notification**.
-
-Android and desktop can do the same from the browser tab; they do not need the install step.
-
-If iOS push is still silent: confirm you opened the Home Screen icon (not the Safari tab), that the permission is allowed in iOS Settings, and that the VAPID subject is a real `mailto:` or `https:` URL.
-
-## Scripts
-
-| Command                  | What it does                                          |
-| ------------------------ | ----------------------------------------------------- |
-| `npm run dev`            | Next.js dev server                                    |
-| `npm run lint`           | ESLint                                                |
-| `npm run format`         | Prettier                                              |
-| `npm run typecheck`      | `next typegen` and `tsc --noEmit`                     |
-| `npm test`               | Vitest unit tests                                     |
-| `npm run test:rls`       | RLS tests (needs `npx supabase start`)                |
-| `npm run test:e2e`       | Playwright smoke test (placeholder keys, no Supabase) |
-| `npm run test:e2e:local` | Playwright circle flow against local Supabase         |
-| `npm run build`          | Production build                                      |
-| `npm run generate:vapid` | Print a VAPID key pair                                |
-
-GitHub Actions runs lint, format, typecheck, unit tests, the production build, and the Playwright smoke test on pull requests and on `main`. A second job starts local Supabase, runs the RLS tests, then builds the app against that local API and runs the circle end-to-end test (sign in, create a couple circle, invite, join, ping). The smoke test uses placeholder keys and does not need real Supabase credentials. The circle test refuses to run unless the API URL is local. Do not set `E2E_TEST_AUTH` on Vercel.
-
-No new environment variables are required for profiles. Photo upload uses the same Supabase URL and publishable key as sign-in.
-
-## Circles and invites
-
-A signed-in person opens **Circles**, creates a couple circle, and gets one invite link. The link is shown once. Sharing uses the phone's share sheet, or copies the link. Opening it signs the other person in, then asks them to confirm. The circle stays **pending** until that second person joins, and this screen is the invite rather than letters or a ping. After they join it becomes **active**. A third account that uses the same link is refused. Making a new link turns the old one off, and a couple that is already full still refuses the new link.
-
-The raw token is not stored. The database keeps a SHA-256 hash. Redeeming the link is one transaction, and it is limited to 8 tries per person and 20 per IP hash inside 15 minutes.
-
-### Apply the week 3 SQL
-
-Do this in the Supabase dashboard. No new bucket and no new environment variable.
-
-1. Open **SQL Editor → New query**.
-2. Do **not** paste or re-run `supabase/migrations/20261012120000_profiles_and_push_subscriptions.sql` or `supabase/migrations/20261019120000_account_private_and_avatars.sql`. Those are already applied. Running them again will fail.
-3. Open `supabase/migrations/20261026120000_circles_and_invites.sql` in this repo, paste the whole file, and run it **once**.
-4. Refresh **Table Editor**. Confirm `circles`, `circle_members`, `circle_invites`, and `circle_invite_redemptions`. None of them has an email column. `account_private` is unchanged.
-5. Vercel deploys the circle pages from this merge. Apply the SQL before creating a circle. Then sign in, open `/circles`, create one, and open the invite link in a second account.
-
-Use `npx supabase db push` only if week 1 and week 2 were applied with the CLI and are already in the migration history. If those were pasted into the SQL editor, paste week 3 there too.
-
-### Apply the week 4 SQL
-
-Do this once production already has weeks 1–3. No new bucket. No new environment variable. VAPID keys and `SUPABASE_SECRET_KEY` are already set; Thinking of You starts using the secret key to deliver to your partner's devices.
-
-1. Open the Supabase dashboard → **SQL Editor** → **New query**.
-2. Do **not** paste or re-run any older file in `supabase/migrations`. Weeks 1–3 are already applied. Running them again will fail.
-3. Open `supabase/migrations/20261102120000_pings.sql`, paste the whole file, and run it **once**.
-4. Refresh **Table Editor**. Confirm `pings` exists. It has no email column. `push_subscriptions` is unchanged.
-5. Deploy the app. Open an active couple circle and tap **Thinking of You**. Your partner gets a notification on every device where notifications are on. On an iPhone, add Hsummer to the Home Screen and open it from the icon before tapping **Enable notifications**.
-
-### Apply the week 5 SQL
-
-Do this once production already has weeks 1–4. One new file. No new bucket. No required environment variable.
-
-1. Open the Supabase dashboard → **SQL Editor** → **New query**.
-2. Do **not** paste or re-run any older file in `supabase/migrations`. Weeks 1–4 are already applied. Running them again will fail.
-3. Open `supabase/migrations/20261109120000_bucket_items_and_rate_limits.sql`, paste the whole file, and run it **once**.
-4. Refresh **Table Editor**. Confirm `bucket_items` exists. It has no email column. Older tables are unchanged.
-5. Realtime: the SQL adds `bucket_items` to the `supabase_realtime` publication when that publication already exists (that is the same switch as the dashboard). Open **Database → Publications** (or the Realtime settings for tables) and confirm `bucket_items` is listed. If it is not, turn it on for that table. You do not need a new environment variable for Realtime.
-6. Optional rate-limit Redis. Leave `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` unset and the limits stay in Postgres (10 pings / 10 minutes, 10 new invite links / 15 minutes, 8 join tries per person and 20 per IP hash / 15 minutes). To use Upstash as well, create a Redis database there and set both variables on Vercel for Production and Preview, then redeploy. If Redis is down, the app uses Postgres.
-7. Deploy the app. Open a circle and add a bucket item. The other person, with the circle open, should see it without reloading once Realtime is on for `bucket_items`. Spamming **Thinking of You** shows "You've sent a few of these just now. Wait a little and try again."
-
-### Apply the week 6 SQL, then turn on the weekly backup
-
-Do this once production already has weeks 1–5. One new file. No new app environment variable. The backup secrets go in GitHub, not in Vercel.
-
-The hosted database is in **Northern California (West US, `us-west-1`)**. Vercel functions run in **`pdx1`** (Portland). The backup does not run on Vercel. It runs on GitHub Actions, which can only reach IPv4. On the free plan the direct database host is IPv6-only, so the workflow uses the **Session pooler** in `us-west-1`.
-
-1. Open the Supabase dashboard for the hosted project → **SQL Editor** → **New query**.
-2. Do **not** paste or re-run any older file in `supabase/migrations`. Weeks 1–5 are already applied. Running them again will fail.
-3. Open `supabase/migrations/20261116120000_backup_bucket.sql`, paste the whole file, and run it **once**.
-4. Refresh **Storage**. A bucket named `backups` should be listed with public access off. Do not click **New bucket**. If you already created a `backups` bucket by hand, delete that bucket first or the script stops on the duplicate name. There is no policy for signed-in users. That is intentional. Only the secret key, used by the GitHub Action, can write a dump.
-5. Confirm the database is Postgres 17. In **SQL Editor**, run `select version();`. It should say PostgreSQL 17. This repo's local config (`supabase/config.toml`, `major_version = 17`) is set to match that. The workflow's `pg_dump` is the Postgres 17 client.
-
-Add four repository secrets. On GitHub open this repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**. Create each name exactly.
-
-| Secret                | Where the value comes from                                                                                                                                    |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SUPABASE_DB_URL`     | The Session pooler URI. Steps below.                                                                                                                          |
-| `SUPABASE_URL`        | **Project Settings → API keys** → Project URL, `https://<project-ref>.supabase.co`. Not the database URI.                                                     |
-| `SUPABASE_SECRET_KEY` | **Project Settings → API keys** → secret key (`sb_secret_...`). The same value already set on Vercel as a server variable. The publishable key will not work. |
-| `BACKUP_PASSPHRASE`   | A passphrase you invent, at least 16 characters. Store it in a password manager. GitHub will not show it again. The dump cannot be restored without it.       |
-
-`SUPABASE_DB_URL`, step by step:
-
-1. Open the hosted project in the [Supabase dashboard](https://supabase.com/dashboard).
-2. Click **Connect** at the top of the page.
-3. Choose **Session pooler**. Do not choose **Direct connection**. Do not choose **Transaction pooler**.
-4. The host must contain `us-west-1` and the port must be **5432**. The username looks like `postgres.<project-ref>`. An example shape (the index before the region can differ; copy yours, don't type this):
-
-   `postgresql://postgres.<project-ref>:[YOUR-PASSWORD]@aws-0-us-west-1.pooler.supabase.com:5432/postgres`
-
-5. Replace `[YOUR-PASSWORD]` with the database password. It is on **Project Settings → Database**, in the database password section. If you don't know it, reset it there and wait a minute before running the workflow. If the password contains `&`, `#`, `?`, `@`, or a space, percent-encode that character (`@` becomes `%40`, and so on).
-6. Paste the finished URI into the `SUPABASE_DB_URL` secret. The workflow rejects port 6543, a `db.<project-ref>.supabase.co` host, and any pooler host that is not `us-west-1`.
-
-Run it once by hand. On GitHub open **Actions** → **Weekly database backup** → **Run workflow** → branch `main` (after this pull request is merged; until then you can run it from this branch) → **Run workflow**. A green run means the encrypted file is in Storage. Open **Storage** → `backups` → `weekly` and confirm a file named like `hsummer-20261116T110000Z-abcd1234.tgz.gpg`. The schedule after that is Mondays at 11:00 UTC (3:00 AM Pacific Standard Time, 4:00 AM during daylight time). GitHub can pause scheduled workflows on a public repo that has been idle. If a Monday run does not appear, use **Run workflow** again.
-
-The Action keeps the latest 8 dumps and deletes older ones in that bucket. It does not upload the file as a GitHub artifact, because this repository is public and artifacts there can be downloaded by anyone. Avatar files are not inside the dump. Storage objects are separate from the database.
-
-#### Restore a dump into the local database
-
-1. In **Storage** → `backups` → `weekly`, download the `.tgz.gpg` file.
-2. Decrypt and unpack it. Use the same passphrase you stored in `BACKUP_PASSPHRASE`:
-
-   ```bash
-   gpg --batch --yes --pinentry-mode loopback \
-     --decrypt --passphrase 'your passphrase' \
-     --output backup.tgz hsummer-YYYYMMDDTHHMMSSZ-aaaaaaaa.tgz.gpg
-   tar xzf backup.tgz
-   ```
-
-   That writes `schema.sql`, `data.sql`, and `auth-data.sql`.
-
-3. Start a clean local database. This applies the migrations in this repo, including the empty `backups` bucket:
-
-   ```bash
-   npx supabase start
-   npx supabase db reset
-   ```
-
-4. Load the accounts, then the app data. Do **not** load `schema.sql` on top of `db reset`. The local migrations already created the tables. `schema.sql` is in the archive so the structure is still there if this repo were missing.
-
-   ```bash
-   psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
-     -v ON_ERROR_STOP=1 \
-     -c "SET session_replication_role = replica" \
-     -f auth-data.sql \
-     -f data.sql \
-     -c "SET session_replication_role = DEFAULT"
-   psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
-     -c "select display_name from public.profiles;"
-   ```
-
-   `session_replication_role` lets the local database load rows whose foreign keys point at each other (a profile points at an auth user). It is a local superuser setting. The dump itself does not require it.
-
-   Names from the hosted project should be listed. If `auth-data.sql` fails because a column does not exist, the local Auth schema and the hosted one differ. Run `npm ci` so the Supabase CLI matches `package.json`, then `npx supabase stop` and `npx supabase start` again before repeating from step 3.
-
-### Apply the week 7 SQL
-
-Do this once production already has weeks 1–6. One new file. No new bucket. No new environment variable. Do not change the Supabase region. The project stays in Oregon (`us-west-2`). Vercel stays in `pdx1`. Upstash, if you use it, stays in `us-west-2`.
-
-1. Open the Oregon project in the Supabase dashboard → **SQL Editor** → **New query**.
-2. Do **not** paste or re-run any older file in `supabase/migrations`. Weeks 1–6 are already applied. Running them again will fail.
-3. Open `supabase/migrations/20261123120000_current_moods.sql`, paste the whole file, and run it **once**.
-4. Refresh **Table Editor**. Confirm `current_moods` exists. It has no email column. The primary key is `user_id` plus `circle_id`, so each person has one mood per circle.
-5. Realtime: the SQL adds `current_moods` to the `supabase_realtime` publication when that publication already exists. Open **Database → Publications** and confirm `current_moods` is listed. If it is not, turn Realtime on for that table. You do not need a new environment variable.
-6. Deploy the app. On an iPhone, open Hsummer from the Home Screen icon (Add to Home Screen first, if you have not). Sign in, open the circle you share with Summer, and tap **Good**. The page should say no notification was sent. Summer, signed in on her phone with the circle open, should see Good after a reload (or immediately, if Realtime is on). Then check **Also send this as a ping** and tap **Calm**. Summer's phone should buzz with "Thinking of you." The lock screen does not include the mood. The circle's recent list says "Feeling" and the calm emoji. Spamming that checkbox hits the same limit as Thinking of You: "You've sent a few of these just now. Wait a little and try again." The mood itself still saves.
-
-### Apply the week 8 SQL
-
-Do this **before** the week 8 code is deployed. The circle page reads `memories` on every load. If the code ships first, that page errors until the SQL has been applied. One new file. It creates the private `memories` bucket. No new environment variable. Do not change the Supabase region. The project stays in Oregon (`us-west-2`). Vercel stays in `pdx1`. Upstash, if you use it, stays in `us-west-2`.
-
-1. Open the Oregon project in the Supabase dashboard → **SQL Editor** → **New query**.
-2. Do **not** paste or re-run any older file in `supabase/migrations`. Weeks 1–7 are already applied. Running them again will fail.
-3. Open `supabase/migrations/20261130120000_memories.sql`, paste the whole file, and run it **once**.
-4. Refresh **Table Editor**. Confirm `memories` and `memory_viewers` exist. Neither has an email column.
-5. Refresh **Storage**. You should see a bucket named `memories` with public access off. Do not also click **New bucket**. If you already made a `memories` bucket by hand, delete it first or this script stops on the duplicate name.
-6. Open **Database → Publications**. `memories` should be in `supabase_realtime`, next to `bucket_items` and `current_moods`. If it is not listed, turn Realtime on for that table.
-7. Deploy the app only after step 3 has succeeded. On an iPhone, open Hsummer from the Home Screen icon. Sign in, open the circle you share with Summer, and add a note with a tag. It should show under the current month. Add a photo (a large camera photo is shrunk on the phone before upload; JPEG, PNG, and WebP under 2 MB are accepted). Summer, signed in on her phone, reloads the circle and should see both if you left **Everyone in the circle** selected. Choose **Only selected people**, leave her unchecked, and add another note. She should not see that one after a reload. To check that an old photo link dies: on a laptop, open the same circle, right-click the photo, choose **Copy image address**, and open it. It should load. Wait five minutes and open that same address again. It should no longer load. Reload the circle and the photo shows again, because the page asks Storage for a new five-minute link.
-
-## What is not in this version
-
-Letters and QStash are later weeks. Marking a bucket item done records `completed_at`. That does not add a memory. The wall is notes and photos you add yourself. Do not add those tables to an earlier migration. The `avatars` bucket is only for profile photos. The `memories` bucket is only for wall photos. The weekly backup is the database, not those photo files. Leave, account deletion, group-circle screens, and whole-circle pings from the app are later too. The database already accepts a null recipient on a group ping so the isolation tests can use one. Sharing a mood in a group (pick a person, or everyone) is that later group phase. A couple share goes to your partner. Upstash is optional and is not required for the rate limits.
-
-See [HOW_IT_WORKS.md](./HOW_IT_WORKS.md) for how the code is put together.
+The notification text is generic on purpose. Lock screens are visible to other people.
