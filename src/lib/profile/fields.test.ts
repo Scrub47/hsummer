@@ -71,33 +71,24 @@ describe("parseTimezone", () => {
 });
 
 describe("sniffAvatar", () => {
-  it("accepts a png, strips JPEG EXIF, and rejects a file it cannot parse", () => {
+  it("accepts a png and rejects html, gif, and oversized files", () => {
     expect(sniffAvatar(PNG)).toMatchObject({
       ok: true,
       value: { contentType: "image/png", extension: "png" },
     });
-
-    const exif = new TextEncoder().encode("GPSLatitude");
-    const length = exif.length + 2;
-    const jpeg = new Uint8Array(2 + 4 + exif.length + 4);
-    jpeg.set([0xff, 0xd8, 0xff, 0xe1, (length >> 8) & 0xff, length & 0xff], 0);
-    jpeg.set(exif, 6);
-    jpeg.set([0xff, 0xda, 0x00, 0x02], 6 + exif.length);
-    const sniffed = sniffAvatar(jpeg);
-    expect(sniffed.ok).toBe(true);
-    if (!sniffed.ok) return;
-    expect(sniffed.value.extension).toBe("jpg");
-    expect(Buffer.from(sniffed.value.bytes).toString("latin1")).not.toContain(
-      "GPSLatitude",
-    );
-
-    expect(sniffAvatar(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0])).ok).toBe(
-      false,
-    );
+    expect(
+      sniffAvatar(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0])),
+    ).toMatchObject({
+      ok: true,
+      value: { extension: "jpg" },
+    });
     const webp = new Uint8Array(12);
     webp.set([0x52, 0x49, 0x46, 0x46], 0);
     webp.set([0x57, 0x45, 0x42, 0x50], 8);
-    expect(sniffAvatar(webp).ok).toBe(false);
+    expect(sniffAvatar(webp)).toMatchObject({
+      ok: true,
+      value: { extension: "webp" },
+    });
 
     expect(sniffAvatar(new TextEncoder().encode("<html></html>"))).toEqual({
       ok: false,

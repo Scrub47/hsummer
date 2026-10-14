@@ -9,8 +9,6 @@
 
 import { z } from "zod";
 
-import { stripImageMetadata } from "@/lib/memories/photo";
-
 export const AVATARS_BUCKET = "avatars";
 export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 export const AVATAR_SIGNED_URL_SECONDS = 60 * 60;
@@ -94,41 +92,24 @@ export function sniffAvatar(bytes: Uint8Array): Parsed<AvatarImage> {
     return { ok: false, error: AVATAR_ERROR };
   }
 
-  // Same strip as memory photos. A file we cannot parse is refused, so a
-  // truncated JPEG is not stored with its EXIF still attached.
-  const stripped = stripImageMetadata(bytes);
-  if (
-    !stripped ||
-    stripped.byteLength === 0 ||
-    stripped.byteLength > AVATAR_MAX_BYTES
-  ) {
-    return { ok: false, error: AVATAR_ERROR };
-  }
-
-  if (isJpeg(stripped)) {
+  // Magic bytes only. EXIF removal stays in stored-avatar.ts, which the
+  // profile form does not import, so the stripper stays out of the browser.
+  if (isJpeg(bytes)) {
     return {
       ok: true,
-      value: {
-        bytes: stripped,
-        contentType: "image/jpeg",
-        extension: "jpg",
-      },
+      value: { bytes, contentType: "image/jpeg", extension: "jpg" },
     };
   }
-  if (isPng(stripped)) {
+  if (isPng(bytes)) {
     return {
       ok: true,
-      value: { bytes: stripped, contentType: "image/png", extension: "png" },
+      value: { bytes, contentType: "image/png", extension: "png" },
     };
   }
-  if (isWebp(stripped)) {
+  if (isWebp(bytes)) {
     return {
       ok: true,
-      value: {
-        bytes: stripped,
-        contentType: "image/webp",
-        extension: "webp",
-      },
+      value: { bytes, contentType: "image/webp", extension: "webp" },
     };
   }
   return { ok: false, error: AVATAR_ERROR };
