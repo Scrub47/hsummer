@@ -1,10 +1,10 @@
 import "server-only";
 
 import {
-  isBoothFilter,
   isBoothLayout,
   isBoothShotPath,
   isBoothTheme,
+  uniformFilter,
 } from "@/lib/booth/fields";
 import { authorLabel, isCircleId } from "@/lib/bucket/fields";
 import {
@@ -71,7 +71,7 @@ export async function loadMemories(
         : null,
     )
     .filter((id): id is string => id !== null);
-  const booths = await loadBooths(session, stripIds);
+  const booths = await loadBooths(session, stripIds, names);
 
   const memories: MemoryCard[] = [];
   for (const row of rows.data ?? []) {
@@ -274,6 +274,7 @@ function asRows(data: unknown): MemoryRow[] {
 async function loadBooths(
   session: Session,
   sessionIds: readonly string[],
+  names: ReadonlyMap<string, string>,
 ): Promise<Map<string, BoothStripCard>> {
   const cards = new Map<string, BoothStripCard>();
   if (sessionIds.length === 0) return cards;
@@ -281,11 +282,11 @@ async function loadBooths(
   const [sessions, contributors, shots] = await Promise.all([
     session.supabase
       .from("booth_sessions")
-      .select("id, theme, frame_layout")
+      .select("id, theme, frame_layout, mode")
       .in("id", [...sessionIds]),
     session.supabase
       .from("booth_contributors")
-      .select("session_id, filter_id")
+      .select("session_id, user_id, filter_id, assigned_positions")
       .in("session_id", [...sessionIds]),
     session.supabase
       .from("booth_shots")
@@ -300,34 +301,47 @@ async function loadBooths(
     return cards;
   }
 
-  const filterBySession = new Map<string, string>();
-  for (const row of contributors.data ?? []) {
-    if (!filterBySession.has(row.session_id)) {
-      filterBySession.set(row.session_id, row.filter_id);
-    }
-  }
-
   for (const row of sessions.data ?? []) {
     if (!isBoothTheme(row.theme) || !isBoothLayout(row.frame_layout)) continue;
-    const filter = filterBySession.get(row.id) ?? "none";
-    if (!isBoothFilter(filter)) continue;
+    const people = (contributors.data ?? [])
+      .filter((contributor) => contributor.session_id === row.id)
+      .sort((a, b) => minPosition(a.assigned_positions) - minPosition(b.assigned_positions));
+    const shared = uniformFilter(people.map((person) => person.filter_id));
     const frames = (shots.data ?? [])
       .filter((shot) => shot.session_id === row.id)
       .sort((a, b) => a.position - b.position);
-    const signed: { position: number; url: string }[] = [];
-    for (const frame of frames) {
-      const url = await signPhoto(session, frame.storage_path);
-      if (url) signed.push({ position: frame.position, url });
-    }
+    const signed = (
+      await Promise.all(
+        frames.map(async (frame) => {
+          const url = await signPhoto(session, frame.storage_path);
+          return url ? { position: frame.position, url } : null;
+        }),
+      )
+    ).filter(
+      (frame): frame is { position: number; url: string } => frame !== null,
+    );
     cards.set(row.id, {
       sessionId: row.id,
       theme: row.theme,
       frameLayout: row.frame_layout,
-      filterId: filter,
+      filterId: shared ?? "none",
+      sameFilter: shared !== null,
+      passed: row.mode === "pass",
+      people: people.map((person) =>
+        authorLabel(person.user_id, session.userId, names),
+      ),
       shots: signed,
     });
   }
   return cards;
+}
+
+function minPosition(value: unknown): number {
+  if (!Array.isArray(value) || value.length === 0) return 99;
+  const numbers = value.filter(
+    (position): position is number => typeof position === "number",
+  );
+  return numbers.length === 0 ? 99 : Math.min(...numbers);
 }
 
 async function signPhoto(

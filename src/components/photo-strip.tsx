@@ -6,6 +6,7 @@ import {
   SHOT_JPEG_QUALITY,
   STRIP_HEIGHT,
   STRIP_WIDTH,
+  shotCount,
   type BoothLayout,
   type BoothTheme,
 } from "@/lib/booth/fields";
@@ -62,13 +63,15 @@ export function PhotoStrip({
     let cancelled = false;
 
     async function paint() {
-      const ordered = [...sourcesRef.current].sort(
-        (a, b) => a.position - b.position,
+      const count = shotCount(layout);
+      const images: (CanvasImageSource | null)[] = Array.from(
+        { length: count },
+        () => null,
       );
-      const images: (CanvasImageSource | null)[] = [];
-      for (const source of ordered) {
+      for (const source of sourcesRef.current) {
         if (cancelled) return;
-        images.push(await loadFrame(source));
+        if (source.position < 0 || source.position >= count) continue;
+        images[source.position] = await loadFrame(source);
       }
       if (cancelled) return;
       const canvas = canvasRef.current;

@@ -6,6 +6,84 @@ import { expect, test, type Page } from "@playwright/test";
  * not show it until Save.
  */
 
+test("pass a 4-cut: one person shoots, the other finishes the strip", async ({
+  page,
+  browser,
+  baseURL,
+}) => {
+  test.setTimeout(180_000);
+  const nonce = crypto.randomUUID();
+  await signIn(page, {
+    email: `e2e-pass-${nonce}@example.com`,
+    displayName: "Isaac",
+  });
+
+  await page.goto("/circles");
+  await page.getByLabel("Name").fill("Pass circle");
+  await page.getByRole("button", { name: "Create a circle" }).click();
+  await expect(page).toHaveURL(/\/circles\/[0-9a-f-]{36}$/i, {
+    timeout: 20_000,
+  });
+
+  const invite = page.locator('a[href*="/join/"]');
+  await expect(invite).toBeVisible();
+  const href = await invite.getAttribute("href");
+  expect(href).toMatch(/\/join\/[0-9a-f]{64}$/);
+
+  const partner = await browser.newContext({ baseURL });
+  const partnerPage = await partner.newPage();
+  try {
+    await signIn(partnerPage, {
+      email: `e2e-pass-partner-${nonce}@example.com`,
+      displayName: "Summer",
+    });
+    await partnerPage.goto(href!);
+    await partnerPage.getByRole("button", { name: "Join circle" }).click();
+    await expect(partnerPage.getByText("Active", { exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    await page.reload();
+    await page.getByRole("link", { name: "Open the photo booth" }).click();
+    await page.getByRole("button", { name: "Pass it on" }).click();
+    const jpeg = await jpegFile(page);
+    await page
+      .getByLabel("Photos for your frames")
+      .setInputFiles([jpeg, jpeg]);
+    await page.getByRole("button", { name: "Pass it to Summer" }).click();
+    await expect(page.getByRole("status").filter({ hasText: /Passed on/ })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    await partnerPage.reload();
+    await expect(
+      partnerPage.getByText("It's your turn in the photo booth."),
+    ).toBeVisible();
+    await partnerPage.getByRole("link", { name: "Take your frames" }).click();
+    await expect(
+      partnerPage.getByRole("heading", { name: /Your turn/ }),
+    ).toBeVisible();
+    const partnerJpeg = await jpegFile(partnerPage);
+    await partnerPage
+      .getByLabel("Photos for your frames")
+      .setInputFiles([partnerJpeg, partnerJpeg]);
+    await partnerPage.getByRole("button", { name: "Add your frames" }).click();
+    await expect(
+      partnerPage.getByRole("status").filter({ hasText: /memory wall/ }),
+    ).toBeVisible({ timeout: 20_000 });
+
+    await page.goto(page.url().replace(/\/booth$/, ""));
+    await expect(page.getByText("you and Summer")).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(
+      page.getByText("Kawaii · 4-cut · Passed · No filter"),
+    ).toBeVisible();
+  } finally {
+    await partner.close();
+  }
+});
+
 test("download a kawaii strip, then save it on the memory wall", async ({
   page,
 }) => {

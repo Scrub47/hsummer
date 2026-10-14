@@ -29,6 +29,9 @@ export const LETTER_NOTIFICATION_BODY = "You have a new letter.";
 export const CHECKPOINT_NOTIFICATION_BODY =
   "A countdown checkpoint was reached.";
 
+/** Pass the Booth. The lock screen does not say who, or what the photos are. */
+export const PASS_NOTIFICATION_BODY = "It's your turn in the photo booth.";
+
 const CIRCLE_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -69,6 +72,21 @@ export function buildCheckpointNotification(
   return {
     title: "Hsummer",
     body: CHECKPOINT_NOTIFICATION_BODY,
+    url: new URL(path, base.origin).toString(),
+  };
+}
+
+export function buildPassNotification(
+  origin: string,
+  circleId: string,
+): TestNotification {
+  const base = new URL(origin);
+  const path = CIRCLE_ID_PATTERN.test(circleId)
+    ? `/circles/${circleId}/booth`
+    : "/home";
+  return {
+    title: "Hsummer",
+    body: PASS_NOTIFICATION_BODY,
     url: new URL(path, base.origin).toString(),
   };
 }

@@ -15,6 +15,7 @@ import { RenameCircleForm } from "@/components/rename-circle-form";
 import { SignedInHeader } from "@/components/signed-in-header";
 import { StillUs } from "@/components/still-us";
 import { ThinkingOfYou } from "@/components/thinking-of-you";
+import { loadPassBooth } from "@/lib/booth/load";
 import { loadBucketItems } from "@/lib/bucket/load";
 import { prepareCircle } from "@/lib/circles/prepare";
 import { loadCircle } from "@/lib/circles/load";
@@ -62,7 +63,8 @@ export default async function CirclePage({
   if (circle.status !== "archived") {
     await prepareCircle(session, circle.id, pushOrigin(await headers()));
   }
-  const [pings, bucket, moods, memories, letters, stillUs] = await Promise.all([
+  const [pings, bucket, moods, memories, letters, stillUs, pass] =
+    await Promise.all([
     showThinkingOfYou
       ? loadRecentPings(session, circle.id, names, zone)
       : Promise.resolve([]),
@@ -71,7 +73,17 @@ export default async function CirclePage({
     loadMemories(session, circle.id, names),
     loadLetters(session, circle.id, names),
     loadStillUs(session, circle.id, zone),
+    loadPassBooth(session, circle.id, names, zone),
   ]);
+  const yourTurn =
+    pass.ok &&
+    pass.turns.some((turn) => turn.waitingOnYou && turn.status === "open");
+  const waitingOnPartner =
+    pass.ok &&
+    pass.turns.some(
+      (turn) =>
+        turn.status === "open" && turn.startedByMe && !turn.waitingOnYou,
+    );
 
   const memoryPhotos =
     memories.ok && memories.wall.memories.some((memory) => memory.photoUrl);
@@ -102,8 +114,9 @@ export default async function CirclePage({
             <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
               This circle is waiting for one more person. Share the invite link.
               You can set a mood, set the Still Us date, open the photo booth,
-              add to the memory wall, and start the bucket list now. Letters and
-              Thinking of You stay closed until you both are here.
+              add to the memory wall, and start the bucket list now. Letters,
+              Thinking of You, and Pass the booth stay closed until you both
+              are here.
             </p>
           ) : (
             <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
@@ -175,15 +188,25 @@ export default async function CirclePage({
         <section className="flex flex-col gap-4">
           <h2 className="font-serif text-3xl tracking-tight">Photo booth</h2>
           <p className="max-w-xl text-sm leading-6 text-foreground/80">
-            Take a strip on this phone. Nothing is saved while you shoot.
-            Download keeps it here. Save puts it on the memory wall for everyone
-            in the circle.
+            Take a strip on this phone, or pass one back and forth. Nothing is
+            saved while you shoot alone. A passed booth is saved for everyone
+            in the circle once the last frame is in.
           </p>
+          {yourTurn ? (
+            <p className="text-sm font-medium text-pine">
+              It&apos;s your turn in the photo booth.
+            </p>
+          ) : null}
+          {waitingOnPartner && partner ? (
+            <p className="text-sm text-foreground/70">
+              A booth is waiting on {partner.displayName}.
+            </p>
+          ) : null}
           <Link
             href={`/circles/${circle.id}/booth`}
             className="inline-flex h-12 w-fit items-center rounded-full bg-accent px-5 text-base font-medium text-accent-ink"
           >
-            Open the photo booth
+            {yourTurn ? "Take your frames" : "Open the photo booth"}
           </Link>
         </section>
 

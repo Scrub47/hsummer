@@ -7,14 +7,15 @@ import type { Session } from "@/lib/supabase/session";
 /**
  * Opening the app. Auto checkpoints whose date has arrived are hit once,
  * and a scheduled letter whose time has passed is delivered if QStash has
- * not already done it. Both calls are safe to repeat.
+ * not already done it. An open pass older than 7 days is closed. All three
+ * calls are safe to repeat.
  */
 export async function prepareCircle(
   session: Session,
   circleId: string,
   origin: string,
 ): Promise<void> {
-  const [synced, delivered, members] = await Promise.all([
+  const [synced, delivered, members, expired] = await Promise.all([
     session.supabase.rpc("sync_auto_checkpoints", { target_circle: circleId }),
     session.supabase.rpc("deliver_due_letters", { target_circle: circleId }),
     session.supabase
@@ -22,6 +23,7 @@ export async function prepareCircle(
       .select("user_id")
       .eq("circle_id", circleId)
       .is("left_at", null),
+    session.supabase.rpc("expire_pass_booths", { target_circle: circleId }),
   ]);
 
   if (
@@ -35,6 +37,12 @@ export async function prepareCircle(
     !isMissingMigration(delivered.error.message, delivered.error.code)
   ) {
     console.error("Due letters failed.", delivered.error.code);
+  }
+  if (
+    expired.error &&
+    !isMissingMigration(expired.error.message, expired.error.code)
+  ) {
+    console.error("Pass expiry failed.", expired.error.code);
   }
 
   const fresh = synced.data ?? [];
@@ -64,6 +72,7 @@ function isMissingMigration(
   }
   return (
     Boolean(message?.includes("sync_auto_checkpoints")) ||
-    Boolean(message?.includes("deliver_due_letters"))
+    Boolean(message?.includes("deliver_due_letters")) ||
+    Boolean(message?.includes("expire_pass_booths"))
   );
 }

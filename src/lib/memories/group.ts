@@ -11,6 +11,11 @@ export type BoothStripCard = {
   theme: "kawaii" | "minimal";
   frameLayout: "4-cut" | "2-cut";
   filterId: "none" | "bw" | "sepia" | "warm" | "cool" | "grain";
+  /** False when the two people picked different filters. */
+  sameFilter: boolean;
+  /** True when two people filled the frames. The wall names both of them. */
+  passed: boolean;
+  people: string[];
   shots: { position: number; url: string }[];
 };
 
@@ -29,7 +34,7 @@ export type MemoryCard = {
   mine: boolean;
   /** Set when this card is the memory for an opened letter. */
   letterId: string | null;
-  /** Set when this card is a saved Solo strip. The wall draws it from the frames. */
+  /** Set when this card is a saved strip. The wall draws it from the frames. */
   booth: BoothStripCard | null;
 };
 

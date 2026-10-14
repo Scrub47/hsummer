@@ -32,6 +32,7 @@ import {
   audienceLabel,
   groupMemories,
   memoryTagList,
+  type BoothStripCard,
   type MemoryCard,
 } from "@/lib/memories/group";
 import { prepareMemoryPhoto } from "@/lib/memories/prepare-photo";
@@ -349,7 +350,11 @@ function MemoryCardView({
   return (
     <li className="flex flex-col gap-3 rounded-3xl border border-line bg-card p-5">
       <div className="flex items-baseline justify-between gap-4">
-        <p className="text-sm font-medium text-pine">{memory.author}</p>
+        <p className="text-sm font-medium text-pine">
+          {memory.booth?.passed && memory.booth.people.length > 0
+            ? memory.booth.people.join(" and ")
+            : memory.author}
+        </p>
         <p className="text-sm text-foreground/70">{audienceLabel(memory)}</p>
       </div>
       {memory.kind === "photo-strip" && memory.booth ? (
@@ -358,16 +363,18 @@ function MemoryCardView({
             theme={memory.booth.theme}
             layout={memory.booth.frameLayout}
             dateLabel={stripDate(memory.occurredOn)}
-            label={`${themeBundle(memory.booth.theme).label} photo booth strip from ${memory.author}`}
+            label={
+              memory.booth.passed
+                ? `${themeBundle(memory.booth.theme).label} photo booth strip`
+                : `${themeBundle(memory.booth.theme).label} photo booth strip from ${memory.author}`
+            }
             sources={memory.booth.shots.map((shot) => ({
               position: shot.position,
               url: shot.url,
             }))}
           />
           <p className="text-sm text-foreground/70">
-            {themeBundle(memory.booth.theme).label} ·{" "}
-            {layoutLabel(memory.booth.frameLayout)} ·{" "}
-            {filterLabel(memory.booth.filterId)}
+            {stripMeta(memory.booth)}
           </p>
         </div>
       ) : memory.kind === "photo-strip" ? (
@@ -463,6 +470,16 @@ function stripDate(iso: string): string {
       Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
     ),
   );
+}
+
+function stripMeta(booth: BoothStripCard): string {
+  const theme = themeBundle(booth.theme).label;
+  const layout = layoutLabel(booth.frameLayout);
+  if (!booth.passed) {
+    return `${theme} · ${layout} · ${filterLabel(booth.filterId)}`;
+  }
+  if (!booth.sameFilter) return `${theme} · ${layout} · Passed`;
+  return `${theme} · ${layout} · Passed · ${filterLabel(booth.filterId)}`;
 }
 
 function TagButton({

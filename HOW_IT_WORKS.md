@@ -1,8 +1,8 @@
 # How Hsummer works
 
-This is the map of the repository as it stands after Still Us and scheduled letters. It is written for reading the code, not as a changelog.
+This is the map of the repository as it stands after Pass the Booth. It is written for reading the code, not as a changelog.
 
-Hsummer is a private space shared by a Circle: a couple, a few friends, or a family. Profiles came first. Who may read one is a single function, and that function now includes people who share an active circle. Circles, memberships, invite links, pings, a shared bucket list, a current mood per person, and a memory wall are in the database. A 1:1 ping is readable only by the sender and the recipient. A bucket item is readable and editable by every active member of that circle. A mood is readable by active members and writable only by the person it belongs to. A memory is readable by every active member when its visibility is the whole circle, and only by the author plus the people they picked when visibility is selected. A letter is readable by the sender, and by the recipient only after it is delivered. Opening it adds one memory that only those two can see. A couple circle also has one Still Us countdown. Hitting a checkpoint adds one memory the whole circle can see. The Solo photo booth draws a strip on the phone and, only when you save it, adds one memory the whole circle can see.
+Hsummer is a private space shared by a Circle: a couple, a few friends, or a family. Profiles came first. Who may read one is a single function, and that function now includes people who share an active circle. Circles, memberships, invite links, pings, a shared bucket list, a current mood per person, and a memory wall are in the database. A 1:1 ping is readable only by the sender and the recipient. A bucket item is readable and editable by every active member of that circle. A mood is readable by active members and writable only by the person it belongs to. A memory is readable by every active member when its visibility is the whole circle, and only by the author plus the people they picked when visibility is selected. A letter is readable by the sender, and by the recipient only after it is delivered. Opening it adds one memory that only those two can see. A couple circle also has one Still Us countdown. Hitting a checkpoint adds one memory the whole circle can see. The photo booth draws a strip on the phone. Solo adds one memory the whole circle can see only when you save. Pass the Booth adds that memory only after both people have filled their frames.
 
 ## Shape of the app
 
@@ -20,7 +20,7 @@ Next.js (App Router) on Vercel
   src/app/circles/bucket-actions.ts  add, edit, remove a bucket item
   src/app/circles/mood-actions.ts    set or clear your current mood
   src/app/circles/memory-actions.ts  add or remove a memory; strip photo EXIF
-  src/app/circles/booth-actions.ts   save a Solo strip onto the memory wall
+  src/app/circles/booth-actions.ts   save a Solo strip, or pass frames to your partner
   src/app/circles/letter-actions.ts  write, schedule, cancel, or open a letter
   src/app/circles/countdown-actions.ts  reunion date, checkpoints, mark hit
   src/app/join/actions.ts          redeem an invite link
@@ -206,7 +206,7 @@ A saved Solo strip is another kind of memory, `photo-strip`. It has no `photo_pa
 
 ## Photo booth
 
-Solo Booth is one phone. Capture, the theme, the filter, and Download all happen in the browser. No `booth_sessions` row exists until Save to this circle. Pass the Booth and Live Together are not in this build.
+Solo Booth is one phone. Capture, the theme, the filter, and Download all happen in the browser. No `booth_sessions` row exists until Save to this circle. Pass the Booth is the async mode described below. Live Together is not in this build.
 
 The page is `/circles/[id]/booth`. It works while the circle is still pending. The preview is a `<video>` with `playsInline`, `muted`, and `autoPlay`, and the element is mirrored with CSS. `getUserMedia` is called from the Use the camera button, with `audio: false`, because the permissions policy allows `camera=(self)` and refuses the microphone. The captured frame is drawn from the video element, so it is not mirrored and text in the picture reads the right way. If permission is denied, the camera is missing, or the page is not a secure context, the message tells an iPhone user where to allow the camera for the Home Screen app and for Safari, and the library picker still works.
 
@@ -217,6 +217,16 @@ Save calls `save_solo_booth`. That function inserts the session (`mode = solo`, 
 The action then uploads each JPEG into the private `memories` bucket at `{circle id}/{session id}/{position}.jpg`. If an upload fails, it deletes the memory. That delete removes the session, and the shot trigger removes any object that landed. There is no combined image in storage. The wall signs each frame for five minutes and draws the strip again with the theme that was saved. Those signed URLs are another origin, so the wall canvas can show the frames and cannot export them. Download on the booth page exports a canvas whose frames are still local blobs.
 
 Download uses the share sheet when the phone allows sharing a file, and otherwise a normal download. It does not call the server.
+
+Pass the Booth is the other mode on the same page. Live Together is not built. The starter picks Kawaii or Minimal, 4-cut or 2-cut, and a filter, then shoots the top half (`creatorPositions`: frames 0 and 1 on a 4-cut, frame 0 on a 2-cut). `create_pass_booth` inserts an open session, both contributors, and the starter's shot rows. The partner's positions are the bottom half. The app only passes the other person in an active couple, using `resolveCouplePartner`, so a pending circle and a group both get an explanation instead of a camera. The database does not read the kind of circle. It accepts whichever other active member the caller names, which is how the isolation test lets a third member in on purpose and proves they see nothing when they were not named.
+
+The JPEGs upload after the rows exist, into the same private `memories` bucket. A failed upload calls `discard_pass_booth`, which deletes that open session only when the partner has no frames yet. The partner later calls `submit_pass_shots` for their positions and `finish_pass_booth`. Finish is the step that inserts the photo-strip memory, and only when every position has a shot. The memory's author is whoever finished it. The wall labels a pass with both names. Each person's filter is baked into their JPEG. If the two filters differ, the caption line says Passed and does not pretend there was one filter.
+
+An open pass expires 7 days after it starts. Opening the circle calls `expire_pass_booths`, and so does loading the booth page. That marks the session expired and deletes the unfinished frames. The shot trigger deletes the JPEGs. The same call deletes a booth object with no shot row that is older than 24 hours. A memory photo uses a different path, so it is not matched. The starter can cancel an open pass. The partner cannot. Cancel removes the frames and does not create a memory.
+
+While the pass is open, cancelled, or expired, select policies and `can_read_booth_object` allow only the two contributors. A finished pass is `status = complete`, and every active member can read it, the same as a solo strip. There is still no insert or update grant on the booth tables. Upstash, when it is configured, checks `booth-pass:{user id}` before a start (10 per 10 minutes, matching the SQL count) and `memory:{user id}` before the partner's frames, because that step can create a memory. The push, when VAPID is configured, says "It's your turn in the photo booth." and opens `/circles/{id}/booth`. It does not include a name, a caption, or a photo. No new environment variable and no new region: Supabase stays in Oregon (`us-west-2`), Vercel stays in `pdx1`, and Upstash Redis stays in `us-west-2`.
+
+Leaving a circle does not yet cancel an open pass. That happens with the leave flow.
 
 ## Letters
 
