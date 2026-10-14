@@ -15,6 +15,8 @@
  * only when the share box is checked.
  */
 
+import { z } from "zod";
+
 import { isMoodEmoji, type MoodEmoji } from "@/lib/moods/fields";
 
 export const BROADCAST_PINGS_ENABLED = false;
@@ -84,12 +86,15 @@ export function resolveCouplePartner(input: {
  * refused while broadcast pings are flagged off, so this route cannot be used
  * as a picker.
  */
+const pingBodySchema = z.record(z.string(), z.unknown());
+
 export function parsePingRequest(body: unknown): Parsed {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+  const parsed = pingBodySchema.safeParse(body);
+  if (!parsed.success) {
     return { ok: false, status: 400, error: "Send a circle id." };
   }
 
-  const record = body as Record<string, unknown>;
+  const record = parsed.data;
   if (
     "toUserId" in record ||
     "to_user_id" in record ||
@@ -101,8 +106,11 @@ export function parsePingRequest(body: unknown): Parsed {
     return { ok: false, status: 400, error: PING_BROADCAST_ERROR };
   }
 
-  const circleId = record.circleId;
-  if (typeof circleId !== "string" || !CIRCLE_ID_PATTERN.test(circleId)) {
+  const circleId = z
+    .string()
+    .regex(CIRCLE_ID_PATTERN)
+    .safeParse(record.circleId);
+  if (!circleId.success) {
     return { ok: false, status: 400, error: "That circle isn't available." };
   }
 
@@ -112,7 +120,7 @@ export function parsePingRequest(body: unknown): Parsed {
 
   return {
     ok: true,
-    circleId,
+    circleId: circleId.data,
     secretVariant: record.secretVariant === true,
   };
 }

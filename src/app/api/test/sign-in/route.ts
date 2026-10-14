@@ -1,5 +1,6 @@
 import { type EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import { testSignInAllowed } from "@/lib/auth/local-supabase";
 import { redirectOrigin } from "@/lib/auth/request-origin";
@@ -97,17 +98,23 @@ export async function POST(request: Request) {
   return NextResponse.redirect(callback);
 }
 
+const testSignInSchema = z.object({
+  email: z.string(),
+  displayName: z.unknown(),
+  timezone: z.unknown().optional(),
+});
+
 function parseTestSignIn(
   body: unknown,
 ):
   | { ok: true; email: string; displayName: string; timezone: string }
   | { ok: false; error: string } {
-  if (!body || typeof body !== "object") {
+  const parsed = testSignInSchema.safeParse(body);
+  if (!parsed.success) {
     return { ok: false, error: "That sign-in isn't valid." };
   }
-  const record = body as Record<string, unknown>;
-  const email =
-    typeof record.email === "string" ? record.email.trim().toLowerCase() : "";
+  const record = parsed.data;
+  const email = record.email.trim().toLowerCase();
   if (!TEST_EMAIL.test(email)) {
     return {
       ok: false,

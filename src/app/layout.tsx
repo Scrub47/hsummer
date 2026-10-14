@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Outfit } from "next/font/google";
+import { connection } from "next/server";
 
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
+import { SiteFooter } from "@/components/site-footer";
 import { getSiteUrl } from "@/lib/env";
 
 import "./globals.css";
@@ -40,7 +42,11 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // Nonce-based CSP is per request. Waiting for the request keeps every page
+  // dynamic so Next can stamp that nonce on its scripts.
+  await connection();
+
   return (
     <html
       lang="en"
@@ -49,6 +55,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full bg-background font-sans text-foreground">
         <ServiceWorkerRegister />
         {children}
+        <SiteFooter />
       </body>
     </html>
   );

@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { getSupabaseBrowserConfig, getVapidPublicKey } from "@/lib/env";
+import {
+  getSupabaseBrowserConfig,
+  getVapidPublicKey,
+  isSecretSupabaseKey,
+} from "@/lib/env";
 
 const KEYS = [
   "NEXT_PUBLIC_SUPABASE_URL",
@@ -47,5 +51,28 @@ describe("public env", () => {
     expect(getSupabaseBrowserConfig()?.key).toBe(
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.anon",
     );
+  });
+
+  it("refuses a secret key in the public env var", () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://abcd.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_secret_realvalue";
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    expect(isSecretSupabaseKey("sb_secret_realvalue")).toBe(true);
+    expect(getSupabaseBrowserConfig()).toBeNull();
+
+    const header = Buffer.from(
+      JSON.stringify({ alg: "HS256", typ: "JWT" }),
+    ).toString("base64url");
+    const payload = Buffer.from(
+      JSON.stringify({ role: "service_role" }),
+    ).toString("base64url");
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = `${header}.${payload}.sig`;
+    expect(getSupabaseBrowserConfig()).toBeNull();
+
+    const anonPayload = Buffer.from(JSON.stringify({ role: "anon" })).toString(
+      "base64url",
+    );
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = `${header}.${anonPayload}.sig`;
+    expect(getSupabaseBrowserConfig()?.key.endsWith(".sig")).toBe(true);
   });
 });

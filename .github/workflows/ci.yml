@@ -15,6 +15,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: node scripts/audit-deps.mjs
       - run: npm run lint
       - run: npm run format:check
       - run: npm run typecheck
@@ -64,3 +65,20 @@ jobs:
         env:
           CI: true
           E2E_TEST_AUTH: "1"
+
+  # Full history. A finding fails the job. The allowlist is only the
+  # synthetic push key in a unit test. Do not rewrite history from CI.
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.0/gitleaks_8.30.0_linux_x64.tar.gz \
+            | tar -xz -C /tmp gitleaks
+          sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+      - run: gitleaks detect --source . --redact --config .gitleaks.toml

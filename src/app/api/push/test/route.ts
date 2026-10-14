@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import * as webpush from "web-push";
+import { z } from "zod";
 
 import { getVapidConfig } from "@/lib/env.server";
 import { buildTestNotification } from "@/lib/push/payload";
@@ -23,6 +24,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   }
   const { supabase, userId } = session;
+
+  // The body is not used. A shape we do not understand is rejected so a
+  // client cannot smuggle fields we might later start reading.
+  const body: unknown = await request.json().catch(() => null);
+  const discarded = z
+    .union([z.null(), z.record(z.string(), z.unknown())])
+    .safeParse(body);
+  if (!discarded.success) {
+    return NextResponse.json(
+      { error: "That request isn't valid." },
+      { status: 400 },
+    );
+  }
 
   const vapid = getVapidConfig();
   if (!vapid) {

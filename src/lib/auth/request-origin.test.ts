@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { pushOrigin, redirectOrigin } from "@/lib/auth/request-origin";
+import {
+  actionOrigin,
+  pushOrigin,
+  redirectOrigin,
+} from "@/lib/auth/request-origin";
 
 function request(url: string, host: string | null) {
   return {
@@ -104,5 +108,32 @@ describe("pushOrigin", () => {
   it("falls back to localhost when the site URL is not configured", () => {
     delete process.env.NEXT_PUBLIC_SITE_URL;
     expect(pushOrigin({ get: () => null })).toBe("http://localhost:3000");
+  });
+});
+
+describe("actionOrigin", () => {
+  it("uses a loopback host and ignores a forwarded host", () => {
+    expect(
+      actionOrigin({
+        get: (name) => {
+          if (name === "host") return "127.0.0.1:3000";
+          if (name === "x-forwarded-host") return "evil.example";
+          return null;
+        },
+      }),
+    ).toBe("http://127.0.0.1:3000");
+  });
+
+  it("uses https when the platform says the request was https", () => {
+    expect(
+      actionOrigin({
+        get: (name) => {
+          if (name === "host") return "hsummer.vercel.app";
+          if (name === "x-forwarded-proto") return "https";
+          if (name === "x-forwarded-host") return "evil.example";
+          return null;
+        },
+      }),
+    ).toBe("https://hsummer.vercel.app");
   });
 });

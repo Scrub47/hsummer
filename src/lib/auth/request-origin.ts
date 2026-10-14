@@ -31,6 +31,35 @@ export function redirectOrigin(request: {
  * ignored, so a forwarded header cannot point the notification at another
  * site. Production uses NEXT_PUBLIC_SITE_URL.
  */
+/**
+ * Origin for a server action that starts Google or a magic link.
+ *
+ * A loopback Host is the browser. Any other Host is the host this deployment
+ * answered on (Vercel sets it). x-forwarded-host is ignored so a caller cannot
+ * point the callback at a different site.
+ */
+export function actionOrigin(headerList: {
+  get(name: string): string | null;
+}): string {
+  const loopback = loopbackOrigin(headerList.get("host"));
+  if (loopback) return loopback;
+
+  const host = headerList.get("host")?.trim() ?? "";
+  if (!host || host.includes(",") || /\s/.test(host)) {
+    return getSiteUrl() ?? "http://localhost:3000";
+  }
+
+  const forwarded = headerList.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const proto =
+    forwarded === "http" || forwarded === "https" ? forwarded : "https";
+
+  try {
+    return new URL(`${proto}://${host}`).origin;
+  } catch {
+    return getSiteUrl() ?? "http://localhost:3000";
+  }
+}
+
 export function pushOrigin(headerList: {
   get(name: string): string | null;
 }): string {

@@ -89,6 +89,28 @@ describe("loadBucketItems", () => {
     ]);
   });
 
+  it("drops a link that is not a plain http(s) URL", async () => {
+    const session = fakeSession({
+      userId: selfId,
+      tables: {
+        bucket_items: queryResult([
+          item({ link: "javascript:alert(1)" }),
+          item({
+            id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            link: "https://example.com/ramen",
+          }),
+        ]),
+      },
+    });
+    const loaded = await loadBucketItems(session, circleId, names);
+    expect(loaded.ok).toBe(true);
+    if (!loaded.ok) return;
+    expect(loaded.items.map((row) => row.link)).toEqual([
+      null,
+      "https://example.com/ramen",
+    ]);
+  });
+
   it("returns an empty failure when the table cannot be read", async () => {
     const session = fakeSession({
       userId: selfId,

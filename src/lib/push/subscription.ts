@@ -1,5 +1,15 @@
+import { z } from "zod";
+
 const ENDPOINT_MAX = 2048;
 const KEY_MAX = 200;
+
+const subscriptionSchema = z.object({
+  endpoint: z.string(),
+  keys: z.object({
+    p256dh: z.string(),
+    auth: z.string(),
+  }),
+});
 
 /**
  * The browser posts `PushSubscription.toJSON()`. We keep endpoint + the two
@@ -14,32 +24,19 @@ export type ParsedPushSubscription = {
 export function parsePushSubscription(
   body: unknown,
 ): ParsedPushSubscription | null {
-  if (typeof body !== "object" || body === null) return null;
+  const parsed = subscriptionSchema.safeParse(body);
+  if (!parsed.success) return null;
 
-  const record = body as Record<string, unknown>;
-  const endpoint = record.endpoint;
-  const keys = record.keys;
-  if (
-    typeof endpoint !== "string" ||
-    typeof keys !== "object" ||
-    keys === null
-  ) {
-    return null;
-  }
-
-  const keyRecord = keys as Record<string, unknown>;
-  const p256dh = keyRecord.p256dh;
-  const auth = keyRecord.auth;
-  if (typeof p256dh !== "string" || typeof auth !== "string") return null;
+  const { endpoint, keys } = parsed.data;
   if (
     !isHttpsEndpoint(endpoint) ||
-    !isSubscriptionKey(p256dh) ||
-    !isSubscriptionKey(auth)
+    !isSubscriptionKey(keys.p256dh) ||
+    !isSubscriptionKey(keys.auth)
   ) {
     return null;
   }
 
-  return { endpoint, p256dh, auth };
+  return { endpoint, p256dh: keys.p256dh, auth: keys.auth };
 }
 
 function isHttpsEndpoint(endpoint: string): boolean {

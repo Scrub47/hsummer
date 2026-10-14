@@ -11,6 +11,8 @@
 
 import { createHash } from "node:crypto";
 
+import { z } from "zod";
+
 export const CIRCLE_TYPES = ["couple", "group", "family", "friends"] as const;
 export type CircleType = (typeof CIRCLE_TYPES)[number];
 export type CircleStatus = "pending" | "active" | "archived";
@@ -72,20 +74,22 @@ export function circleTypeOffered(type: CircleType): boolean {
 }
 
 export function parseCircleType(value: unknown): Parsed<CircleType> {
-  if (typeof value !== "string" || !isCircleType(value)) {
+  const parsed = z.string().safeParse(value);
+  if (!parsed.success || !isCircleType(parsed.data)) {
     return { ok: false, error: CIRCLE_TYPE_ERROR };
   }
-  if (!circleTypeOffered(value)) {
+  if (!circleTypeOffered(parsed.data)) {
     return { ok: false, error: CIRCLE_TYPE_ERROR };
   }
-  return { ok: true, value };
+  return { ok: true, value: parsed.data };
 }
 
 /** Empty input is "no name". A name cannot carry an email address. */
 export function parseCircleName(value: unknown): Parsed<string | null> {
   if (value === null || value === undefined) return { ok: true, value: null };
-  if (typeof value !== "string") return { ok: false, error: CIRCLE_NAME_ERROR };
-  const name = value.trim();
+  const parsed = z.string().safeParse(value);
+  if (!parsed.success) return { ok: false, error: CIRCLE_NAME_ERROR };
+  const name = parsed.data.trim();
   if (name.length === 0) return { ok: true, value: null };
   if ([...name].length > 80 || name.includes("@")) {
     return { ok: false, error: CIRCLE_NAME_ERROR };

@@ -4,7 +4,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { redirectOrigin } from "@/lib/auth/request-origin";
 import { safeNextPath } from "@/lib/auth/safe-next";
 import type { Database } from "@/lib/database.types";
-import { getSupabaseBrowserConfig } from "@/lib/env";
+import { getSupabaseBrowserConfig, getTurnstileSiteKey } from "@/lib/env";
+import {
+  applyDocumentSecurity,
+  buildContentSecurityPolicy,
+  createNonce,
+  isHttpsRequest,
+} from "@/lib/security/headers";
+import { supabaseCookieOptions } from "@/lib/supabase/cookie-options";
 
 const PROTECTED_PREFIXES = ["/home", "/profile", "/circles"];
 
@@ -49,18 +56,38 @@ function copySessionHeaders(
  * A second refresh in between can invalidate the token and sign people out.
  */
 export async function updateSession(request: NextRequest) {
+  const https = isHttpsRequest(request);
+  const nonce = createNonce();
+  const supabaseOrigin = supabaseOriginFromEnv();
+  const csp = buildContentSecurityPolicy({
+    nonce,
+    supabaseOrigin,
+    turnstile: getTurnstileSiteKey() !== null,
+    development: process.env.NODE_ENV === "development",
+    https,
+  });
+  // Next reads this header while rendering and stamps the nonce on its scripts.
+  request.headers.set("x-nonce", nonce);
+  request.headers.set("Content-Security-Policy", csp);
+
+  const finish = (response: NextResponse) => {
+    applyDocumentSecurity(response.headers, { csp, https });
+    return response;
+  };
+
   const config = getSupabaseBrowserConfig();
   if (!config) {
     if (isProtectedPage(request.nextUrl.pathname)) {
-      return NextResponse.redirect(signInRedirect(request));
+      return finish(NextResponse.redirect(signInRedirect(request)));
     }
-    return NextResponse.next({ request });
+    return finish(NextResponse.next({ request }));
   }
 
   let supabaseResponse = NextResponse.next({ request });
 
   // Fluid Compute reuses isolates. Never store this client in a global.
   const supabase = createServerClient<Database>(config.url, config.key, {
+    cookieOptions: supabaseCookieOptions(https),
     cookies: {
       getAll() {
         return request.cookies.getAll();
@@ -89,14 +116,14 @@ export async function updateSession(request: NextRequest) {
   } catch {
     // A missing project or a bad key should not take down the public pages.
     console.error("Supabase session refresh failed.");
-    return NextResponse.next({ request });
+    return finish(NextResponse.next({ request }));
   }
 
   const pathname = request.nextUrl.pathname;
 
   if (!userId && isProtectedPage(pathname)) {
     const redirect = NextResponse.redirect(signInRedirect(request));
-    return copySessionHeaders(supabaseResponse, redirect);
+    return finish(copySessionHeaders(supabaseResponse, redirect));
   }
 
   if (userId && pathname === "/sign-in") {
@@ -107,8 +134,18 @@ export async function updateSession(request: NextRequest) {
     const redirect = NextResponse.redirect(
       new URL(nextPath, redirectOrigin(request)),
     );
-    return copySessionHeaders(supabaseResponse, redirect);
+    return finish(copySessionHeaders(supabaseResponse, redirect));
   }
 
-  return supabaseResponse;
+  return finish(supabaseResponse);
+}
+
+function supabaseOriginFromEnv(): string | null {
+  const config = getSupabaseBrowserConfig();
+  if (!config) return null;
+  try {
+    return new URL(config.url).origin;
+  } catch {
+    return null;
+  }
 }

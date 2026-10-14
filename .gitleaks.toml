@@ -1,0 +1,11 @@
+title = "Hsummer"
+
+[extend]
+useDefault = true
+
+# The string gitleaks calls a generic API key is a synthetic Web Push
+# `auth` secret in a unit-test fixture. It is not a credential for any
+# service. The same line exists in two historical commits of this file.
+[[allowlists]]
+description = "Synthetic PushSubscription auth secret in a unit test"
+paths = ['''src/lib/push/subscription\.test\.ts''']

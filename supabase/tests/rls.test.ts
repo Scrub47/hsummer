@@ -2020,6 +2020,71 @@ describe("invite creation is rate limited", () => {
   }, 60_000);
 });
 
+describe("security catalog", () => {
+  it("finds no public table without RLS, no public bucket, and no anon grant", async () => {
+    const { data, error } = await admin.rpc("security_audit_gaps");
+    expect(error).toBeNull();
+    expect(data ?? []).toEqual([]);
+  });
+
+  it("does not let a signed-in user call the service-role counters", async () => {
+    const bucket = `auth:test:${crypto.randomUUID().replaceAll("-", "")}`;
+    const allowed = await admin.rpc("consume_auth_attempt", {
+      attempt_bucket: bucket,
+      attempt_limit: 1,
+      attempt_window: 60,
+    });
+    expect(allowed.error).toBeNull();
+    expect(allowed.data).toBe(true);
+
+    const blocked = await admin.rpc("consume_auth_attempt", {
+      attempt_bucket: bucket,
+      attempt_limit: 1,
+      attempt_window: 60,
+    });
+    expect(blocked.data).toBe(false);
+
+    const asUser = await owner.rpc("consume_auth_attempt", {
+      attempt_bucket: bucket,
+      attempt_limit: 1,
+      attempt_window: 60,
+    });
+    expect(asUser.error).not.toBeNull();
+    expect(asUser.data).toBeNull();
+  });
+
+  it("rejects moving a push device onto someone else", async () => {
+    const endpoint = `https://push.example/device/${crypto.randomUUID()}`;
+    const inserted = await owner.from("push_subscriptions").insert({
+      user_id: ownerId,
+      endpoint,
+      p256dh: "abc",
+      auth: "def",
+    });
+    expect(inserted.error).toBeNull();
+
+    const moved = await owner
+      .from("push_subscriptions")
+      .update({ user_id: otherId })
+      .eq("endpoint", endpoint);
+    expect(moved.error).not.toBeNull();
+
+    const spoofed = await other.from("push_subscriptions").insert({
+      user_id: ownerId,
+      endpoint: `https://push.example/spoof/${crypto.randomUUID()}`,
+      p256dh: "abc",
+      auth: "def",
+    });
+    expect(spoofed.error).not.toBeNull();
+
+    const stolen = await other
+      .from("push_subscriptions")
+      .select("endpoint")
+      .eq("endpoint", endpoint);
+    expect(stolen.data).toEqual([]);
+  });
+});
+
 async function rpc(
   client: Client,
   fn:
