@@ -6,9 +6,17 @@
 
 import { formatMonth } from "@/lib/memories/fields";
 
+export type BoothStripCard = {
+  sessionId: string;
+  theme: "kawaii" | "minimal";
+  frameLayout: "4-cut" | "2-cut";
+  filterId: "none" | "bw" | "sepia" | "warm" | "cool" | "grain";
+  shots: { position: number; url: string }[];
+};
+
 export type MemoryCard = {
   id: string;
-  kind: "photo" | "note" | "letter" | "milestone";
+  kind: "photo" | "note" | "letter" | "milestone" | "photo-strip";
   body: string | null;
   photoUrl: string | null;
   photoPath: string | null;
@@ -21,6 +29,8 @@ export type MemoryCard = {
   mine: boolean;
   /** Set when this card is the memory for an opened letter. */
   letterId: string | null;
+  /** Set when this card is a saved Solo strip. The wall draws it from the frames. */
+  booth: BoothStripCard | null;
 };
 
 export type MemoryMonth = {

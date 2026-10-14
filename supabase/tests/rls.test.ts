@@ -2797,6 +2797,249 @@ describe("Still Us stays inside the circle and hits once", () => {
   });
 });
 
+describe("a solo booth strip is visible to the circle and nobody else", () => {
+  let author: Client;
+  let partner: Client;
+  let third: Client;
+  let outsider: Client;
+  let leaver: Client;
+  let leaverId = "";
+  let circleId = "";
+
+  beforeAll(async () => {
+    const nonce = crypto.randomUUID();
+    await createUser(admin, {
+      email: `rls-booth-author-${nonce}@example.com`,
+      displayName: "Booth Author",
+      timezone: "America/Los_Angeles",
+    });
+    await createUser(admin, {
+      email: `rls-booth-partner-${nonce}@example.com`,
+      displayName: "Booth Partner",
+      timezone: "America/Los_Angeles",
+    });
+    await createUser(admin, {
+      email: `rls-booth-third-${nonce}@example.com`,
+      displayName: "Booth Third",
+      timezone: "UTC",
+    });
+    leaverId = await createUser(admin, {
+      email: `rls-booth-leaver-${nonce}@example.com`,
+      displayName: "Booth Leaver",
+      timezone: "UTC",
+    });
+    await createUser(admin, {
+      email: `rls-booth-out-${nonce}@example.com`,
+      displayName: "Booth Outsider",
+      timezone: "UTC",
+    });
+    author = (
+      await signIn(apiUrl, anonKey, `rls-booth-author-${nonce}@example.com`)
+    ).client;
+    partner = (
+      await signIn(apiUrl, anonKey, `rls-booth-partner-${nonce}@example.com`)
+    ).client;
+    third = (
+      await signIn(apiUrl, anonKey, `rls-booth-third-${nonce}@example.com`)
+    ).client;
+    outsider = (
+      await signIn(apiUrl, anonKey, `rls-booth-out-${nonce}@example.com`)
+    ).client;
+    leaver = (
+      await signIn(apiUrl, anonKey, `rls-booth-leaver-${nonce}@example.com`)
+    ).client;
+
+    const created = await rpc(author, "create_circle", {
+      circle_name: "Booth group",
+      circle_type: "group",
+    });
+    circleId = created.circle_id as string;
+    const token = created.token as string;
+    for (const member of [partner, third, leaver]) {
+      const joined = await rpc(member, "redeem_invite", {
+        raw_token: token,
+        ip_hash: freshIp(),
+      });
+      expect(joined.invite_state).toBe("joined");
+    }
+  });
+
+  it("refuses a direct insert and saves one circle-visible strip", async () => {
+    const planted = await author.from("booth_sessions").insert({
+      circle_id: circleId,
+      mode: "solo",
+      theme: "kawaii",
+      frame_layout: "4-cut",
+    });
+    expect(planted.error).not.toBeNull();
+
+    const forged = await author.from("memories").insert({
+      circle_id: circleId,
+      kind: "photo-strip",
+      visibility: "circle",
+      occurred_on: utcDay(0),
+      photo_bytes: 12,
+    });
+    expect(forged.error).not.toBeNull();
+
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const saved = await author.rpc("save_solo_booth", {
+      target_circle: circleId,
+      target_theme: "kawaii",
+      target_layout: "4-cut",
+      target_filter: "warm",
+      target_caption: "Ferry lights",
+      shot_sizes: [jpeg.length, jpeg.length, jpeg.length, jpeg.length],
+    });
+    expect(saved.error).toBeNull();
+    const payload = saved.data;
+    expect(payload?.paths).toHaveLength(4);
+    const memoryId = payload?.memory_id ?? "";
+    const sessionId = payload?.session_id ?? "";
+
+    for (const path of payload?.paths ?? []) {
+      const uploaded = await author.storage
+        .from("memories")
+        .upload(path, jpeg, { contentType: "image/jpeg", upsert: false });
+      expect(uploaded.error).toBeNull();
+    }
+
+    const seen = await partner
+      .from("memories")
+      .select("id, kind, visibility, body, booth_session_id")
+      .eq("id", memoryId);
+    expect(seen.data).toEqual([
+      expect.objectContaining({
+        kind: "photo-strip",
+        visibility: "circle",
+        body: "Ferry lights",
+        booth_session_id: sessionId,
+      }),
+    ]);
+
+    const thirdSees = await third
+      .from("booth_shots")
+      .select("position")
+      .eq("session_id", sessionId);
+    expect(thirdSees.data).toHaveLength(4);
+
+    const outside = await outsider
+      .from("memories")
+      .select("id")
+      .eq("id", memoryId);
+    expect(outside.data).toEqual([]);
+    const outsideShot = await outsider
+      .from("booth_shots")
+      .select("storage_path")
+      .eq("session_id", sessionId);
+    expect(outsideShot.data).toEqual([]);
+
+    const path = payload?.paths[0] ?? "";
+    const stolen = await outsider.storage
+      .from("memories")
+      .createSignedUrl(path, 60);
+    expect(stolen.data?.signedUrl ?? null).toBeNull();
+    const signed = await partner.storage
+      .from("memories")
+      .createSignedUrl(path, 60);
+    expect(signed.data?.signedUrl).toBeTruthy();
+    const downloaded = await fetch(signed.data!.signedUrl);
+    expect(downloaded.status).toBe(200);
+    const pub = await fetch(
+      `${apiUrl}/storage/v1/object/public/memories/${path}`,
+    );
+    expect(pub.ok).toBe(false);
+
+    const left = await leaver
+      .from("circle_members")
+      .update({ left_at: new Date().toISOString() })
+      .eq("circle_id", circleId)
+      .eq("user_id", leaverId)
+      .select("left_at");
+    expect(left.data?.[0]?.left_at).toBeTruthy();
+    const afterLeave = await leaver
+      .from("memories")
+      .select("id")
+      .eq("id", memoryId);
+    expect(afterLeave.data).toEqual([]);
+
+    const removed = await author
+      .from("memories")
+      .delete()
+      .eq("id", memoryId)
+      .select("id");
+    expect(removed.error).toBeNull();
+    expect(removed.data).toHaveLength(1);
+    const gone = await partner
+      .from("booth_sessions")
+      .select("id")
+      .eq("id", sessionId);
+    expect(gone.data).toEqual([]);
+    const leftover = await admin.storage.from("memories").download(path);
+    expect(leftover.data).toBeNull();
+  });
+
+  it("refuses a non-member and a strip with the wrong number of frames", async () => {
+    const outsiderSave = await outsider.rpc("save_solo_booth", {
+      target_circle: circleId,
+      target_theme: "minimal",
+      target_layout: "2-cut",
+      target_filter: "none",
+      target_caption: "",
+      shot_sizes: [10, 10],
+    });
+    expect(outsiderSave.error).not.toBeNull();
+    expect(outsiderSave.data).toBeNull();
+
+    const short = await author.rpc("save_solo_booth", {
+      target_circle: circleId,
+      target_theme: "kawaii",
+      target_layout: "4-cut",
+      target_filter: "none",
+      target_caption: "",
+      shot_sizes: [10, 10, 10],
+    });
+    expect(short.error).not.toBeNull();
+  });
+
+  it("stops the 11th strip for one person", async () => {
+    const nonce = crypto.randomUUID();
+    const rapidId = await createUser(admin, {
+      email: `rls-booth-rapid-${nonce}@example.com`,
+      displayName: "Booth Rapid",
+      timezone: "UTC",
+    });
+    const rapid = (
+      await signIn(apiUrl, anonKey, `rls-booth-rapid-${nonce}@example.com`)
+    ).client;
+    const created = await rpc(rapid, "create_circle", {
+      circle_name: "Booth rapid",
+      circle_type: "couple",
+    });
+    expect(rapidId).toBeTruthy();
+    for (let count = 0; count < 10; count += 1) {
+      const saved = await rapid.rpc("save_solo_booth", {
+        target_circle: created.circle_id as string,
+        target_theme: "minimal",
+        target_layout: "2-cut",
+        target_filter: "none",
+        target_caption: "",
+        shot_sizes: [8, 8],
+      });
+      expect(saved.error).toBeNull();
+    }
+    const blocked = await rapid.rpc("save_solo_booth", {
+      target_circle: created.circle_id as string,
+      target_theme: "minimal",
+      target_layout: "2-cut",
+      target_filter: "none",
+      target_caption: "",
+      shot_sizes: [8, 8],
+    });
+    expect(blocked.error?.message).toContain("hsummer_rate_limited");
+  });
+});
+
 async function rpc(
   client: Client,
   fn:

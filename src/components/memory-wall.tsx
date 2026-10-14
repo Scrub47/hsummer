@@ -15,8 +15,11 @@ import {
   deleteMemory,
   type MemoryActionState,
 } from "@/app/circles/memory-actions";
+import { PhotoStrip } from "@/components/photo-strip";
 import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
 import { useCircleLive } from "@/components/use-circle-live";
+import { filterLabel, layoutLabel } from "@/lib/booth/fields";
+import { themeBundle } from "@/lib/booth/themes";
 import {
   CAPTION_ERROR,
   MEMORY_CAPTION_MAX,
@@ -64,7 +67,9 @@ export function MemoryWall({
   const [tag, setTag] = useState<string | null>(null);
   const tags = memoryTagList(memories);
   const months = groupMemories(memories, tag);
-  const hasPhoto = memories.some((memory) => memory.photoUrl);
+  const hasPhoto = memories.some(
+    (memory) => memory.photoUrl || (memory.booth?.shots.length ?? 0) > 0,
+  );
 
   return (
     <section aria-labelledby="memory-heading" className="flex flex-col gap-6">
@@ -336,7 +341,9 @@ function MemoryCardView({
     deleteMemory,
     initialState,
   );
-  const label = memory.body?.trim() || "this photo";
+  const label =
+    memory.body?.trim() ||
+    (memory.kind === "photo-strip" ? "this strip" : "this photo");
   const refreshedUrl = useRef<string | null>(null);
 
   return (
@@ -345,6 +352,27 @@ function MemoryCardView({
         <p className="text-sm font-medium text-pine">{memory.author}</p>
         <p className="text-sm text-foreground/70">{audienceLabel(memory)}</p>
       </div>
+      {memory.kind === "photo-strip" && memory.booth ? (
+        <div className="flex flex-col gap-3">
+          <PhotoStrip
+            theme={memory.booth.theme}
+            layout={memory.booth.frameLayout}
+            dateLabel={stripDate(memory.occurredOn)}
+            label={`${themeBundle(memory.booth.theme).label} photo booth strip from ${memory.author}`}
+            sources={memory.booth.shots.map((shot) => ({
+              position: shot.position,
+              url: shot.url,
+            }))}
+          />
+          <p className="text-sm text-foreground/70">
+            {themeBundle(memory.booth.theme).label} ·{" "}
+            {layoutLabel(memory.booth.frameLayout)} ·{" "}
+            {filterLabel(memory.booth.filterId)}
+          </p>
+        </div>
+      ) : memory.kind === "photo-strip" ? (
+        <p className="text-base leading-7">Photo booth strip</p>
+      ) : null}
       {memory.photoUrl ? (
         // Signed Storage URL. The optimizer would fetch and cache it.
         // eslint-disable-next-line @next/next/no-img-element
@@ -419,6 +447,21 @@ function MemoryCardView({
         </form>
       ) : null}
     </li>
+  );
+}
+
+function stripDate(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return iso;
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(
+    new Date(
+      Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
+    ),
   );
 }
 
