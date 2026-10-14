@@ -5,14 +5,14 @@
  *
  * GitHub-hosted runners are IPv4-only. On the free plan the direct database
  * host is IPv6-only, so the dump has to use the Session pooler (port 5432)
- * in us-west-2. The transaction pooler (port 6543) cannot run pg_dump.
+ * in us-west-1. The transaction pooler (port 6543) cannot run pg_dump.
  */
 
 export const BACKUP_KEEP = 8;
 
 const DUMP_NAME = /^hsummer-\d{8}T\d{6}Z-[0-9a-f]{8}\.tgz\.gpg$/;
 
-const SESSION_HOST = /^aws-\d+-us-west-2\.pooler\.supabase\.com$/;
+const SESSION_HOST = /^aws-\d+-us-west-1\.pooler\.supabase\.com$/;
 
 export function backupObjectName(date, nonce) {
   const stamp = date
@@ -35,7 +35,7 @@ export function assertDumpConnection(value) {
     return {
       ok: false,
       error:
-        "SUPABASE_DB_URL is empty. In the Supabase dashboard click Connect at the top, choose Session pooler, and copy that URI. The host must contain us-west-2 and the port must be 5432.",
+        "SUPABASE_DB_URL is empty. In the Supabase dashboard click Connect at the top, choose Session pooler, and copy that URI. The host must contain us-west-1 and the port must be 5432.",
     };
   }
 
@@ -75,14 +75,14 @@ export function assertDumpConnection(value) {
     return {
       ok: false,
       error:
-        "This is the direct connection. On the free plan that host is IPv6-only, and GitHub Actions is IPv4-only, so the dump will not connect. Click Connect, choose Session pooler, and copy the string whose host contains us-west-2 and whose port is 5432.",
+        "This is the direct connection. On the free plan that host is IPv6-only, and GitHub Actions is IPv4-only, so the dump will not connect. Click Connect, choose Session pooler, and copy the string whose host contains us-west-1 and whose port is 5432.",
     };
   }
 
   if (!SESSION_HOST.test(host) || port !== "5432") {
     return {
       ok: false,
-      error: `The Session pooler for this project is in Oregon (us-west-2), port 5432. The host in this secret is "${host}" port ${port}. Click Connect, choose Session pooler, and copy the string again. Do not use the Transaction pooler.`,
+      error: `The Session pooler for this project is in Northern California (us-west-1), port 5432. The host in this secret is "${host}" port ${port}. Click Connect, choose Session pooler, and copy the string again. Do not use the Transaction pooler.`,
     };
   }
 

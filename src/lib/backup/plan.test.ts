@@ -11,13 +11,13 @@ import {
 } from "../../../scripts/backup-lib.mjs";
 
 const session =
-  "postgresql://postgres.abcdefghijklmnop:s3cret-password@aws-0-us-west-2.pooler.supabase.com:5432/postgres";
+  "postgresql://postgres.abcdefghijklmnop:s3cret-password@aws-0-us-west-1.pooler.supabase.com:5432/postgres";
 
 describe("dump connection", () => {
-  it("accepts the Oregon session pooler on port 5432", () => {
+  it("accepts the Northern California session pooler on port 5432", () => {
     expect(assertDumpConnection(session)).toEqual({
       ok: true,
-      host: "aws-0-us-west-2.pooler.supabase.com",
+      host: "aws-0-us-west-1.pooler.supabase.com",
       port: 5432,
     });
     expect(assertDumpConnection(`${session}?sslmode=require`).ok).toBe(true);
@@ -25,7 +25,7 @@ describe("dump connection", () => {
 
   it("rejects the transaction pooler, the direct host, and the wrong region", () => {
     const transaction = assertDumpConnection(
-      "postgresql://postgres.abcdefghijklmnop:s3cret@aws-0-us-west-2.pooler.supabase.com:6543/postgres",
+      "postgresql://postgres.abcdefghijklmnop:s3cret@aws-0-us-west-1.pooler.supabase.com:6543/postgres",
     );
     expect(transaction.ok).toBe(false);
     if (!transaction.ok) expect(transaction.error).toMatch(/6543/);
@@ -40,16 +40,22 @@ describe("dump connection", () => {
       "postgresql://postgres.abcdefghijklmnop:s3cret@aws-0-us-east-1.pooler.supabase.com:5432/postgres",
     );
     expect(east.ok).toBe(false);
-    if (!east.ok) expect(east.error).toMatch(/us-west-2/);
+    if (!east.ok) expect(east.error).toMatch(/us-west-1/);
+
+    const oregon = assertDumpConnection(
+      "postgresql://postgres.abcdefghijklmnop:s3cret@aws-0-us-west-2.pooler.supabase.com:5432/postgres",
+    );
+    expect(oregon.ok).toBe(false);
+    if (!oregon.ok) expect(oregon.error).toMatch(/us-west-1/);
   });
 
   it("rejects a missing password and a placeholder", () => {
     const missing = assertDumpConnection(
-      "postgresql://postgres.abcdefghijklmnop@aws-0-us-west-2.pooler.supabase.com:5432/postgres",
+      "postgresql://postgres.abcdefghijklmnop@aws-0-us-west-1.pooler.supabase.com:5432/postgres",
     );
     expect(missing.ok).toBe(false);
     const placeholder = assertDumpConnection(
-      "postgresql://postgres.abcdefghijklmnop:[YOUR-PASSWORD]@aws-0-us-west-2.pooler.supabase.com:5432/postgres",
+      "postgresql://postgres.abcdefghijklmnop:[YOUR-PASSWORD]@aws-0-us-west-1.pooler.supabase.com:5432/postgres",
     );
     expect(placeholder.ok).toBe(false);
     if (!placeholder.ok) expect(placeholder.error).toMatch(/Database/);
@@ -89,7 +95,7 @@ describe("upload target", () => {
     });
     expect(
       assertBackupProjectUrl(
-        "postgresql://postgres.abcd:pw@aws-0-us-west-2.pooler.supabase.com:5432/postgres",
+        "postgresql://postgres.abcd:pw@aws-0-us-west-1.pooler.supabase.com:5432/postgres",
       ).ok,
     ).toBe(false);
     expect(assertBackupProjectUrl("http://127.0.0.1:54321").ok).toBe(false);

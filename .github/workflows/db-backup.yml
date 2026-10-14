@@ -1,6 +1,6 @@
 name: Weekly database backup
 
-# Mondays 11:00 UTC. That is 3:00 AM Pacific Standard Time (Oregon, UTC−8)
+# Mondays 11:00 UTC. That is 3:00 AM Pacific Standard Time (UTC−8)
 # and 4:00 AM during daylight time. workflow_dispatch is the manual run.
 #
 # The dump is encrypted and uploaded to the private Storage bucket "backups".

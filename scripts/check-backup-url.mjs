@@ -7,5 +7,5 @@ if (!result.ok) {
 }
 
 console.log(
-  `Session pooler ${result.host}:${result.port} is the Oregon (us-west-2) connection pg_dump can use.`,
+  `Session pooler ${result.host}:${result.port} is the Northern California (us-west-1) connection pg_dump can use.`,
 );
