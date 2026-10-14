@@ -71,7 +71,7 @@ export default async function HomePage() {
             {pending.length > 0
               ? "A circle is waiting for one more person. Share the invite link. Thinking of You stays closed until you both are here."
               : activeCouple
-                ? "Your circle is active. Open it for moods, the memory wall, the bucket list, or Thinking of You."
+                ? "Your circle is active. Open it for a letter, moods, the memory wall, the bucket list, or Thinking of You."
                 : "Create a circle and send one invite link. Thinking of You starts once you're both here."}
           </p>
           <p className="mt-4">

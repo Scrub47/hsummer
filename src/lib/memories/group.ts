@@ -8,7 +8,7 @@ import { formatMonth } from "@/lib/memories/fields";
 
 export type MemoryCard = {
   id: string;
-  kind: "photo" | "note";
+  kind: "photo" | "note" | "letter";
   body: string | null;
   photoUrl: string | null;
   photoPath: string | null;
@@ -19,6 +19,8 @@ export type MemoryCard = {
   createdAt: string;
   author: string;
   mine: boolean;
+  /** Set when this card is the memory for an opened letter. */
+  letterId: string | null;
 };
 
 export type MemoryMonth = {

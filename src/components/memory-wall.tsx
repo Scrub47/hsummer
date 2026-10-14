@@ -362,7 +362,22 @@ function MemoryCardView({
           }}
         />
       ) : null}
-      {memory.body ? (
+      {memory.kind === "letter" ? (
+        <div>
+          <p className="font-serif text-2xl tracking-tight">Opened letter</p>
+          {memory.body ? (
+            <p className="mt-2 text-base leading-7">{memory.body}</p>
+          ) : null}
+          {memory.letterId ? (
+            <a
+              href={`#letter-${memory.letterId}`}
+              className="mt-3 inline-block text-sm font-medium text-pine"
+            >
+              Read the letter
+            </a>
+          ) : null}
+        </div>
+      ) : memory.body ? (
         <p className="text-base leading-7 whitespace-pre-wrap">{memory.body}</p>
       ) : null}
       {memory.tags.length > 0 ? (

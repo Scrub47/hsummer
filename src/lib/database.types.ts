@@ -2,7 +2,7 @@
  * Hand-written slice of the generated Supabase types.
  *
  * Profiles, account settings, circles, invites, pings, the bucket list,
- * current moods, the memory wall, and push subscriptions live here. When the
+ * current moods, the memory wall, letters, and push subscriptions live here. When the
  * schema grows, replace this file with
  * `supabase gen types typescript`. `circle_invites.token_hash` is omitted:
  * authenticated clients are not granted that column. Pings have no client
@@ -242,13 +242,14 @@ export type Database = {
           id: string;
           circle_id: string;
           created_by: string | null;
-          kind: "photo" | "note";
+          kind: "photo" | "note" | "letter";
           body: string | null;
           photo_path: string | null;
           photo_bytes: number;
           tags: string[];
           visibility: "circle" | "selected";
           occurred_on: string;
+          letter_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -256,13 +257,14 @@ export type Database = {
           id?: string;
           circle_id: string;
           created_by?: string | null;
-          kind: "photo" | "note";
+          kind: "photo" | "note" | "letter";
           body?: string | null;
           photo_path?: string | null;
           photo_bytes?: number;
           tags?: string[];
           visibility?: "circle" | "selected";
           occurred_on?: string;
+          letter_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -272,11 +274,12 @@ export type Database = {
           visibility?: "circle" | "selected";
           occurred_on?: string;
           circle_id?: string;
-          kind?: "photo" | "note";
+          kind?: "photo" | "note" | "letter";
           photo_path?: string | null;
           photo_bytes?: number;
           created_by?: string | null;
           created_at?: string;
+          letter_id?: string | null;
         };
         Relationships: [];
       };
@@ -295,6 +298,73 @@ export type Database = {
           memory_id?: string;
           circle_id?: string;
           user_id?: string;
+        };
+        Relationships: [];
+      };
+      letter_categories: {
+        Row: {
+          id: string;
+          circle_id: string;
+          label: string;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          circle_id: string;
+          label: string;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          label?: string;
+        };
+        Relationships: [];
+      };
+      letters: {
+        Row: {
+          id: string;
+          circle_id: string;
+          from_user_id: string | null;
+          to_user_id: string;
+          category: string;
+          title: string | null;
+          body: string;
+          design: "minimal" | "kawaii" | "retro-film";
+          scheduled_for: string | null;
+          status: "scheduled" | "delivered" | "cancelled";
+          delivered_at: string | null;
+          opened_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          circle_id: string;
+          from_user_id?: string | null;
+          to_user_id: string;
+          category: string;
+          title?: string | null;
+          body: string;
+          design?: "minimal" | "kawaii" | "retro-film";
+          // Not granted to authenticated. Present so a test can try.
+          scheduled_for?: string | null;
+          status?: "scheduled" | "delivered" | "cancelled";
+          delivered_at?: string | null;
+          opened_at?: string | null;
+          qstash_message_id?: string | null;
+        };
+        Update: {
+          category?: string;
+          title?: string | null;
+          body?: string;
+          design?: "minimal" | "kawaii" | "retro-film";
+          status?: "scheduled" | "delivered" | "cancelled";
+          // Not granted. Present so a test can try to move them.
+          delivered_at?: string | null;
+          opened_at?: string | null;
+          to_user_id?: string;
+          from_user_id?: string | null;
+          scheduled_for?: string | null;
         };
         Relationships: [];
       };
@@ -364,6 +434,10 @@ export type Database = {
       circle_memory_bytes: {
         Args: { target: string };
         Returns: number;
+      };
+      open_letter: {
+        Args: { target: string };
+        Returns: string;
       };
       consume_auth_attempt: {
         Args: {

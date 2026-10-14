@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { MOODS } from "@/lib/moods/fields";
 import {
+  buildLetterNotification,
   buildPingNotification,
   buildTestNotification,
+  LETTER_NOTIFICATION_BODY,
   PING_NOTIFICATION_BODY,
   PING_SECRET_NOTIFICATION_BODY,
   TEST_NOTIFICATION_BODY,
@@ -74,5 +76,27 @@ describe("buildPingNotification", () => {
       circleId: "https://evil.example",
     });
     expect(notification.url).toBe("https://hsummer.example/home");
+  });
+});
+
+describe("buildLetterNotification", () => {
+  const circleId = "11111111-1111-4111-8111-111111111111";
+
+  it("says a letter arrived and leaves the words out", () => {
+    const notification = buildLetterNotification(
+      "https://hsummer.example",
+      circleId,
+    );
+
+    expect(notification).toEqual({
+      title: "Hsummer",
+      body: LETTER_NOTIFICATION_BODY,
+      url: `https://hsummer.example/circles/${circleId}`,
+    });
+    const serialized = JSON.stringify(notification);
+    expect(serialized).not.toContain("@");
+    expect(serialized).not.toContain("Dear");
+    expect(serialized).not.toContain("Summer");
+    expect(notification.body).toBe("You have a new letter.");
   });
 });
