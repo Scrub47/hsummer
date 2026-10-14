@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Hsummer",
     short_name: "Hsummer",
     description: "Made for couples, built for groups, friends, and families.",
-    start_url: "/",
+    start_url: "/home",
     scope: "/",
     display: "standalone",
     background_color: "#f3ecdf",

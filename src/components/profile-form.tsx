@@ -13,7 +13,10 @@ import {
   type ProfileFormState,
 } from "@/app/profile/actions";
 import { ProfileAvatar } from "@/components/profile-avatar";
+import { prepareBrowserImage } from "@/lib/memories/prepare-photo";
 import {
+  AVATAR_ERROR,
+  AVATAR_MAX_BYTES,
   browserTimeZone,
   sniffAvatar,
   supportedTimeZones,
@@ -93,13 +96,34 @@ export function ProfileForm({
   }, [preview]);
 
   async function onAvatarChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0] ?? null;
+    const input = event.target;
+    const file = input.files?.[0] ?? null;
     if (!file) {
       setFileError(null);
       setPreview(null);
       return;
     }
-    const sniffed = sniffAvatar(new Uint8Array(await file.arrayBuffer()));
+    // slice() so the sniff does not read the File the form will submit.
+    // Some phones hand back HEIC. Draw that to a JPEG before the check.
+    const prepared = await prepareBrowserImage(
+      file,
+      AVATAR_MAX_BYTES,
+      AVATAR_ERROR,
+    );
+    if (!prepared.ok) {
+      setFileError(prepared.error);
+      setPreview(null);
+      setFileKey((key) => key + 1);
+      return;
+    }
+    if (prepared.file !== file) {
+      const transfer = new DataTransfer();
+      transfer.items.add(prepared.file);
+      input.files = transfer.files;
+    }
+    const sniffed = sniffAvatar(
+      new Uint8Array(await prepared.file.slice(0).arrayBuffer()),
+    );
     if (!sniffed.ok) {
       setFileError(sniffed.error);
       setPreview(null);
@@ -107,7 +131,7 @@ export function ProfileForm({
       return;
     }
     setFileError(null);
-    setPreview(URL.createObjectURL(file));
+    setPreview(URL.createObjectURL(prepared.file));
   }
 
   // Google sign-in leaves the column at UTC. Magic-link sign-in already stored

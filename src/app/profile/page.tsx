@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { ProfileForm } from "@/components/profile-form";
+import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
 import { SignedInHeader } from "@/components/signed-in-header";
+import { AVATAR_SIGNED_URL_SECONDS } from "@/lib/profile/fields";
 import { loadOwnProfile } from "@/lib/profile/load";
 import { getSession } from "@/lib/supabase/session";
 
@@ -18,6 +20,10 @@ export default async function ProfilePage() {
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-6 py-10">
+      <RefreshSignedUrls
+        enabled={Boolean(profile?.avatarUrl)}
+        seconds={AVATAR_SIGNED_URL_SECONDS}
+      />
       <SignedInHeader current="profile" />
       <main className="flex flex-1 flex-col gap-8 py-16">
         <div>

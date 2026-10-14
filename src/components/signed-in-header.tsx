@@ -7,7 +7,7 @@ export function SignedInHeader({
 }) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-4">
-      <Link href="/" className="font-serif text-xl tracking-tight">
+      <Link href="/home" className="font-serif text-xl tracking-tight">
         Hsummer
       </Link>
       <nav className="flex flex-wrap items-center gap-x-4 gap-y-2">

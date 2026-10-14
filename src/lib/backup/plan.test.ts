@@ -14,16 +14,25 @@ const session =
   "postgresql://postgres.abcdefghijklmnop:s3cret-password@aws-0-us-west-1.pooler.supabase.com:5432/postgres";
 
 describe("dump connection", () => {
-  it("accepts the Northern California session pooler on port 5432", () => {
+  it("accepts the Oregon and Northern California session poolers on port 5432", () => {
     expect(assertDumpConnection(session)).toEqual({
       ok: true,
       host: "aws-0-us-west-1.pooler.supabase.com",
       port: 5432,
     });
     expect(assertDumpConnection(`${session}?sslmode=require`).ok).toBe(true);
+    expect(
+      assertDumpConnection(
+        "postgresql://postgres.abcdefghijklmnop:s3cret@aws-0-us-west-2.pooler.supabase.com:5432/postgres",
+      ),
+    ).toEqual({
+      ok: true,
+      host: "aws-0-us-west-2.pooler.supabase.com",
+      port: 5432,
+    });
   });
 
-  it("rejects the transaction pooler, the direct host, and the wrong region", () => {
+  it("rejects the transaction pooler, the direct host, and a pooler outside the west", () => {
     const transaction = assertDumpConnection(
       "postgresql://postgres.abcdefghijklmnop:s3cret@aws-0-us-west-1.pooler.supabase.com:6543/postgres",
     );
@@ -41,12 +50,6 @@ describe("dump connection", () => {
     );
     expect(east.ok).toBe(false);
     if (!east.ok) expect(east.error).toMatch(/us-west-1/);
-
-    const oregon = assertDumpConnection(
-      "postgresql://postgres.abcdefghijklmnop:s3cret@aws-0-us-west-2.pooler.supabase.com:5432/postgres",
-    );
-    expect(oregon.ok).toBe(false);
-    if (!oregon.ok) expect(oregon.error).toMatch(/us-west-1/);
   });
 
   it("rejects a missing password and a placeholder", () => {

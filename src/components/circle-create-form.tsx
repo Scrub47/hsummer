@@ -4,7 +4,7 @@ import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { createCircle, type CreateCircleState } from "@/app/circles/actions";
-import { inviteStorageKey } from "@/lib/circles/fields";
+import { writeInviteToken } from "@/lib/circles/invite-token";
 
 const initialState: CreateCircleState = {
   error: null,
@@ -23,7 +23,7 @@ export function CircleCreateForm() {
 
   useEffect(() => {
     if (!state.token || !state.inviteId || !state.circleId) return;
-    sessionStorage.setItem(inviteStorageKey(state.inviteId), state.token);
+    writeInviteToken(state.inviteId, state.token);
     router.push(`/circles/${state.circleId}`);
   }, [router, state.circleId, state.inviteId, state.token]);
 

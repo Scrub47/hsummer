@@ -1,8 +1,15 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { InstallHint } from "@/components/install-hint";
+import { getUserId } from "@/lib/supabase/session";
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  // The installed app opens here on some phones. A signed-in person should
+  // land in the app, not on the sign-in pitch.
+  const userId = await getUserId();
+  if (userId) redirect("/home");
+
   return (
     <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-6 py-10">
       <header>

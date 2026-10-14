@@ -11,11 +11,8 @@ import {
   regenerateInvite,
   type CircleActionState,
 } from "@/app/circles/actions";
-import {
-  inviteStorageKey,
-  joinPath,
-  type CircleStatus,
-} from "@/lib/circles/fields";
+import { joinPath, type CircleStatus } from "@/lib/circles/fields";
+import { readInviteToken, writeInviteToken } from "@/lib/circles/invite-token";
 import type { CircleInviteView } from "@/lib/circles/load";
 
 const initialState: CircleActionState = {
@@ -42,15 +39,14 @@ export function InvitePanel({
   const inviteId = state.inviteId ?? invite?.id ?? null;
   const storedToken = useSyncExternalStore(
     subscribeToStorage,
-    () =>
-      inviteId ? sessionStorage.getItem(inviteStorageKey(inviteId)) : null,
+    () => (inviteId ? readInviteToken(inviteId) : null),
     () => null,
   );
   const token = state.token ?? storedToken;
 
   useEffect(() => {
     if (!state.token || !state.inviteId) return;
-    sessionStorage.setItem(inviteStorageKey(state.inviteId), state.token);
+    writeInviteToken(state.inviteId, state.token);
   }, [state.inviteId, state.token]);
 
   const full =
@@ -160,8 +156,10 @@ async function share(
     try {
       await navigator.share({ title: "Join my circle on Hsummer", url });
       return;
-    } catch {
-      // The person dismissed the sheet, or this browser has no share target.
+    } catch (error) {
+      // Closing the sheet is not a failure. Copying afterwards would
+      // replace whatever was already on the clipboard.
+      if (error instanceof DOMException && error.name === "AbortError") return;
     }
   }
   try {

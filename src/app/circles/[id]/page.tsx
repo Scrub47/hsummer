@@ -6,6 +6,7 @@ import { CircleMoods } from "@/components/circle-moods";
 import { InvitePanel } from "@/components/invite-panel";
 import { MemoryWall } from "@/components/memory-wall";
 import { ProfileAvatar } from "@/components/profile-avatar";
+import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
 import { RecentPings } from "@/components/recent-pings";
 import { RenameCircleForm } from "@/components/rename-circle-form";
 import { SignedInHeader } from "@/components/signed-in-header";
@@ -16,6 +17,7 @@ import { calendarDate } from "@/lib/memories/fields";
 import { loadMemories } from "@/lib/memories/load";
 import { loadCurrentMoods } from "@/lib/moods/load";
 import { loadRecentPings } from "@/lib/pings/load";
+import { AVATAR_SIGNED_URL_SECONDS } from "@/lib/profile/fields";
 import { getSession } from "@/lib/supabase/session";
 
 export const metadata: Metadata = {
@@ -58,8 +60,18 @@ export default async function CirclePage({
     loadMemories(session, circle.id, names),
   ]);
 
+  const memoryPhotos =
+    memories.ok && memories.wall.memories.some((memory) => memory.photoUrl);
+  const avatarLinks = circle.members.some((member) => member.avatarUrl);
+
   return (
     <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-6 py-10">
+      {memoryPhotos ? null : (
+        <RefreshSignedUrls
+          enabled={avatarLinks}
+          seconds={AVATAR_SIGNED_URL_SECONDS}
+        />
+      )}
       <SignedInHeader current="circles" />
       <main className="flex flex-1 flex-col gap-10 py-16">
         <div>
