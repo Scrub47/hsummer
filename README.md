@@ -85,6 +85,8 @@ Migrations live in `supabase/migrations` and run in filename order.
 | `20261026120000_circles_and_invites.sql`             | circles, members, invites, redemption, `is_active_member()`      |
 | `20261102120000_pings.sql`                           | `pings`, per-person RLS, couple broadcast guard, send cap        |
 | `20261109120000_bucket_items_and_rate_limits.sql`    | `bucket_items`, Realtime, invite cap, redeem locks               |
+| `20261116120000_backup_bucket.sql`                   | private `backups` bucket for the weekly dump                     |
+| `20261123120000_current_moods.sql`                   | `current_moods`, one row per person per circle, Realtime         |
 
 There is no email column on `profiles` or `account_private`. The week 2 file is additive: run it once on a database that already has week 1. Do not edit or paste the week 1 file again.
 
@@ -308,8 +310,19 @@ The Action keeps the latest 8 dumps and deletes older ones in that bucket. It do
 
    Names from the hosted project should be listed. If `auth-data.sql` fails because a column does not exist, the local Auth schema and the hosted one differ. Run `npm ci` so the Supabase CLI matches `package.json`, then `npx supabase stop` and `npx supabase start` again before repeating from step 3.
 
+### Apply the week 7 SQL
+
+Do this once production already has weeks 1–6. One new file. No new bucket. No new environment variable. Do not change the Supabase region. The project stays in Oregon (`us-west-2`). Vercel stays in `pdx1`. Upstash, if you use it, stays in `us-west-2`.
+
+1. Open the Oregon project in the Supabase dashboard → **SQL Editor** → **New query**.
+2. Do **not** paste or re-run any older file in `supabase/migrations`. Weeks 1–6 are already applied. Running them again will fail.
+3. Open `supabase/migrations/20261123120000_current_moods.sql`, paste the whole file, and run it **once**.
+4. Refresh **Table Editor**. Confirm `current_moods` exists. It has no email column. The primary key is `user_id` plus `circle_id`, so each person has one mood per circle.
+5. Realtime: the SQL adds `current_moods` to the `supabase_realtime` publication when that publication already exists. Open **Database → Publications** and confirm `current_moods` is listed. If it is not, turn Realtime on for that table. You do not need a new environment variable.
+6. Deploy the app. On an iPhone, open Hsummer from the Home Screen icon (Add to Home Screen first, if you have not). Sign in, open the circle you share with Summer, and tap **Good**. The page should say no notification was sent. Summer, signed in on her phone with the circle open, should see Good after a reload (or immediately, if Realtime is on). Then check **Also send this as a ping** and tap **Calm**. Summer's phone should buzz with "Thinking of you." The lock screen does not include the mood. The circle's recent list says "Feeling" and the calm emoji. Spamming that checkbox hits the same limit as Thinking of You: "You've sent a few of these just now. Wait a little and try again." The mood itself still saves.
+
 ## What is not in this version
 
-Letters, memory photos, and QStash are later weeks. Marking a bucket item done records `completed_at`; the Memory Wall entry for that completion is the memory week. Do not add those tables to an earlier migration. The `avatars` bucket is only for profile photos. The weekly backup is the database, not those photo files. Leave, account deletion, group-circle screens, and whole-circle pings from the app are later too. The database already accepts a null recipient on a group ping so the isolation tests can use one. Upstash is optional and is not required for the rate limits.
+Letters, memory photos, and QStash are later weeks. Marking a bucket item done records `completed_at`; the Memory Wall entry for that completion is the memory week. Do not add those tables to an earlier migration. The `avatars` bucket is only for profile photos. The weekly backup is the database, not those photo files. Leave, account deletion, group-circle screens, and whole-circle pings from the app are later too. The database already accepts a null recipient on a group ping so the isolation tests can use one. Sharing a mood in a group (pick a person, or everyone) is that later group phase. A couple share goes to your partner. Upstash is optional and is not required for the rate limits.
 
 See [HOW_IT_WORKS.md](./HOW_IT_WORKS.md) for how the code is put together.

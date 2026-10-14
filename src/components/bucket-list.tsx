@@ -14,17 +14,15 @@ import {
   type BucketActionState,
 } from "@/app/circles/bucket-actions";
 import { BucketItem } from "@/components/bucket-item";
+import { useCircleLive } from "@/components/use-circle-live";
 import {
   BUCKET_CATEGORIES,
   BUCKET_NOTES_MAX,
   BUCKET_STATUSES,
   BUCKET_TITLE_MAX,
-  isCircleId,
   type BucketStatus,
 } from "@/lib/bucket/fields";
 import type { BucketItemView } from "@/lib/bucket/view";
-import { getSupabaseBrowserConfig } from "@/lib/env";
-import { createClient } from "@/lib/supabase/client";
 
 const initialState: BucketActionState = { error: null, saved: false };
 
@@ -52,7 +50,7 @@ export function BucketList({
   const refresh = useCallback(() => {
     router.refresh();
   }, [router]);
-  const live = useBucketLive(circleId, refresh);
+  const live = useCircleLive(circleId, "bucket_items", refresh);
   const announcement = useUpdateAnnouncement(items);
   const [state, formAction, pendingSave] = useActionState(
     addBucketItem,
@@ -257,80 +255,4 @@ function useUpdateAnnouncement(items: BucketItemView[]): string {
   }, [signature]);
 
   return announcement;
-}
-
-function useBucketLive(
-  circleId: string,
-  onChange: () => void,
-): "connecting" | "live" | "off" {
-  const configured =
-    isCircleId(circleId) && getSupabaseBrowserConfig() !== null;
-  const [live, setLive] = useState<"connecting" | "live" | "off">("connecting");
-
-  useEffect(() => {
-    if (!configured) return;
-    const supabase = createClient();
-    if (!supabase) return;
-
-    let active = true;
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-    const timer = setTimeout(() => {
-      if (active) {
-        setLive((current) => (current === "connecting" ? "off" : current));
-      }
-    }, 8000);
-
-    // The socket otherwise joins with the anonymous key, and row-level
-    // security drops the circle's changes before this page can refresh.
-    void supabase.auth
-      .getSession()
-      .then(async ({ data }) => {
-        const token = data.session?.access_token;
-        if (!active) return;
-        if (!token) {
-          setLive("off");
-          return;
-        }
-        await supabase.realtime.setAuth(token);
-        if (!active) return;
-
-        channel = supabase
-          .channel(`bucket-items:${circleId}`)
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "bucket_items",
-              filter: `circle_id=eq.${circleId}`,
-            },
-            () => {
-              onChange();
-            },
-          )
-          .subscribe((status) => {
-            if (!active) return;
-            if (status === "SUBSCRIBED") setLive("live");
-            if (
-              status === "CHANNEL_ERROR" ||
-              status === "TIMED_OUT" ||
-              status === "CLOSED"
-            ) {
-              setLive("off");
-            }
-          });
-      })
-      .catch(() => {
-        if (active) setLive("off");
-      });
-
-    return () => {
-      active = false;
-      clearTimeout(timer);
-      if (channel) void supabase.removeChannel(channel);
-    };
-  }, [circleId, configured, onChange]);
-
-  if (!configured) return "off";
-  return live;
 }

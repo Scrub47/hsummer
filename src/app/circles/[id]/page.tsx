@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 
 import { BucketList } from "@/components/bucket-list";
+import { CircleMoods } from "@/components/circle-moods";
 import { InvitePanel } from "@/components/invite-panel";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { RecentPings } from "@/components/recent-pings";
@@ -10,6 +11,7 @@ import { SignedInHeader } from "@/components/signed-in-header";
 import { ThinkingOfYou } from "@/components/thinking-of-you";
 import { loadBucketItems } from "@/lib/bucket/load";
 import { loadCircle } from "@/lib/circles/load";
+import { loadCurrentMoods } from "@/lib/moods/load";
 import { loadRecentPings } from "@/lib/pings/load";
 import { getSession } from "@/lib/supabase/session";
 
@@ -43,11 +45,13 @@ export default async function CirclePage({
   const names = new Map(
     circle.members.map((member) => [member.userId, member.displayName]),
   );
-  const [pings, bucket] = await Promise.all([
+  const zone = self?.timezone ?? "UTC";
+  const [pings, bucket, moods] = await Promise.all([
     showThinkingOfYou
-      ? loadRecentPings(session, circle.id, names, self?.timezone ?? "UTC")
+      ? loadRecentPings(session, circle.id, names, zone)
       : Promise.resolve([]),
     loadBucketItems(session, circle.id, names),
+    loadCurrentMoods(session, circle.id, zone),
   ]);
 
   return (
@@ -68,20 +72,42 @@ export default async function CirclePage({
           {circle.status === "pending" ? (
             <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
               This circle is waiting for one more person. Share the invite link.
-              Thinking of You stays closed until you both are here. You can
-              start the bucket list now.
+              You can set a mood and start the bucket list now. Thinking of You
+              stays closed until you both are here.
             </p>
           ) : (
             <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
               {others.length > 0
                 ? `You're here with ${others.map((member) => member.displayName).join(", ")}.`
-                : "You're both here."}{" "}
+                : "You're the only one here right now."}{" "}
               {showThinkingOfYou
-                ? "Tap Thinking of You — it goes to your partner — or add to the bucket list."
-                : "The bucket list is below. Letters come in a later week."}
+                ? "Set a mood, tap Thinking of You — it goes to your partner — or add to the bucket list."
+                : "Set a mood or add to the bucket list. Letters come in a later week."}
             </p>
           )}
         </div>
+
+        {moods.ok ? (
+          <CircleMoods
+            circleId={circle.id}
+            selfId={session.userId}
+            partnerName={partner?.displayName ?? null}
+            waiting={circle.status === "pending"}
+            canShare={showThinkingOfYou}
+            members={circle.members.map((member) => ({
+              userId: member.userId,
+              displayName: member.displayName,
+              avatarUrl: member.avatarUrl,
+            }))}
+            moods={moods.moods}
+          />
+        ) : (
+          <p className="max-w-xl text-sm leading-6 text-foreground/70">
+            Moods aren&apos;t in the database yet. Apply{" "}
+            <code>supabase/migrations/20261123120000_current_moods.sql</code> in
+            the Supabase SQL editor, then reload this page.
+          </p>
+        )}
 
         {bucket.ok ? (
           <BucketList
