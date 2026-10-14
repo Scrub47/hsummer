@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { MOODS } from "@/lib/moods/fields";
 import {
+  buildCheckpointNotification,
   buildLetterNotification,
   buildPingNotification,
   buildTestNotification,
+  CHECKPOINT_NOTIFICATION_BODY,
   LETTER_NOTIFICATION_BODY,
   PING_NOTIFICATION_BODY,
   PING_SECRET_NOTIFICATION_BODY,
@@ -98,5 +100,17 @@ describe("buildLetterNotification", () => {
     expect(serialized).not.toContain("Dear");
     expect(serialized).not.toContain("Summer");
     expect(notification.body).toBe("You have a new letter.");
+  });
+});
+
+describe("buildCheckpointNotification", () => {
+  it("does not put the checkpoint label on the lock screen", () => {
+    const notification = buildCheckpointNotification(
+      "https://hsummer.example",
+      "11111111-1111-4111-8111-111111111111",
+    );
+    expect(notification.body).toBe(CHECKPOINT_NOTIFICATION_BODY);
+    expect(JSON.stringify(notification)).not.toContain("@");
+    expect(notification.body).not.toContain("flight");
   });
 });

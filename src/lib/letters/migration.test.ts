@@ -21,6 +21,11 @@ const week11 = readFileSync(
   "utf8",
 );
 
+const week12 = readFileSync(
+  path.join(root, "supabase/migrations/20261228120000_still_us.sql"),
+  "utf8",
+);
+
 describe("week 11 migration", () => {
   it("adds letters and custom categories without dropping earlier tables", () => {
     expect(week11).toContain("create table public.letters");
@@ -91,5 +96,61 @@ describe("week 11 migration", () => {
     );
     expect(select).toContain("body");
     expect(select).not.toContain("qstash_message_id");
+  });
+});
+
+describe("week 12 migration", () => {
+  it("adds countdowns and checkpoints without dropping tables", () => {
+    expect(week12).toContain("create table public.countdowns");
+    expect(week12).toContain("create table public.checkpoints");
+    expect(week12).toContain(
+      "alter table public.countdowns enable row level security",
+    );
+    expect(week12).toContain(
+      "alter table public.checkpoints enable row level security",
+    );
+    expect(week12).toContain("public.sync_auto_checkpoints");
+    expect(week12).toContain("public.hit_checkpoint");
+    expect(week12).toContain("public.deliver_scheduled_letter");
+    expect(week12).toContain("public.deliver_due_letters");
+    expect(week12).toContain("memories_one_checkpoint_idx");
+    expect(week12).toContain(
+      "kind in ('photo', 'note', 'letter', 'milestone')",
+    );
+    expect(week12).not.toMatch(/drop table/i);
+    expect(week12).not.toMatch(/truncate/i);
+    expect(week12).not.toMatch(/delete from public\./i);
+  });
+
+  it("grants a future schedule and still hides the QStash id", () => {
+    expect(week12).toContain(
+      "grant insert (scheduled_for) on table public.letters to authenticated",
+    );
+    expect(week12).toContain(
+      "grant update (scheduled_for) on table public.letters to authenticated",
+    );
+    expect(week12).not.toContain("grant insert (qstash_message_id)");
+    expect(week12).not.toContain("grant update (qstash_message_id)");
+    expect(week12).not.toContain("grant select (qstash_message_id)");
+    expect(week12).toContain("alter policy letters_insert_sender");
+    expect(week12).not.toMatch(/drop policy/i);
+  });
+
+  it("keeps circle type out of the access policies", () => {
+    const policies = week12.slice(
+      week12.indexOf("create policy countdowns_select_member"),
+      week12.indexOf("create function private.countdowns_guard"),
+    );
+    expect(policies).not.toContain("circle_type");
+    expect(policies).toContain("private.is_active_member(circle_id)");
+    expect(week12).toContain("hsummer_countdown_couple");
+  });
+
+  it("explains the constraint replace and does not delete memory rows", () => {
+    expect(week12).toContain("drop constraint memories_kind_known");
+    expect(week12).toContain("drop constraint memories_photo_shape");
+    expect(week12).toContain("add column checkpoint_id");
+    expect(week12).not.toMatch(/drop column/i);
+    expect(week12).toContain("No row, policy, or bucket is");
   });
 });

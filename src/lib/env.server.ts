@@ -14,8 +14,8 @@ import { isPlaceholder } from "@/lib/env";
  * the ping insert, and the letter insert run as the signed-in user, so RLS
  * applies. Thinking of You and a new letter use the key for one thing: read
  * the recipient's push subscriptions and delete a device the push service has
- * retired. Scheduled delivery, which would set delivered_at from QStash, is
- * the next planned caller.
+ * retired. The QStash callback uses it to deliver a scheduled letter. Redis
+ * rate limits are separate and stay in us-west-2. QStash itself is global.
  */
 
 function readSecret(value: string | undefined): string | null {
@@ -80,4 +80,29 @@ export function getUpstashConfig(): { url: string; token: string } | null {
  */
 export function getTurnstileSecret(): string | null {
   return readSecret(process.env.TURNSTILE_SECRET_KEY);
+}
+
+/**
+ * Upstash QStash. All three must be set. QStash has no region; the token and
+ * both signing keys come from the QStash page in the Upstash console.
+ * When any one is missing, scheduled letters stay in the database and are
+ * delivered the next time someone in the circle opens the app after the time.
+ */
+export function getQstashConfig(): {
+  token: string;
+  currentSigningKey: string;
+  nextSigningKey: string;
+} | null {
+  const token = readSecret(process.env.QSTASH_TOKEN);
+  const currentSigningKey = readSecret(process.env.QSTASH_CURRENT_SIGNING_KEY);
+  const nextSigningKey = readSecret(process.env.QSTASH_NEXT_SIGNING_KEY);
+  if (!token || !currentSigningKey || !nextSigningKey) return null;
+  if (
+    token.length < 8 ||
+    currentSigningKey.length < 8 ||
+    nextSigningKey.length < 8
+  ) {
+    return null;
+  }
+  return { token, currentSigningKey, nextSigningKey };
 }

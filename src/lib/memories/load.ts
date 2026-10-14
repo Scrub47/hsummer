@@ -86,11 +86,17 @@ async function toCard(
     occurred_on: string;
     created_at: string;
     letter_id?: string | null;
+    checkpoint_id?: string | null;
   },
   names: ReadonlyMap<string, string>,
   viewersByMemory: ReadonlyMap<string, string[]>,
 ): Promise<MemoryCard | null> {
-  if (row.kind !== "photo" && row.kind !== "note" && row.kind !== "letter") {
+  if (
+    row.kind !== "photo" &&
+    row.kind !== "note" &&
+    row.kind !== "letter" &&
+    row.kind !== "milestone"
+  ) {
     return null;
   }
   if (!isMemoryVisibility(row.visibility)) return null;
@@ -134,12 +140,32 @@ async function toCard(
 async function selectMemories(session: Session, circleId: string) {
   const columns =
     "id, created_by, kind, body, photo_path, photo_bytes, tags, visibility, occurred_on, created_at";
+  const withBoth = await session.supabase
+    .from("memories")
+    .select(`${columns}, letter_id, checkpoint_id`)
+    .eq("circle_id", circleId);
+
+  if (!withBoth.error) return withBoth;
+
+  const missingCheckpoint = /checkpoint_id/i.test(withBoth.error.message ?? "");
+  if (!missingCheckpoint && !/letter_id/i.test(withBoth.error.message ?? "")) {
+    return withBoth;
+  }
+
   const withLetter = await session.supabase
     .from("memories")
     .select(`${columns}, letter_id`)
     .eq("circle_id", circleId);
 
-  if (!withLetter.error) return withLetter;
+  if (!withLetter.error) {
+    return {
+      data: (withLetter.data ?? []).map((row) => ({
+        ...row,
+        checkpoint_id: null,
+      })),
+      error: null,
+    };
+  }
   if (!/letter_id/i.test(withLetter.error.message ?? "")) return withLetter;
 
   const plain = await session.supabase
@@ -149,7 +175,11 @@ async function selectMemories(session: Session, circleId: string) {
   if (plain.error || !plain.data) return plain;
 
   return {
-    data: plain.data.map((row) => ({ ...row, letter_id: null })),
+    data: plain.data.map((row) => ({
+      ...row,
+      letter_id: null,
+      checkpoint_id: null,
+    })),
     error: null,
   };
 }

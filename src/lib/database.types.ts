@@ -250,6 +250,7 @@ export type Database = {
           visibility: "circle" | "selected";
           occurred_on: string;
           letter_id: string | null;
+          checkpoint_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -257,7 +258,7 @@ export type Database = {
           id?: string;
           circle_id: string;
           created_by?: string | null;
-          kind: "photo" | "note" | "letter";
+          kind: "photo" | "note" | "letter" | "milestone";
           body?: string | null;
           photo_path?: string | null;
           photo_bytes?: number;
@@ -265,6 +266,7 @@ export type Database = {
           visibility?: "circle" | "selected";
           occurred_on?: string;
           letter_id?: string | null;
+          checkpoint_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -274,12 +276,13 @@ export type Database = {
           visibility?: "circle" | "selected";
           occurred_on?: string;
           circle_id?: string;
-          kind?: "photo" | "note" | "letter";
+          kind?: "photo" | "note" | "letter" | "milestone";
           photo_path?: string | null;
           photo_bytes?: number;
           created_by?: string | null;
           created_at?: string;
           letter_id?: string | null;
+          checkpoint_id?: string | null;
         };
         Relationships: [];
       };
@@ -336,6 +339,9 @@ export type Database = {
           delivered_at: string | null;
           opened_at: string | null;
           created_at: string;
+          // Not granted to authenticated on select. The secret key reads it
+          // to cancel a QStash message. A signed-in select of this column fails.
+          qstash_message_id?: string | null;
         };
         Insert: {
           id?: string;
@@ -346,7 +352,7 @@ export type Database = {
           title?: string | null;
           body: string;
           design?: "minimal" | "kawaii" | "retro-film";
-          // Not granted to authenticated. Present so a test can try.
+          // Granted. A future instant stays scheduled. A past instant is refused.
           scheduled_for?: string | null;
           status?: "scheduled" | "delivered" | "cancelled";
           delivered_at?: string | null;
@@ -365,6 +371,62 @@ export type Database = {
           to_user_id?: string;
           from_user_id?: string | null;
           scheduled_for?: string | null;
+          qstash_message_id?: string | null;
+        };
+        Relationships: [];
+      };
+      countdowns: {
+        Row: {
+          id: string;
+          circle_id: string;
+          label: string;
+          target_date: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          circle_id: string;
+          label?: string;
+          target_date?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          label?: string;
+          target_date?: string | null;
+        };
+        Relationships: [];
+      };
+      checkpoints: {
+        Row: {
+          id: string;
+          countdown_id: string;
+          circle_id: string;
+          label: string;
+          date: string;
+          trigger: "auto-by-date" | "manual";
+          hit_at: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          countdown_id: string;
+          circle_id: string;
+          label: string;
+          date: string;
+          trigger: "auto-by-date" | "manual";
+          created_by?: string | null;
+          created_at?: string;
+          // Not granted. Present so a test can try.
+          hit_at?: string | null;
+        };
+        Update: {
+          label?: string;
+          date?: string;
+          trigger?: "auto-by-date" | "manual";
+          hit_at?: string | null;
         };
         Relationships: [];
       };
@@ -436,6 +498,28 @@ export type Database = {
         Returns: number;
       };
       open_letter: {
+        Args: { target: string };
+        Returns: string;
+      };
+      deliver_scheduled_letter: {
+        Args: { target: string };
+        Returns: string;
+      };
+      deliver_due_letters: {
+        Args: { target_circle: string };
+        Returns: {
+          letter_id: string;
+          to_user_id: string;
+        }[];
+      };
+      sync_auto_checkpoints: {
+        Args: { target_circle: string };
+        Returns: {
+          memory_id: string;
+          checkpoint_id: string;
+        }[];
+      };
+      hit_checkpoint: {
         Args: { target: string };
         Returns: string;
       };

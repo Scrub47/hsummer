@@ -100,6 +100,7 @@ Apply each file in `supabase/migrations` once, in filename order, in the SQL edi
 | `20261130120000_memories.sql`                        | memory wall, private `memories` bucket      |
 | `20261207120000_security_hardening.sql`              | narrower column grants, auth attempt counts |
 | `20261221120000_letters.sql`                         | letters, custom categories, letter memories |
+| `20261228120000_still_us.sql`                        | scheduled letters, Still Us countdowns      |
 
 In **Authentication → URL Configuration**, set the Site URL and add redirect URLs:
 
@@ -182,3 +183,19 @@ Web push on iOS works only from a site that was added to the Home Screen, and on
 3. Open Hsummer from the new icon, sign in, tap **Enable notifications**, then **Send test notification**.
 
 The notification text is generic on purpose. Lock screens are visible to other people.
+
+## Scheduled letters (QStash)
+
+QStash is global. There is no region to pick. Redis rate limits are a different Upstash product and stay in `us-west-2`. Supabase stays in Oregon (`us-west-2`). The Vercel project stays in `pdx1`. Do not add a `vercel.json` region override for this.
+
+If the three QStash variables are missing, a letter set for later still saves. It arrives the next time one of you opens Hsummer after that time.
+
+1. Open [console.upstash.com](https://console.upstash.com).
+2. In the left sidebar, open **QStash**. This is not the Redis database. There is no region dropdown.
+3. Copy **QSTASH_TOKEN** from the QStash details page.
+4. Open the **Signing Keys** tab. Copy **QSTASH_CURRENT_SIGNING_KEY** (current) and **QSTASH_NEXT_SIGNING_KEY** (next).
+5. In the Vercel project, open **Settings → Environment Variables**.
+6. Add each name as a **Sensitive** variable for **Production** and **Preview**. Sensitive variables cannot be stored for Development. Skip Development, or add the same names there as plain (non-sensitive) variables if you need local `vercel env pull`. Local `.env.local` can hold them either way.
+7. Redeploy. A new variable is not visible to a deployment that is already running.
+
+The callback is `POST /api/letters/deliver`. It rejects a body whose `upstash-signature` does not verify. Preview deployments protected by Vercel Authentication will answer 401 to QStash before that check runs. Test the on-time arrival on Production, or turn protection off for that path while you try it.
