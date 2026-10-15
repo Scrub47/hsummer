@@ -15,8 +15,11 @@ import {
   deleteMemory,
   type MemoryActionState,
 } from "@/app/circles/memory-actions";
+import { PhotoStrip } from "@/components/photo-strip";
 import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
 import { useCircleLive } from "@/components/use-circle-live";
+import { filterLabel, layoutLabel } from "@/lib/booth/fields";
+import { themeBundle } from "@/lib/booth/themes";
 import {
   CAPTION_ERROR,
   MEMORY_CAPTION_MAX,
@@ -29,6 +32,7 @@ import {
   audienceLabel,
   groupMemories,
   memoryTagList,
+  type BoothStripCard,
   type MemoryCard,
 } from "@/lib/memories/group";
 import { prepareMemoryPhoto } from "@/lib/memories/prepare-photo";
@@ -64,7 +68,9 @@ export function MemoryWall({
   const [tag, setTag] = useState<string | null>(null);
   const tags = memoryTagList(memories);
   const months = groupMemories(memories, tag);
-  const hasPhoto = memories.some((memory) => memory.photoUrl);
+  const hasPhoto = memories.some(
+    (memory) => memory.photoUrl || (memory.booth?.shots.length ?? 0) > 0,
+  );
 
   return (
     <section aria-labelledby="memory-heading" className="flex flex-col gap-6">
@@ -336,15 +342,44 @@ function MemoryCardView({
     deleteMemory,
     initialState,
   );
-  const label = memory.body?.trim() || "this photo";
+  const label =
+    memory.body?.trim() ||
+    (memory.kind === "photo-strip" ? "this strip" : "this photo");
   const refreshedUrl = useRef<string | null>(null);
 
   return (
     <li className="flex flex-col gap-3 rounded-3xl border border-line bg-card p-5">
       <div className="flex items-baseline justify-between gap-4">
-        <p className="text-sm font-medium text-pine">{memory.author}</p>
+        <p className="text-sm font-medium text-pine">
+          {memory.booth?.passed && memory.booth.people.length > 0
+            ? memory.booth.people.join(" and ")
+            : memory.author}
+        </p>
         <p className="text-sm text-foreground/70">{audienceLabel(memory)}</p>
       </div>
+      {memory.kind === "photo-strip" && memory.booth ? (
+        <div className="flex flex-col gap-3">
+          <PhotoStrip
+            theme={memory.booth.theme}
+            layout={memory.booth.frameLayout}
+            dateLabel={stripDate(memory.occurredOn)}
+            label={
+              memory.booth.passed
+                ? `${themeBundle(memory.booth.theme).label} photo booth strip`
+                : `${themeBundle(memory.booth.theme).label} photo booth strip from ${memory.author}`
+            }
+            sources={memory.booth.shots.map((shot) => ({
+              position: shot.position,
+              url: shot.url,
+            }))}
+          />
+          <p className="text-sm text-foreground/70">
+            {stripMeta(memory.booth)}
+          </p>
+        </div>
+      ) : memory.kind === "photo-strip" ? (
+        <p className="text-base leading-7">Photo booth strip</p>
+      ) : null}
       {memory.photoUrl ? (
         // Signed Storage URL. The optimizer would fetch and cache it.
         // eslint-disable-next-line @next/next/no-img-element
@@ -362,7 +397,14 @@ function MemoryCardView({
           }}
         />
       ) : null}
-      {memory.kind === "letter" ? (
+      {memory.kind === "milestone" ? (
+        <div>
+          <p className="font-serif text-2xl tracking-tight">Still Us</p>
+          {memory.body ? (
+            <p className="mt-2 text-base leading-7">{memory.body}</p>
+          ) : null}
+        </div>
+      ) : memory.kind === "letter" ? (
         <div>
           <p className="font-serif text-2xl tracking-tight">Opened letter</p>
           {memory.body ? (
@@ -392,7 +434,7 @@ function MemoryCardView({
           ))}
         </ul>
       ) : null}
-      {memory.mine ? (
+      {memory.mine && memory.kind !== "milestone" ? (
         <form action={formAction}>
           <input type="hidden" name="circleId" value={circleId} />
           <input type="hidden" name="id" value={memory.id} />
@@ -413,6 +455,31 @@ function MemoryCardView({
       ) : null}
     </li>
   );
+}
+
+function stripDate(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return iso;
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(
+    new Date(
+      Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
+    ),
+  );
+}
+
+function stripMeta(booth: BoothStripCard): string {
+  const theme = themeBundle(booth.theme).label;
+  const layout = layoutLabel(booth.frameLayout);
+  if (!booth.passed) {
+    return `${theme} · ${layout} · ${filterLabel(booth.filterId)}`;
+  }
+  if (!booth.sameFilter) return `${theme} · ${layout} · Passed`;
+  return `${theme} · ${layout} · Passed · ${filterLabel(booth.filterId)}`;
 }
 
 function TagButton({

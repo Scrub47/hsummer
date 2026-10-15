@@ -6,7 +6,7 @@ const baseURL = `http://127.0.0.1:${port}`;
 export default defineConfig({
   testDir: "e2e",
   // The circle flow needs local Supabase. It lives in playwright.local.config.ts.
-  testIgnore: "circle-flow.spec.ts",
+  testIgnore: ["circle-flow.spec.ts", "booth-flow.spec.ts"],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

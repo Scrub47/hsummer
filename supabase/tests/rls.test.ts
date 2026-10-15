@@ -2476,6 +2476,982 @@ describe("letters stay between the sender and the recipient", () => {
     expect(blocked.error?.message ?? "").toContain("hsummer_rate_limited");
     expect(bodies.every((message) => message === "")).toBe(true);
   });
+
+  it("keeps a future letter scheduled and hidden, and delivers one that is due", async () => {
+    const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const scheduled = await owner
+      .from("letters")
+      .insert({
+        circle_id: groupId,
+        from_user_id: ownerId,
+        to_user_id: otherId,
+        category: "when-you-miss-me",
+        body: "Open this next week.",
+        design: "minimal",
+        scheduled_for: future,
+      })
+      .select("id, status, delivered_at, scheduled_for")
+      .single();
+    expect(scheduled.error).toBeNull();
+    expect(scheduled.data?.status).toBe("scheduled");
+    expect(scheduled.data?.delivered_at).toBeNull();
+    const scheduledId = scheduled.data?.id ?? "";
+
+    const hidden = await other
+      .from("letters")
+      .select("body")
+      .eq("id", scheduledId);
+    expect(hidden.data).toEqual([]);
+    expect(JSON.stringify(hidden.data)).not.toContain("next week");
+
+    const thirdView = await third
+      .from("letters")
+      .select("id")
+      .eq("id", scheduledId);
+    expect(thirdView.data).toEqual([]);
+
+    const tooSoon = await owner.from("letters").insert({
+      circle_id: groupId,
+      from_user_id: ownerId,
+      to_user_id: otherId,
+      category: "need-help",
+      body: "This minute is too soon.",
+      design: "minimal",
+      scheduled_for: new Date(Date.now() + 5_000).toISOString(),
+    });
+    expect(tooSoon.error?.message ?? "").toContain("hsummer_letter_schedule");
+
+    const qstashColumn = await owner
+      .from("letters")
+      .select("qstash_message_id")
+      .eq("id", scheduledId);
+    expect(qstashColumn.error).not.toBeNull();
+
+    const forgedQueue = await owner
+      .from("letters")
+      .update({ qstash_message_id: "msg_test_queue" })
+      .eq("id", scheduledId);
+    expect(forgedQueue.error).not.toBeNull();
+
+    const callerDelivers = await owner.rpc("deliver_scheduled_letter", {
+      target: scheduledId,
+    });
+    expect(callerDelivers.error).not.toBeNull();
+
+    const early = await admin.rpc("deliver_scheduled_letter", {
+      target: scheduledId,
+    });
+    expect(early.error).toBeNull();
+    expect(early.data).toBe("early");
+    const stillHidden = await other
+      .from("letters")
+      .select("id")
+      .eq("id", scheduledId);
+    expect(stillHidden.data).toEqual([]);
+
+    const due = await admin
+      .from("letters")
+      .insert({
+        circle_id: groupId,
+        from_user_id: ownerId,
+        to_user_id: otherId,
+        category: "feeling-lonely",
+        body: "The morning letter is here.",
+        design: "minimal",
+        scheduled_for: new Date(Date.now() - 60_000).toISOString(),
+      })
+      .select("id, status")
+      .single();
+    expect(due.error).toBeNull();
+    expect(due.data?.status).toBe("scheduled");
+    const dueId = due.data?.id ?? "";
+
+    const arrived = await admin.rpc("deliver_scheduled_letter", {
+      target: dueId,
+    });
+    expect(arrived.error).toBeNull();
+    expect(arrived.data).toBe("delivered");
+    const again = await admin.rpc("deliver_scheduled_letter", {
+      target: dueId,
+    });
+    expect(again.data).toBe("already");
+
+    const recipient = await other
+      .from("letters")
+      .select("body")
+      .eq("id", dueId);
+    expect(recipient.data?.[0]?.body).toBe("The morning letter is here.");
+    const thirdAfter = await third
+      .from("letters")
+      .select("body")
+      .eq("id", dueId);
+    expect(thirdAfter.data).toEqual([]);
+    expect(JSON.stringify(thirdAfter.data)).not.toContain("morning letter");
+
+    const leftBehind = await admin
+      .from("letters")
+      .insert({
+        circle_id: groupId,
+        from_user_id: ownerId,
+        to_user_id: leaverId,
+        category: "need-help",
+        body: "Do not deliver this to someone who left.",
+        design: "minimal",
+        scheduled_for: new Date(Date.now() - 60_000).toISOString(),
+      })
+      .select("id")
+      .single();
+    expect(leftBehind.error).toBeNull();
+    const cancelled = await admin.rpc("deliver_scheduled_letter", {
+      target: leftBehind.data?.id ?? "",
+    });
+    expect(cancelled.data).toBe("cancelled");
+    const leaverView = await leaver
+      .from("letters")
+      .select("id")
+      .eq("id", leftBehind.data?.id ?? "");
+    expect(leaverView.data).toEqual([]);
+  });
+});
+
+describe("Still Us stays inside the circle and hits once", () => {
+  it("gives a couple one countdown and one memory when two people sync", async () => {
+    const created = await owner.rpc("create_circle", {
+      circle_name: "Still Us",
+      circle_type: "couple",
+    });
+    expect(created.error).toBeNull();
+    const circleId = created.data?.[0]?.circle_id ?? "";
+    expect(circleId).toMatch(/^[0-9a-f-]{36}$/i);
+
+    const seeded = await owner
+      .from("countdowns")
+      .select("id, label, target_date")
+      .eq("circle_id", circleId);
+    expect(seeded.data).toHaveLength(1);
+    expect(seeded.data?.[0]?.label).toBe("Still Us");
+    expect(seeded.data?.[0]?.target_date).toBeNull();
+    const countdownId = seeded.data?.[0]?.id ?? "";
+
+    const nonce = crypto.randomUUID();
+    const outsiderId = await createUser(admin, {
+      email: `rls-still-out-${nonce}@example.com`,
+      displayName: "Still Out",
+      timezone: "UTC",
+    });
+    const outsider = await signIn(
+      apiUrl,
+      anonKey,
+      `rls-still-out-${nonce}@example.com`,
+    );
+    const outside = await outsider.client
+      .from("countdowns")
+      .select("id")
+      .eq("circle_id", circleId);
+    expect(outside.data).toEqual([]);
+    const sneaky = await outsider.client.from("countdowns").insert({
+      circle_id: circleId,
+      label: "Nope",
+      created_by: outsiderId,
+    });
+    expect(sneaky.error).not.toBeNull();
+
+    const second = await owner.from("countdowns").insert({
+      circle_id: circleId,
+      label: "Another reunion",
+      target_date: "2027-06-01",
+      created_by: ownerId,
+    });
+    expect(second.error?.message ?? "").toContain("hsummer_countdown_couple");
+
+    const removed = await owner
+      .from("countdowns")
+      .delete()
+      .eq("id", countdownId)
+      .select("id");
+    expect(removed.error?.message ?? "").toContain("hsummer_countdown_couple");
+
+    const dated = await owner
+      .from("countdowns")
+      .update({ target_date: "2027-02-14", label: "Winter" })
+      .eq("id", countdownId)
+      .select("target_date, label");
+    expect(dated.error).toBeNull();
+    expect(dated.data?.[0]?.target_date).toBe("2027-02-14");
+
+    const joined = await admin.from("circle_members").insert({
+      circle_id: circleId,
+      user_id: otherId,
+    });
+    expect(joined.error).toBeNull();
+
+    const partnerSees = await other
+      .from("countdowns")
+      .select("label")
+      .eq("id", countdownId);
+    expect(partnerSees.data?.[0]?.label).toBe("Winter");
+
+    const auto = await owner
+      .from("checkpoints")
+      .insert({
+        countdown_id: countdownId,
+        circle_id: circleId,
+        label: "100 days",
+        date: "2020-01-01",
+        trigger: "auto-by-date",
+        created_by: ownerId,
+      })
+      .select("id")
+      .single();
+    expect(auto.error).toBeNull();
+    const autoId = auto.data?.id ?? "";
+
+    const [first, secondSync] = await Promise.all([
+      owner.rpc("sync_auto_checkpoints", { target_circle: circleId }),
+      other.rpc("sync_auto_checkpoints", { target_circle: circleId }),
+    ]);
+    expect(first.error).toBeNull();
+    expect(secondSync.error).toBeNull();
+
+    const memories = await owner
+      .from("memories")
+      .select("id, kind, visibility, body, checkpoint_id")
+      .eq("checkpoint_id", autoId);
+    expect(memories.data).toHaveLength(1);
+    expect(memories.data?.[0]).toMatchObject({
+      kind: "milestone",
+      visibility: "circle",
+      body: "100 days",
+      checkpoint_id: autoId,
+    });
+    const memoryId = memories.data?.[0]?.id ?? "";
+
+    const partnerMemory = await other
+      .from("memories")
+      .select("id, body")
+      .eq("id", memoryId);
+    expect(partnerMemory.data?.[0]?.body).toBe("100 days");
+
+    const outsiderMemory = await outsider.client
+      .from("memories")
+      .select("id, body")
+      .eq("circle_id", circleId);
+    expect(outsiderMemory.data).toEqual([]);
+    expect(JSON.stringify(outsiderMemory.data)).not.toContain("100 days");
+
+    const again = await owner.rpc("sync_auto_checkpoints", {
+      target_circle: circleId,
+    });
+    expect(again.error).toBeNull();
+    expect(again.data ?? []).toEqual([]);
+    const stillOne = await owner
+      .from("memories")
+      .select("id")
+      .eq("checkpoint_id", autoId);
+    expect(stillOne.data).toHaveLength(1);
+
+    const manual = await other
+      .from("checkpoints")
+      .insert({
+        countdown_id: countdownId,
+        circle_id: circleId,
+        label: "Flight booked",
+        date: "2027-03-01",
+        trigger: "manual",
+        created_by: otherId,
+      })
+      .select("id")
+      .single();
+    expect(manual.error).toBeNull();
+    const manualId = manual.data?.id ?? "";
+
+    const forgedHit = await other
+      .from("checkpoints")
+      .update({ hit_at: new Date().toISOString() })
+      .eq("id", manualId);
+    expect(forgedHit.error).not.toBeNull();
+
+    const hit = await other.rpc("hit_checkpoint", { target: manualId });
+    expect(hit.error).toBeNull();
+    const hitAgain = await owner.rpc("hit_checkpoint", { target: manualId });
+    expect(hitAgain.error).toBeNull();
+    expect(hitAgain.data).toBe(hit.data);
+
+    const manualMemories = await owner
+      .from("memories")
+      .select("id")
+      .eq("checkpoint_id", manualId);
+    expect(manualMemories.data).toHaveLength(1);
+
+    const autoHit = await owner.rpc("hit_checkpoint", { target: autoId });
+    expect(autoHit.error).not.toBeNull();
+
+    const planted = await owner.from("memories").insert({
+      circle_id: circleId,
+      kind: "milestone",
+      body: "Forged milestone",
+      visibility: "circle",
+      occurred_on: "2026-10-14",
+    });
+    expect(planted.error).not.toBeNull();
+  });
+});
+
+describe("a solo booth strip is visible to the circle and nobody else", () => {
+  let author: Client;
+  let partner: Client;
+  let third: Client;
+  let outsider: Client;
+  let leaver: Client;
+  let leaverId = "";
+  let circleId = "";
+
+  beforeAll(async () => {
+    const nonce = crypto.randomUUID();
+    await createUser(admin, {
+      email: `rls-booth-author-${nonce}@example.com`,
+      displayName: "Booth Author",
+      timezone: "America/Los_Angeles",
+    });
+    await createUser(admin, {
+      email: `rls-booth-partner-${nonce}@example.com`,
+      displayName: "Booth Partner",
+      timezone: "America/Los_Angeles",
+    });
+    await createUser(admin, {
+      email: `rls-booth-third-${nonce}@example.com`,
+      displayName: "Booth Third",
+      timezone: "UTC",
+    });
+    leaverId = await createUser(admin, {
+      email: `rls-booth-leaver-${nonce}@example.com`,
+      displayName: "Booth Leaver",
+      timezone: "UTC",
+    });
+    await createUser(admin, {
+      email: `rls-booth-out-${nonce}@example.com`,
+      displayName: "Booth Outsider",
+      timezone: "UTC",
+    });
+    author = (
+      await signIn(apiUrl, anonKey, `rls-booth-author-${nonce}@example.com`)
+    ).client;
+    partner = (
+      await signIn(apiUrl, anonKey, `rls-booth-partner-${nonce}@example.com`)
+    ).client;
+    third = (
+      await signIn(apiUrl, anonKey, `rls-booth-third-${nonce}@example.com`)
+    ).client;
+    outsider = (
+      await signIn(apiUrl, anonKey, `rls-booth-out-${nonce}@example.com`)
+    ).client;
+    leaver = (
+      await signIn(apiUrl, anonKey, `rls-booth-leaver-${nonce}@example.com`)
+    ).client;
+
+    const created = await rpc(author, "create_circle", {
+      circle_name: "Booth group",
+      circle_type: "group",
+    });
+    circleId = created.circle_id as string;
+    const token = created.token as string;
+    for (const member of [partner, third, leaver]) {
+      const joined = await rpc(member, "redeem_invite", {
+        raw_token: token,
+        ip_hash: freshIp(),
+      });
+      expect(joined.invite_state).toBe("joined");
+    }
+  });
+
+  it("refuses a direct insert and saves one circle-visible strip", async () => {
+    const planted = await author.from("booth_sessions").insert({
+      circle_id: circleId,
+      mode: "solo",
+      theme: "kawaii",
+      frame_layout: "4-cut",
+    });
+    expect(planted.error).not.toBeNull();
+
+    const forged = await author.from("memories").insert({
+      circle_id: circleId,
+      kind: "photo-strip",
+      visibility: "circle",
+      occurred_on: utcDay(0),
+      photo_bytes: 12,
+    });
+    expect(forged.error).not.toBeNull();
+
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const saved = await author.rpc("save_solo_booth", {
+      target_circle: circleId,
+      target_theme: "kawaii",
+      target_layout: "4-cut",
+      target_filter: "warm",
+      target_caption: "Ferry lights",
+      shot_sizes: [jpeg.length, jpeg.length, jpeg.length, jpeg.length],
+    });
+    expect(saved.error).toBeNull();
+    const payload = saved.data;
+    expect(payload?.paths).toHaveLength(4);
+    const memoryId = payload?.memory_id ?? "";
+    const sessionId = payload?.session_id ?? "";
+
+    for (const path of payload?.paths ?? []) {
+      const uploaded = await author.storage
+        .from("memories")
+        .upload(path, jpeg, { contentType: "image/jpeg", upsert: false });
+      expect(uploaded.error).toBeNull();
+    }
+
+    const seen = await partner
+      .from("memories")
+      .select("id, kind, visibility, body, booth_session_id")
+      .eq("id", memoryId);
+    expect(seen.data).toEqual([
+      expect.objectContaining({
+        kind: "photo-strip",
+        visibility: "circle",
+        body: "Ferry lights",
+        booth_session_id: sessionId,
+      }),
+    ]);
+
+    const thirdSees = await third
+      .from("booth_shots")
+      .select("position")
+      .eq("session_id", sessionId);
+    expect(thirdSees.data).toHaveLength(4);
+
+    const outside = await outsider
+      .from("memories")
+      .select("id")
+      .eq("id", memoryId);
+    expect(outside.data).toEqual([]);
+    const outsideShot = await outsider
+      .from("booth_shots")
+      .select("storage_path")
+      .eq("session_id", sessionId);
+    expect(outsideShot.data).toEqual([]);
+
+    const path = payload?.paths[0] ?? "";
+    const stolen = await outsider.storage
+      .from("memories")
+      .createSignedUrl(path, 60);
+    expect(stolen.data?.signedUrl ?? null).toBeNull();
+    const signed = await partner.storage
+      .from("memories")
+      .createSignedUrl(path, 60);
+    expect(signed.data?.signedUrl).toBeTruthy();
+    const downloaded = await fetch(signed.data!.signedUrl);
+    expect(downloaded.status).toBe(200);
+    const pub = await fetch(
+      `${apiUrl}/storage/v1/object/public/memories/${path}`,
+    );
+    expect(pub.ok).toBe(false);
+
+    const left = await leaver
+      .from("circle_members")
+      .update({ left_at: new Date().toISOString() })
+      .eq("circle_id", circleId)
+      .eq("user_id", leaverId)
+      .select("left_at");
+    expect(left.data?.[0]?.left_at).toBeTruthy();
+    const afterLeave = await leaver
+      .from("memories")
+      .select("id")
+      .eq("id", memoryId);
+    expect(afterLeave.data).toEqual([]);
+
+    const removed = await author
+      .from("memories")
+      .delete()
+      .eq("id", memoryId)
+      .select("id");
+    expect(removed.error).toBeNull();
+    expect(removed.data).toHaveLength(1);
+    const gone = await partner
+      .from("booth_sessions")
+      .select("id")
+      .eq("id", sessionId);
+    expect(gone.data).toEqual([]);
+    const leftover = await admin.storage.from("memories").download(path);
+    expect(leftover.data).toBeNull();
+  });
+
+  it("refuses a non-member and a strip with the wrong number of frames", async () => {
+    const outsiderSave = await outsider.rpc("save_solo_booth", {
+      target_circle: circleId,
+      target_theme: "minimal",
+      target_layout: "2-cut",
+      target_filter: "none",
+      target_caption: "",
+      shot_sizes: [10, 10],
+    });
+    expect(outsiderSave.error).not.toBeNull();
+    expect(outsiderSave.data).toBeNull();
+
+    const short = await author.rpc("save_solo_booth", {
+      target_circle: circleId,
+      target_theme: "kawaii",
+      target_layout: "4-cut",
+      target_filter: "none",
+      target_caption: "",
+      shot_sizes: [10, 10, 10],
+    });
+    expect(short.error).not.toBeNull();
+  });
+
+  it("stops the 11th strip for one person", async () => {
+    const nonce = crypto.randomUUID();
+    const rapidId = await createUser(admin, {
+      email: `rls-booth-rapid-${nonce}@example.com`,
+      displayName: "Booth Rapid",
+      timezone: "UTC",
+    });
+    const rapid = (
+      await signIn(apiUrl, anonKey, `rls-booth-rapid-${nonce}@example.com`)
+    ).client;
+    const created = await rpc(rapid, "create_circle", {
+      circle_name: "Booth rapid",
+      circle_type: "couple",
+    });
+    expect(rapidId).toBeTruthy();
+    for (let count = 0; count < 10; count += 1) {
+      const saved = await rapid.rpc("save_solo_booth", {
+        target_circle: created.circle_id as string,
+        target_theme: "minimal",
+        target_layout: "2-cut",
+        target_filter: "none",
+        target_caption: "",
+        shot_sizes: [8, 8],
+      });
+      expect(saved.error).toBeNull();
+    }
+    const blocked = await rapid.rpc("save_solo_booth", {
+      target_circle: created.circle_id as string,
+      target_theme: "minimal",
+      target_layout: "2-cut",
+      target_filter: "none",
+      target_caption: "",
+      shot_sizes: [8, 8],
+    });
+    expect(blocked.error?.message).toContain("hsummer_rate_limited");
+  });
+});
+
+describe("a pass booth stays between its two people until the strip is finished", () => {
+  let author: Client;
+  let partner: Client;
+  let third: Client;
+  let outsider: Client;
+  let authorId = "";
+  let partnerId = "";
+  let thirdId = "";
+  let circleId = "";
+
+  beforeAll(async () => {
+    const nonce = crypto.randomUUID();
+    authorId = await createUser(admin, {
+      email: `rls-pass-author-${nonce}@example.com`,
+      displayName: "Pass Author",
+      timezone: "America/Los_Angeles",
+    });
+    partnerId = await createUser(admin, {
+      email: `rls-pass-partner-${nonce}@example.com`,
+      displayName: "Pass Partner",
+      timezone: "America/Los_Angeles",
+    });
+    thirdId = await createUser(admin, {
+      email: `rls-pass-third-${nonce}@example.com`,
+      displayName: "Pass Third",
+      timezone: "UTC",
+    });
+    await createUser(admin, {
+      email: `rls-pass-out-${nonce}@example.com`,
+      displayName: "Pass Outsider",
+      timezone: "UTC",
+    });
+    author = (
+      await signIn(apiUrl, anonKey, `rls-pass-author-${nonce}@example.com`)
+    ).client;
+    partner = (
+      await signIn(apiUrl, anonKey, `rls-pass-partner-${nonce}@example.com`)
+    ).client;
+    third = (
+      await signIn(apiUrl, anonKey, `rls-pass-third-${nonce}@example.com`)
+    ).client;
+    outsider = (
+      await signIn(apiUrl, anonKey, `rls-pass-out-${nonce}@example.com`)
+    ).client;
+
+    const created = await rpc(author, "create_circle", {
+      circle_name: "Pass group",
+      circle_type: "group",
+    });
+    circleId = created.circle_id as string;
+    const token = created.token as string;
+    for (const member of [partner, third]) {
+      const joined = await rpc(member, "redeem_invite", {
+        raw_token: token,
+        ip_hash: freshIp(),
+      });
+      expect(joined.invite_state).toBe("joined");
+    }
+  });
+
+  it("hides an open pass from a third member, then shows the finished strip", async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const started = await author.rpc("create_pass_booth", {
+      target_circle: circleId,
+      partner_id: partnerId,
+      target_theme: "kawaii",
+      target_layout: "4-cut",
+      target_filter: "warm",
+      target_caption: "Night ferry",
+      shot_sizes: [jpeg.length, jpeg.length],
+    });
+    expect(started.error).toBeNull();
+    const sessionId = started.data?.session_id ?? "";
+    const paths = started.data?.paths ?? [];
+    expect(paths).toHaveLength(2);
+    expect(authorId).toBeTruthy();
+
+    const contributors = await author
+      .from("booth_contributors")
+      .select("user_id, assigned_positions")
+      .eq("session_id", sessionId);
+    expect(contributors.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          user_id: authorId,
+          assigned_positions: [0, 1],
+        }),
+        expect.objectContaining({
+          user_id: partnerId,
+          assigned_positions: [2, 3],
+        }),
+      ]),
+    );
+
+    const hidden = await third
+      .from("booth_sessions")
+      .select("id")
+      .eq("id", sessionId);
+    expect(hidden.data).toEqual([]);
+    const hiddenShots = await third
+      .from("booth_shots")
+      .select("position")
+      .eq("session_id", sessionId);
+    expect(hiddenShots.data).toEqual([]);
+
+    const outsiderStart = await outsider.rpc("create_pass_booth", {
+      target_circle: circleId,
+      partner_id: partnerId,
+      target_theme: "minimal",
+      target_layout: "2-cut",
+      target_filter: "none",
+      target_caption: "",
+      shot_sizes: [jpeg.length],
+    });
+    expect(outsiderStart.error).not.toBeNull();
+
+    const selfPartner = await author.rpc("create_pass_booth", {
+      target_circle: circleId,
+      partner_id: authorId,
+      target_theme: "kawaii",
+      target_layout: "2-cut",
+      target_filter: "none",
+      target_caption: "",
+      shot_sizes: [jpeg.length],
+    });
+    expect(selfPartner.error).not.toBeNull();
+
+    const tamper = await partner
+      .from("booth_sessions")
+      .update({ status: "complete" })
+      .eq("id", sessionId);
+    expect(tamper.error).not.toBeNull();
+
+    for (const path of paths) {
+      const uploaded = await author.storage
+        .from("memories")
+        .upload(path, jpeg, { contentType: "image/jpeg", upsert: false });
+      expect(uploaded.error).toBeNull();
+    }
+
+    const stolen = await third.storage
+      .from("memories")
+      .createSignedUrl(paths[0] ?? "", 60);
+    expect(stolen.data?.signedUrl ?? null).toBeNull();
+    const signed = await partner.storage
+      .from("memories")
+      .createSignedUrl(paths[0] ?? "", 60);
+    expect(signed.data?.signedUrl).toBeTruthy();
+
+    const wrongFrame = await partner.storage
+      .from("memories")
+      .upload(paths[0] ?? "", jpeg, {
+        contentType: "image/jpeg",
+        upsert: false,
+      });
+    expect(wrongFrame.error).not.toBeNull();
+
+    const thirdSubmit = await third.rpc("submit_pass_shots", {
+      target_session: sessionId,
+      target_filter: "cool",
+      shot_sizes: [jpeg.length, jpeg.length],
+    });
+    expect(thirdSubmit.error).not.toBeNull();
+    const thirdFinish = await third.rpc("finish_pass_booth", {
+      target_session: sessionId,
+    });
+    expect(thirdFinish.error).not.toBeNull();
+    const thirdCancel = await third.rpc("cancel_pass_booth", {
+      target_session: sessionId,
+    });
+    expect(thirdCancel.error).not.toBeNull();
+
+    const early = await author.rpc("finish_pass_booth", {
+      target_session: sessionId,
+    });
+    expect(early.error).toBeNull();
+    expect(early.data?.status).toBe("open");
+    expect(early.data?.memory_id).toBeNull();
+
+    const submitted = await partner.rpc("submit_pass_shots", {
+      target_session: sessionId,
+      target_filter: "cool",
+      shot_sizes: [jpeg.length, jpeg.length],
+    });
+    expect(submitted.error).toBeNull();
+    expect(submitted.data?.status).toBe("open");
+    expect(submitted.data?.paths).toHaveLength(2);
+    for (const path of submitted.data?.paths ?? []) {
+      const uploaded = await partner.storage
+        .from("memories")
+        .upload(path, jpeg, { contentType: "image/jpeg", upsert: false });
+      expect(uploaded.error).toBeNull();
+    }
+
+    const finished = await partner.rpc("finish_pass_booth", {
+      target_session: sessionId,
+    });
+    expect(finished.error).toBeNull();
+    expect(finished.data?.status).toBe("complete");
+    const memoryId = finished.data?.memory_id ?? "";
+    expect(memoryId).toMatch(/^[0-9a-f-]{36}$/);
+
+    const seen = await third
+      .from("memories")
+      .select("id, kind, visibility, body")
+      .eq("id", memoryId);
+    expect(seen.data).toEqual([
+      expect.objectContaining({
+        kind: "photo-strip",
+        visibility: "circle",
+        body: "Night ferry",
+      }),
+    ]);
+    const frames = await third
+      .from("booth_shots")
+      .select("position")
+      .eq("session_id", sessionId);
+    expect(frames.data).toHaveLength(4);
+    const outside = await outsider
+      .from("memories")
+      .select("id")
+      .eq("id", memoryId);
+    expect(outside.data).toEqual([]);
+  });
+
+  it("lets a named third member finish, and refuses everyone else", async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const started = await author.rpc("create_pass_booth", {
+      target_circle: circleId,
+      partner_id: thirdId,
+      target_theme: "minimal",
+      target_layout: "2-cut",
+      target_filter: "none",
+      target_caption: "",
+      shot_sizes: [jpeg.length],
+    });
+    expect(started.error).toBeNull();
+    const sessionId = started.data?.session_id ?? "";
+    const path = started.data?.paths?.[0] ?? "";
+    const uploaded = await author.storage
+      .from("memories")
+      .upload(path, jpeg, { contentType: "image/jpeg", upsert: false });
+    expect(uploaded.error).toBeNull();
+
+    const partnerBlind = await partner
+      .from("booth_sessions")
+      .select("id")
+      .eq("id", sessionId);
+    expect(partnerBlind.data).toEqual([]);
+
+    const seen = await third
+      .from("booth_sessions")
+      .select("id, status")
+      .eq("id", sessionId);
+    expect(seen.data).toEqual([
+      expect.objectContaining({ id: sessionId, status: "open" }),
+    ]);
+
+    const submitted = await third.rpc("submit_pass_shots", {
+      target_session: sessionId,
+      target_filter: "bw",
+      shot_sizes: [jpeg.length],
+    });
+    expect(submitted.error).toBeNull();
+    const theirPath = submitted.data?.paths?.[0] ?? "";
+    const theirUpload = await third.storage
+      .from("memories")
+      .upload(theirPath, jpeg, { contentType: "image/jpeg", upsert: false });
+    expect(theirUpload.error).toBeNull();
+    const finished = await third.rpc("finish_pass_booth", {
+      target_session: sessionId,
+    });
+    expect(finished.data?.status).toBe("complete");
+  });
+
+  it("lets the starter cancel, and closes an expired pass without a memory", async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const started = await author.rpc("create_pass_booth", {
+      target_circle: circleId,
+      partner_id: partnerId,
+      target_theme: "kawaii",
+      target_layout: "2-cut",
+      target_filter: "none",
+      target_caption: "",
+      shot_sizes: [jpeg.length],
+    });
+    expect(started.error).toBeNull();
+    const sessionId = started.data?.session_id ?? "";
+
+    const partnerCancel = await partner.rpc("cancel_pass_booth", {
+      target_session: sessionId,
+    });
+    expect(partnerCancel.error).not.toBeNull();
+
+    const cancelled = await author.rpc("cancel_pass_booth", {
+      target_session: sessionId,
+    });
+    expect(cancelled.error).toBeNull();
+    expect(cancelled.data?.status).toBe("cancelled");
+    const shots = await author
+      .from("booth_shots")
+      .select("position")
+      .eq("session_id", sessionId);
+    expect(shots.data).toEqual([]);
+    const memory = await author
+      .from("memories")
+      .select("id")
+      .eq("booth_session_id", sessionId);
+    expect(memory.data).toEqual([]);
+
+    const expiring = await author.rpc("create_pass_booth", {
+      target_circle: circleId,
+      partner_id: partnerId,
+      target_theme: "minimal",
+      target_layout: "2-cut",
+      target_filter: "sepia",
+      target_caption: "",
+      shot_sizes: [jpeg.length],
+    });
+    expect(expiring.error).toBeNull();
+    const expiredId = expiring.data?.session_id ?? "";
+    const moved = await admin
+      .from("booth_sessions")
+      .update({ expires_at: new Date(Date.now() - 60_000).toISOString() })
+      .eq("id", expiredId)
+      .select("id");
+    expect(moved.error).toBeNull();
+
+    const closed = await partner.rpc("expire_pass_booths", {
+      target_circle: circleId,
+    });
+    expect(closed.error).toBeNull();
+    expect(closed.data).toBeGreaterThanOrEqual(1);
+
+    const row = await partner
+      .from("booth_sessions")
+      .select("status")
+      .eq("id", expiredId);
+    expect(row.data).toEqual([expect.objectContaining({ status: "expired" })]);
+    const leftover = await partner
+      .from("booth_shots")
+      .select("position")
+      .eq("session_id", expiredId);
+    expect(leftover.data).toEqual([]);
+    const stillHidden = await third
+      .from("booth_sessions")
+      .select("id")
+      .eq("id", expiredId);
+    expect(stillHidden.data).toEqual([]);
+
+    const late = await partner.rpc("submit_pass_shots", {
+      target_session: expiredId,
+      target_filter: "none",
+      shot_sizes: [jpeg.length],
+    });
+    expect(late.error).toBeNull();
+    expect(late.data?.status).toBe("expired");
+  });
+
+  it("stops a fourth open pass in one circle", async () => {
+    const nonce = crypto.randomUUID();
+    const starterId = await createUser(admin, {
+      email: `rls-pass-cap-${nonce}@example.com`,
+      displayName: "Pass Cap",
+      timezone: "UTC",
+    });
+    const friendId = await createUser(admin, {
+      email: `rls-pass-cap-friend-${nonce}@example.com`,
+      displayName: "Pass Friend",
+      timezone: "UTC",
+    });
+    const starter = (
+      await signIn(apiUrl, anonKey, `rls-pass-cap-${nonce}@example.com`)
+    ).client;
+    const friend = (
+      await signIn(apiUrl, anonKey, `rls-pass-cap-friend-${nonce}@example.com`)
+    ).client;
+    const created = await rpc(starter, "create_circle", {
+      circle_name: "Pass cap",
+      circle_type: "group",
+    });
+    const joined = await rpc(friend, "redeem_invite", {
+      raw_token: created.token as string,
+      ip_hash: freshIp(),
+    });
+    expect(joined.invite_state).toBe("joined");
+    expect(starterId).toBeTruthy();
+    expect(friendId).toBeTruthy();
+
+    for (let count = 0; count < 3; count += 1) {
+      const started = await starter.rpc("create_pass_booth", {
+        target_circle: created.circle_id as string,
+        partner_id: friendId,
+        target_theme: "kawaii",
+        target_layout: "2-cut",
+        target_filter: "none",
+        target_caption: "",
+        shot_sizes: [8],
+      });
+      expect(started.error).toBeNull();
+    }
+    const blocked = await starter.rpc("create_pass_booth", {
+      target_circle: created.circle_id as string,
+      partner_id: friendId,
+      target_theme: "kawaii",
+      target_layout: "2-cut",
+      target_filter: "none",
+      target_caption: "",
+      shot_sizes: [8],
+    });
+    expect(blocked.error?.message).toContain("hsummer_booth_open");
+  });
 });
 
 async function rpc(

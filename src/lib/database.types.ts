@@ -242,7 +242,7 @@ export type Database = {
           id: string;
           circle_id: string;
           created_by: string | null;
-          kind: "photo" | "note" | "letter";
+          kind: "photo" | "note" | "letter" | "milestone" | "photo-strip";
           body: string | null;
           photo_path: string | null;
           photo_bytes: number;
@@ -250,6 +250,8 @@ export type Database = {
           visibility: "circle" | "selected";
           occurred_on: string;
           letter_id: string | null;
+          checkpoint_id: string | null;
+          booth_session_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -257,7 +259,7 @@ export type Database = {
           id?: string;
           circle_id: string;
           created_by?: string | null;
-          kind: "photo" | "note" | "letter";
+          kind: "photo" | "note" | "letter" | "milestone" | "photo-strip";
           body?: string | null;
           photo_path?: string | null;
           photo_bytes?: number;
@@ -265,6 +267,7 @@ export type Database = {
           visibility?: "circle" | "selected";
           occurred_on?: string;
           letter_id?: string | null;
+          checkpoint_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -274,12 +277,111 @@ export type Database = {
           visibility?: "circle" | "selected";
           occurred_on?: string;
           circle_id?: string;
-          kind?: "photo" | "note" | "letter";
+          kind?: "photo" | "note" | "letter" | "milestone" | "photo-strip";
           photo_path?: string | null;
           photo_bytes?: number;
           created_by?: string | null;
           created_at?: string;
           letter_id?: string | null;
+          checkpoint_id?: string | null;
+          booth_session_id?: string | null;
+        };
+        Relationships: [];
+      };
+      booth_sessions: {
+        Row: {
+          id: string;
+          circle_id: string;
+          created_by: string | null;
+          mode: "solo" | "pass" | "together";
+          theme: "kawaii" | "minimal";
+          frame_layout: "4-cut" | "2-cut";
+          status:
+            | "open"
+            | "ready"
+            | "capturing"
+            | "complete"
+            | "cancelled"
+            | "expired";
+          capture_at: string | null;
+          expires_at: string | null;
+          caption: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          circle_id: string;
+          created_by?: string | null;
+          mode: "solo" | "pass" | "together";
+          theme: "kawaii" | "minimal";
+          frame_layout: "4-cut" | "2-cut";
+          status?:
+            | "open"
+            | "ready"
+            | "capturing"
+            | "complete"
+            | "cancelled"
+            | "expired";
+          capture_at?: string | null;
+          expires_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          mode?: "solo" | "pass" | "together";
+          theme?: "kawaii" | "minimal";
+          status?:
+            | "open"
+            | "ready"
+            | "capturing"
+            | "complete"
+            | "cancelled"
+            | "expired";
+          // Not granted to authenticated. Present so a test can try to move it.
+          expires_at?: string | null;
+          caption?: string | null;
+        };
+        Relationships: [];
+      };
+      booth_contributors: {
+        Row: {
+          session_id: string;
+          user_id: string;
+          assigned_positions: number[];
+          filter_id: "none" | "bw" | "sepia" | "warm" | "cool" | "grain";
+          ready_at: string | null;
+        };
+        Insert: {
+          session_id: string;
+          user_id: string;
+          assigned_positions: number[];
+          filter_id?: "none" | "bw" | "sepia" | "warm" | "cool" | "grain";
+          ready_at?: string | null;
+        };
+        Update: {
+          assigned_positions?: number[];
+          filter_id?: "none" | "bw" | "sepia" | "warm" | "cool" | "grain";
+          ready_at?: string | null;
+        };
+        Relationships: [];
+      };
+      booth_shots: {
+        Row: {
+          session_id: string;
+          user_id: string;
+          position: number;
+          storage_path: string;
+          byte_size: number;
+        };
+        Insert: {
+          session_id: string;
+          user_id: string;
+          position: number;
+          storage_path: string;
+          byte_size: number;
+        };
+        Update: {
+          storage_path?: string;
+          byte_size?: number;
         };
         Relationships: [];
       };
@@ -336,6 +438,9 @@ export type Database = {
           delivered_at: string | null;
           opened_at: string | null;
           created_at: string;
+          // Not granted to authenticated on select. The secret key reads it
+          // to cancel a QStash message. A signed-in select of this column fails.
+          qstash_message_id?: string | null;
         };
         Insert: {
           id?: string;
@@ -346,7 +451,7 @@ export type Database = {
           title?: string | null;
           body: string;
           design?: "minimal" | "kawaii" | "retro-film";
-          // Not granted to authenticated. Present so a test can try.
+          // Granted. A future instant stays scheduled. A past instant is refused.
           scheduled_for?: string | null;
           status?: "scheduled" | "delivered" | "cancelled";
           delivered_at?: string | null;
@@ -365,6 +470,62 @@ export type Database = {
           to_user_id?: string;
           from_user_id?: string | null;
           scheduled_for?: string | null;
+          qstash_message_id?: string | null;
+        };
+        Relationships: [];
+      };
+      countdowns: {
+        Row: {
+          id: string;
+          circle_id: string;
+          label: string;
+          target_date: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          circle_id: string;
+          label?: string;
+          target_date?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          label?: string;
+          target_date?: string | null;
+        };
+        Relationships: [];
+      };
+      checkpoints: {
+        Row: {
+          id: string;
+          countdown_id: string;
+          circle_id: string;
+          label: string;
+          date: string;
+          trigger: "auto-by-date" | "manual";
+          hit_at: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          countdown_id: string;
+          circle_id: string;
+          label: string;
+          date: string;
+          trigger: "auto-by-date" | "manual";
+          created_by?: string | null;
+          created_at?: string;
+          // Not granted. Present so a test can try.
+          hit_at?: string | null;
+        };
+        Update: {
+          label?: string;
+          date?: string;
+          trigger?: "auto-by-date" | "manual";
+          hit_at?: string | null;
         };
         Relationships: [];
       };
@@ -438,6 +599,94 @@ export type Database = {
       open_letter: {
         Args: { target: string };
         Returns: string;
+      };
+      deliver_scheduled_letter: {
+        Args: { target: string };
+        Returns: string;
+      };
+      deliver_due_letters: {
+        Args: { target_circle: string };
+        Returns: {
+          letter_id: string;
+          to_user_id: string;
+        }[];
+      };
+      sync_auto_checkpoints: {
+        Args: { target_circle: string };
+        Returns: {
+          memory_id: string;
+          checkpoint_id: string;
+        }[];
+      };
+      hit_checkpoint: {
+        Args: { target: string };
+        Returns: string;
+      };
+      save_solo_booth: {
+        Args: {
+          target_circle: string;
+          target_theme: string;
+          target_layout: string;
+          target_filter: string;
+          target_caption: string;
+          shot_sizes: number[];
+        };
+        Returns: {
+          session_id: string;
+          memory_id: string;
+          paths: string[];
+        };
+      };
+      create_pass_booth: {
+        Args: {
+          target_circle: string;
+          partner_id: string;
+          target_theme: string;
+          target_layout: string;
+          target_filter: string;
+          target_caption: string;
+          shot_sizes: number[];
+        };
+        Returns: {
+          session_id: string;
+          positions: number[];
+          paths: string[];
+        };
+      };
+      submit_pass_shots: {
+        Args: {
+          target_session: string;
+          target_filter: string;
+          shot_sizes: number[];
+        };
+        Returns: {
+          status: string;
+          paths: string[];
+          already: boolean;
+        };
+      };
+      finish_pass_booth: {
+        Args: { target_session: string };
+        Returns: {
+          status: string;
+          memory_id: string | null;
+        };
+      };
+      cancel_pass_booth: {
+        Args: { target_session: string };
+        Returns: { status: string };
+      };
+      discard_pass_booth: {
+        Args: { target_session: string };
+        Returns: { ok: boolean };
+      };
+      release_pass_shots: {
+        Args: { target_session: string };
+        Returns: { ok: boolean };
+      };
+      expire_pass_booths: {
+        Args: { target_circle: string };
+        Returns: number;
       };
       consume_auth_attempt: {
         Args: {
