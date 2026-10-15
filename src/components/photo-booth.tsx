@@ -181,8 +181,8 @@ export function PhotoBooth({
     }
   }
 
-  async function loadFromLibrary(list: FileList | null) {
-    if (!slot || !list || list.length === 0) return;
+  async function loadFromLibrary(list: readonly File[]) {
+    if (!slot || list.length === 0) return;
     setError(null);
     if (list.length !== needed) {
       setError(
@@ -351,8 +351,9 @@ export function PhotoBooth({
               disabled={busy}
               className="text-base"
               onChange={(event) => {
-                void loadFromLibrary(event.target.files);
+                const chosen = Array.from(event.target.files ?? []);
                 event.target.value = "";
+                void loadFromLibrary(chosen);
               }}
             />
             <p className="text-sm text-foreground/70">
@@ -407,10 +408,16 @@ function Review({
   onStrip: (blob: Blob) => void;
   onRetake: () => void;
 }) {
+  const shotsRef = useRef(shots);
+  useEffect(() => {
+    shotsRef.current = shots;
+  }, [shots]);
   const [state, formAction, pending] = useActionState(
     async (previous: BoothActionState, formData: FormData) => {
       const shotBytes = await Promise.all(
-        shots.map(async (blob) => new Uint8Array(await blob.arrayBuffer())),
+        shotsRef.current.map(
+          async (blob) => new Uint8Array(await blob.arrayBuffer()),
+        ),
       );
       return saveSoloBooth(previous, formData, shotBytes);
     },
