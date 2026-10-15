@@ -598,10 +598,16 @@ function Review({
   doneHref: string | null;
   onRetake: () => void;
 }) {
+  const shotsRef = useRef(shots);
+  useEffect(() => {
+    shotsRef.current = shots;
+  }, [shots]);
   const [state, formAction, pending] = useActionState(
     async (previous: PassActionState, formData: FormData) => {
       const shotBytes = await Promise.all(
-        shots.map(async (blob) => new Uint8Array(await blob.arrayBuffer())),
+        shotsRef.current.map(
+          async (blob) => new Uint8Array(await blob.arrayBuffer()),
+        ),
       );
       return action(previous, formData, shotBytes);
     },

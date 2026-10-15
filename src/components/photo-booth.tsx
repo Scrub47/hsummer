@@ -407,10 +407,16 @@ function Review({
   onStrip: (blob: Blob) => void;
   onRetake: () => void;
 }) {
+  const shotsRef = useRef(shots);
+  useEffect(() => {
+    shotsRef.current = shots;
+  }, [shots]);
   const [state, formAction, pending] = useActionState(
     async (previous: BoothActionState, formData: FormData) => {
       const shotBytes = await Promise.all(
-        shots.map(async (blob) => new Uint8Array(await blob.arrayBuffer())),
+        shotsRef.current.map(
+          async (blob) => new Uint8Array(await blob.arrayBuffer()),
+        ),
       );
       return saveSoloBooth(previous, formData, shotBytes);
     },

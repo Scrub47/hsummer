@@ -10,6 +10,7 @@ import { isCircleId } from "@/lib/bucket/fields";
 import { notifyPassPartner } from "@/lib/booth/notify";
 import {
   BOOTH_JPEG_ERROR,
+  BOOTH_SHOTS_ERROR,
   BOOTH_RATE_LIMIT_MESSAGE,
   BOOTH_TOTAL_ERROR,
   BOOTH_TOTAL_MAX_BYTES,
@@ -72,6 +73,18 @@ function shotFiles(formData: FormData): File[] {
  * does not survive the server-action request, so the page sends the bytes
  * as an argument. Tests still pass files in the form.
  */
+function describeShotCount(
+  error: string,
+  files: readonly File[],
+  shotBytes?: readonly Uint8Array[],
+): string {
+  if (error !== BOOTH_SHOTS_ERROR) return error;
+  const sizes = (shotBytes ?? [])
+    .map((bytes) => bytes?.byteLength ?? -1)
+    .join(",");
+  return `${error} (${files.length} files, ${shotBytes ? `${shotBytes.length} args ${sizes}` : "no arg"})`;
+}
+
 function framesFromAction(
   formData: FormData,
   shotBytes?: readonly Uint8Array[],
@@ -107,7 +120,12 @@ export async function saveSoloBooth(
     caption: formData.get("caption"),
     shotCount: files.length,
   });
-  if (!parsed.ok) return { error: parsed.error, saved: false };
+  if (!parsed.ok) {
+    return {
+      error: describeShotCount(parsed.error, files, shotBytes),
+      saved: false,
+    };
+  }
 
   const shots: Uint8Array[] = [];
   let total = 0;
@@ -249,7 +267,12 @@ export async function startPassBooth(
     caption: formData.get("caption"),
     shotCount: files.length,
   });
-  if (!parsed.ok) return { error: parsed.error, notice: null };
+  if (!parsed.ok) {
+    return {
+      error: describeShotCount(parsed.error, files, shotBytes),
+      notice: null,
+    };
+  }
 
   const shots = await readShots(files);
   if (!shots.ok) return { error: shots.error, notice: null };
@@ -329,7 +352,12 @@ export async function submitPassTurn(
     filter: formData.get("filter"),
     shotCount: files.length,
   });
-  if (!parsed.ok) return { error: parsed.error, notice: null };
+  if (!parsed.ok) {
+    return {
+      error: describeShotCount(parsed.error, files, shotBytes),
+      notice: null,
+    };
+  }
   const circleValue = formData.get("circleId");
   const circleId = typeof circleValue === "string" ? circleValue : "";
   if (!isCircleId(circleId)) {
