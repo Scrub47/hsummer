@@ -388,8 +388,8 @@ function Capture({
     }
   }
 
-  async function loadFromLibrary(list: FileList | null) {
-    if (!slot || !list || list.length === 0) return;
+  async function loadFromLibrary(list: readonly File[]) {
+    if (!slot || list.length === 0) return;
     setError(null);
     if (list.length !== needed) {
       setError(
@@ -555,8 +555,9 @@ function Capture({
               disabled={busy}
               className="text-base"
               onChange={(event) => {
-                void loadFromLibrary(event.target.files);
+                const chosen = Array.from(event.target.files ?? []);
                 event.target.value = "";
+                void loadFromLibrary(chosen);
               }}
             />
           </div>
