@@ -11,6 +11,10 @@ import {
   regenerateInvite,
   type CircleActionState,
 } from "@/app/circles/actions";
+import {
+  COUPLE_CLOSED_MESSAGE,
+  DEMO_READONLY_MESSAGE,
+} from "@/lib/account/copy";
 import { joinPath, type CircleStatus } from "@/lib/circles/fields";
 import { readInviteToken, writeInviteToken } from "@/lib/circles/invite-token";
 import type { CircleInviteView } from "@/lib/circles/load";
@@ -26,10 +30,14 @@ export function InvitePanel({
   circleId,
   status,
   invite,
+  closed = false,
+  demo = false,
 }: {
   circleId: string;
   status: CircleStatus;
   invite: CircleInviteView | null;
+  closed?: boolean;
+  demo?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(
     regenerateInvite,
@@ -54,7 +62,8 @@ export function InvitePanel({
     invite.maxUses !== null &&
     invite.useCount >= invite.maxUses &&
     !state.token;
-  const canRegenerate = status === "pending" || invite?.maxUses === null;
+  const canRegenerate =
+    !demo && !closed && (status === "pending" || invite?.maxUses === null);
   const link =
     token && typeof window !== "undefined"
       ? `${window.location.origin}${joinPath(token)}`
@@ -63,7 +72,15 @@ export function InvitePanel({
   return (
     <section className="rounded-3xl border border-line bg-card p-6">
       <h2 className="font-serif text-2xl tracking-tight">Invite link</h2>
-      {status === "pending" ? (
+      {demo ? (
+        <p className="mt-3 text-sm leading-6 text-foreground/80">
+          {DEMO_READONLY_MESSAGE}
+        </p>
+      ) : closed ? (
+        <p className="mt-3 text-sm leading-6 text-foreground/80">
+          {COUPLE_CLOSED_MESSAGE}
+        </p>
+      ) : status === "pending" ? (
         <p className="mt-3 text-sm leading-6 text-foreground/80">
           Share this with your person. The bucket list, moods, and memory wall
           are already open. Thinking of You stays closed until you both are

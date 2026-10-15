@@ -49,7 +49,9 @@ export default function TermsPage() {
         <section className="flex flex-col gap-3">
           <h2 className="font-serif text-2xl tracking-tight">Stopping</h2>
           <p>
-            You can stop using Hsummer at any time. The person running the
+            You can stop using Hsummer at any time. Leave a circle from that
+            circle&apos;s page, or delete the account from your profile. You
+            confirm you are 13 or older when you sign in. The person running the
             project can remove an account or a circle that is being used to harm
             someone. The{" "}
             <Link href="/privacy" className="underline decoration-pine/40">

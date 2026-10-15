@@ -34,7 +34,7 @@ describe("migration RLS", () => {
       .map((name) => readFileSync(path.join(migrationsDir, name), "utf8"))
       .join("\n");
 
-    for (const bucket of ["avatars", "memories", "backups"]) {
+    for (const bucket of ["avatars", "memories", "backups", "exports"]) {
       const pattern = new RegExp(
         `insert into storage\\.buckets[\\s\\S]*?'${bucket}'[\\s\\S]*?false`,
       );

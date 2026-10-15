@@ -13,6 +13,8 @@ import { createHash } from "node:crypto";
 
 import { z } from "zod";
 
+import { demoWriteMessage } from "@/lib/account/copy";
+
 export const CIRCLE_TYPES = ["couple", "group", "family", "friends"] as const;
 export type CircleType = (typeof CIRCLE_TYPES)[number];
 export type CircleStatus = "pending" | "active" | "archived";
@@ -135,6 +137,8 @@ export function inviteStateMessage(state: string): string | null {
       return "Too many tries just now. Wait a little and try again.";
     case "missing":
       return "This invite link isn't valid.";
+    case "demo":
+      return "This demo circle is only for looking. It doesn't take new people.";
     default:
       return null;
   }
@@ -155,6 +159,8 @@ export function inviteStorageKey(inviteId: string): string {
 /** Maps a Postgres error from the circle RPCs onto a sentence for the form. */
 export function circleRpcFailure(message: string | undefined): string | null {
   if (!message) return null;
+  const demo = demoWriteMessage(message);
+  if (demo) return demo;
   if (message.includes("hsummer_rate_limited"))
     return INVITE_RATE_LIMIT_MESSAGE;
   if (message.includes("hsummer_bad_name")) return CIRCLE_NAME_ERROR;

@@ -73,7 +73,7 @@ function toCard(
   row: {
     id: string;
     from_user_id: string | null;
-    to_user_id: string;
+    to_user_id: string | null;
     category: string;
     title: string | null;
     body: string;
@@ -91,12 +91,14 @@ function toCard(
 
   const mine = row.from_user_id === selfId;
   const sealed = !mine && row.opened_at == null && row.status === "delivered";
-  const recipient = names.get(row.to_user_id) ?? "Former member";
+  const recipient = row.to_user_id
+    ? (names.get(row.to_user_id) ?? "Former member")
+    : "Former member";
 
   return {
     id: row.id,
     fromUserId: row.from_user_id,
-    toUserId: row.to_user_id,
+    toUserId: row.to_user_id ?? "",
     category: row.category,
     categoryLabel: categoryLabel(row.category, customLabels),
     title: row.title,

@@ -69,9 +69,35 @@ export default function PrivacyPage() {
         <section className="flex flex-col gap-3">
           <h2 className="font-serif text-2xl tracking-tight">Children</h2>
           <p>
-            Hsummer is not directed at anyone under 13, and it does not ask for
-            a date of birth. If you believe a child&apos;s information is in the
-            app, use the contact below.
+            Hsummer is for people 13 and older. Sign-in asks you to confirm
+            that. It does not ask for a date of birth. If you believe a
+            child&apos;s information is in the app, use the contact below.
+          </p>
+        </section>
+        <section className="flex flex-col gap-3">
+          <h2 className="font-serif text-2xl tracking-tight">
+            Leaving and deleting
+          </h2>
+          <p>
+            You can download a ZIP of what you can already see, including the
+            image files, before you leave a circle or delete your account. That
+            download is not a backup of other people&apos;s private letters.
+          </p>
+          <p>
+            Leaving a circle ends your access. The default keeps your photos,
+            notes, and letters there. You can remove those instead. Deleting
+            your account removes the login, the profile, the avatar files, and
+            the push subscriptions. Shared contributions stay labeled Former
+            member unless you remove them. A circle with nobody left is deleted
+            after 30 days.
+          </p>
+        </section>
+        <section className="flex flex-col gap-3">
+          <h2 className="font-serif text-2xl tracking-tight">The demo</h2>
+          <p>
+            Try demo signs you into a fictional couple, Alex and Jordan. It is
+            not real user data. Uploads and notifications are off, and the
+            circle is rebuilt every night.
           </p>
         </section>
         <section className="flex flex-col gap-3">

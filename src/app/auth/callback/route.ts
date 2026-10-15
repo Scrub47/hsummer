@@ -2,6 +2,7 @@ import { type EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 
+import { AGE_COOKIE } from "@/lib/account/age";
 import { redirectOrigin } from "@/lib/auth/request-origin";
 import { safeNextPath } from "@/lib/auth/safe-next";
 import { createClient } from "@/lib/supabase/server";
@@ -59,6 +60,7 @@ export async function GET(request: NextRequest) {
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
+      await stampAge(supabase, request);
       return NextResponse.redirect(new URL(nextPath, origin));
     }
     return NextResponse.redirect(new URL("/sign-in?error=link", origin));
@@ -70,6 +72,7 @@ export async function GET(request: NextRequest) {
       type,
     });
     if (!error) {
+      await stampAge(supabase, request);
       return NextResponse.redirect(new URL(nextPath, origin));
     }
     return NextResponse.redirect(new URL("/sign-in?error=link", origin));
@@ -86,6 +89,21 @@ const OTP_TYPES = new Set<EmailOtpType>([
   "email_change",
   "email",
 ]);
+
+async function stampAge(
+  supabase: NonNullable<Awaited<ReturnType<typeof createClient>>>,
+  request: NextRequest,
+): Promise<void> {
+  if (request.cookies.get(AGE_COOKIE)?.value !== "1") return;
+  const { data } = await supabase.auth.getClaims();
+  const userId = data?.claims.sub;
+  if (typeof userId !== "string") return;
+  await supabase
+    .from("account_private")
+    .update({ age_confirmed_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .is("age_confirmed_at", null);
+}
 
 function isEmailOtpType(value: string): value is EmailOtpType {
   return OTP_TYPES.has(value as EmailOtpType);

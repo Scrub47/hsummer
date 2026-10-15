@@ -15,6 +15,15 @@ import {
   parseLetterDraft,
 } from "@/lib/letters/fields";
 import { notifyLetterRecipient } from "@/lib/letters/notify";
+import {
+  cancelQueuedLetter,
+  queueLetterDelivery,
+} from "@/lib/letters/schedule";
+import {
+  formatInZone,
+  parseDeliveryChoice,
+  scheduleInstant,
+} from "@/lib/schedule/time";
 import { partnerReasonMessage, resolveCouplePartner } from "@/lib/pings/fields";
 import { enforceSharedLimit } from "@/lib/rate-limit/enforce";
 import { getSession, type Session } from "@/lib/supabase/session";
@@ -22,6 +31,7 @@ import { getSession, type Session } from "@/lib/supabase/session";
 export type LetterActionState = {
   error: string | null;
   saved: boolean;
+  notice?: string | null;
 };
 
 export type OpenLetterResult = {
@@ -36,8 +46,10 @@ const UNAVAILABLE =
 /**
  * Writes a letter to the other person in an active couple. There is no
  * recipient field. The insert uses the caller's session, so row-level
- * security decides. The trigger delivers it now. The push, if it sends,
- * says only that a letter arrived.
+ * security decides. "Now" is delivered by the trigger. "Later" is a time
+ * in the recipient's timezone. QStash delivers it then, when those keys
+ * are set. Otherwise it arrives the next time one of you opens the app
+ * after that time. The push, if it sends, says only that a letter arrived.
  */
 export async function sendLetter(
   _previous: LetterActionState,
@@ -76,8 +88,36 @@ export async function sendLetter(
   });
   if (!parsed.ok) return { error: parsed.error, saved: false };
 
+  const delivery = parseDeliveryChoice({
+    when: formData.get("when"),
+    date: formData.get("deliverDate"),
+    time: formData.get("deliverTime"),
+  });
+  if (!delivery.ok) return { error: delivery.error, saved: false };
+
   const partner = await couplePartner(session, circleId);
   if (!partner.ok) return { error: partner.error, saved: false };
+
+  let scheduledFor: string | null = null;
+  let zone = "UTC";
+  if (delivery.value.when === "later") {
+    const profile = await session.supabase
+      .from("profiles")
+      .select("timezone")
+      .eq("id", partner.partnerId)
+      .maybeSingle();
+    if (profile.error || !profile.data?.timezone) {
+      return { error: "Their timezone isn't set yet.", saved: false };
+    }
+    zone = profile.data.timezone;
+    const instant = scheduleInstant({
+      date: delivery.value.date,
+      time: delivery.value.time,
+      timeZone: zone,
+    });
+    if (!instant.ok) return { error: instant.error, saved: false };
+    scheduledFor = instant.value;
+  }
 
   const shared = await enforceSharedLimit({
     key: `letter:${session.userId}`,
@@ -113,8 +153,9 @@ export async function sendLetter(
       title: parsed.value.title,
       body: parsed.value.body,
       design: parsed.value.design,
+      ...(scheduledFor ? { scheduled_for: scheduledFor } : {}),
     })
-    .select("id")
+    .select("id, status, scheduled_for")
     .single();
 
   if (inserted.error || !inserted.data) {
@@ -128,15 +169,36 @@ export async function sendLetter(
   }
 
   const headerList = await headers();
+  const origin = pushOrigin(headerList);
+
+  if (inserted.data.status === "scheduled" && inserted.data.scheduled_for) {
+    const mode = await queueLetterDelivery({
+      letterId: inserted.data.id,
+      scheduledFor: inserted.data.scheduled_for,
+      origin,
+    });
+    const when = formatInZone(inserted.data.scheduled_for, zone);
+    const arrival = when
+      ? `It will arrive ${when}, in their time.`
+      : "It will arrive at the time you picked.";
+    const waiting =
+      mode === "waiting"
+        ? " If scheduling isn't on yet, it shows up the next time one of you opens Hsummer after that."
+        : "";
+    revalidatePath(`/circles/${circleId}`);
+    revalidatePath("/home");
+    return { error: null, saved: true, notice: `${arrival}${waiting}` };
+  }
+
   await notifyLetterRecipient({
     recipientId: partner.partnerId,
-    origin: pushOrigin(headerList),
+    origin,
     circleId,
   });
 
   revalidatePath(`/circles/${circleId}`);
   revalidatePath("/home");
-  return { error: null, saved: true };
+  return { error: null, saved: true, notice: null };
 }
 
 /** Adds a custom open-when label for this circle. */
@@ -211,6 +273,153 @@ export async function deleteLetterCategory(
 
   revalidatePath(`/circles/${circleId}`);
   return { error: null, saved: true };
+}
+
+/** Cancels a letter that has not been delivered, and its QStash message. */
+export async function cancelLetter(
+  _previous: LetterActionState,
+  formData: FormData,
+): Promise<LetterActionState> {
+  const session = await getSession();
+  if (!session) redirect("/sign-in?next=/circles");
+
+  const circleId = stringField(formData.get("circleId"));
+  const letterId = stringField(formData.get("letterId"));
+  if (
+    !circleId ||
+    !letterId ||
+    !isCircleId(circleId) ||
+    !isCircleId(letterId)
+  ) {
+    return { error: "That letter isn't here.", saved: false };
+  }
+
+  const cancelled = await session.supabase
+    .from("letters")
+    .update({ status: "cancelled" })
+    .eq("id", letterId)
+    .eq("circle_id", circleId)
+    .eq("from_user_id", session.userId)
+    .eq("status", "scheduled")
+    .select("id");
+
+  if (cancelled.error) {
+    console.error("Letter cancel failed.", cancelled.error.code);
+    return {
+      error:
+        letterWriteFailure(cancelled.error.message, cancelled.error.code) ??
+        "That letter wasn't cancelled.",
+      saved: false,
+    };
+  }
+  if (!cancelled.data || cancelled.data.length === 0) {
+    return { error: "That letter can't be changed.", saved: false };
+  }
+
+  await cancelQueuedLetter(letterId);
+  revalidatePath(`/circles/${circleId}`);
+  return { error: null, saved: true, notice: "Cancelled. It won't arrive." };
+}
+
+/** Moves a scheduled letter to a new time in the recipient's timezone. */
+export async function rescheduleLetter(
+  _previous: LetterActionState,
+  formData: FormData,
+): Promise<LetterActionState> {
+  const session = await getSession();
+  if (!session) redirect("/sign-in?next=/circles");
+
+  const circleId = stringField(formData.get("circleId"));
+  const letterId = stringField(formData.get("letterId"));
+  if (
+    !circleId ||
+    !letterId ||
+    !isCircleId(circleId) ||
+    !isCircleId(letterId)
+  ) {
+    return { error: "That letter isn't here.", saved: false };
+  }
+
+  const delivery = parseDeliveryChoice({
+    when: "later",
+    date: formData.get("deliverDate"),
+    time: formData.get("deliverTime"),
+  });
+  if (!delivery.ok || delivery.value.when !== "later") {
+    return {
+      error: delivery.ok ? "Pick a date and a time." : delivery.error,
+      saved: false,
+    };
+  }
+
+  const current = await session.supabase
+    .from("letters")
+    .select("to_user_id, status")
+    .eq("id", letterId)
+    .eq("circle_id", circleId)
+    .eq("from_user_id", session.userId)
+    .maybeSingle();
+  if (
+    current.error ||
+    !current.data ||
+    current.data.status !== "scheduled" ||
+    !current.data.to_user_id
+  ) {
+    return { error: "That letter can't be changed.", saved: false };
+  }
+
+  const profile = await session.supabase
+    .from("profiles")
+    .select("timezone")
+    .eq("id", current.data.to_user_id)
+    .maybeSingle();
+  if (profile.error || !profile.data?.timezone) {
+    return { error: "Their timezone isn't set yet.", saved: false };
+  }
+
+  const instant = scheduleInstant({
+    date: delivery.value.date,
+    time: delivery.value.time,
+    timeZone: profile.data.timezone,
+  });
+  if (!instant.ok) return { error: instant.error, saved: false };
+
+  const updated = await session.supabase
+    .from("letters")
+    .update({ scheduled_for: instant.value })
+    .eq("id", letterId)
+    .eq("circle_id", circleId)
+    .eq("status", "scheduled")
+    .select("id, scheduled_for");
+
+  if (updated.error || !updated.data || updated.data.length === 0) {
+    console.error("Letter reschedule failed.", updated.error?.code);
+    return {
+      error:
+        letterWriteFailure(updated.error?.message, updated.error?.code) ??
+        "That time wasn't saved.",
+      saved: false,
+    };
+  }
+
+  await cancelQueuedLetter(letterId);
+  const headerList = await headers();
+  const scheduledFor = updated.data[0]?.scheduled_for ?? instant.value;
+  await queueLetterDelivery({
+    letterId,
+    scheduledFor,
+    origin: pushOrigin(headerList),
+  });
+
+  revalidatePath(`/circles/${circleId}`);
+  const when = formatInZone(scheduledFor, profile.data.timezone);
+  return {
+    error: null,
+    saved: true,
+    notice: when
+      ? `It will arrive ${when}, in their time.`
+      : "The time was saved.",
+  };
 }
 
 /**

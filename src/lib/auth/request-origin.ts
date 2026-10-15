@@ -60,6 +60,20 @@ export function actionOrigin(headerList: {
   }
 }
 
+/**
+ * True for a form or fetch that started on this app. A cross-site POST is
+ * refused so another website cannot switch the browser into the demo session.
+ */
+export function isSameOriginPost(request: {
+  headers: { get(name: string): string | null };
+}): boolean {
+  const site = request.headers.get("sec-fetch-site");
+  if (site === "cross-site") return false;
+  const origin = request.headers.get("origin");
+  if (!origin) return site === "same-origin";
+  return origin === actionOrigin(request.headers);
+}
+
 export function pushOrigin(headerList: {
   get(name: string): string | null;
 }): string {
