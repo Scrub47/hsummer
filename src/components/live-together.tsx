@@ -24,7 +24,6 @@ import {
   type ClockEstimate,
   type ClockSample,
 } from "@/lib/booth/clock";
-import { assignShotFiles } from "@/lib/booth/shot-files";
 import {
   BOOTH_FILTERS,
   BOOTH_LAYOUTS,
@@ -230,10 +229,6 @@ function Lobby({
     fallbackTogetherToPass,
     openInitial,
   );
-  const [shotState, shotAction, shotPending] = useActionState(
-    submitTogetherShots,
-    passInitial,
-  );
   const [channel, setChannel] = useState<"connecting" | "live" | "off">(() =>
     getSupabaseBrowserConfig() ? "connecting" : "off",
   );
@@ -241,6 +236,15 @@ function Lobby({
   const [remoteCapture, setRemoteCapture] = useState<string | null>(null);
   const [filter, setFilter] = useState<BoothFilter>("none");
   const [shots, setShots] = useState<Blob[]>([]);
+  const [shotState, shotAction, shotPending] = useActionState(
+    async (previous: PassActionState, formData: FormData) => {
+      const shotBytes = await Promise.all(
+        shots.map(async (blob) => new Uint8Array(await blob.arrayBuffer())),
+      );
+      return submitTogetherShots(previous, formData, shotBytes);
+    },
+    passInitial,
+  );
   const [error, setError] = useState<string | null>(null);
   const [countLabel, setCountLabel] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -531,18 +535,6 @@ function Lobby({
       ) : null}
       {shots.length > 0 ? (
         <form className="flex flex-col gap-3" action={shotAction}>
-          <input
-            ref={(node) => {
-              if (node) assignShotFiles(node, shots);
-            }}
-            type="file"
-            name="shot"
-            multiple
-            accept="image/jpeg"
-            tabIndex={-1}
-            aria-hidden="true"
-            className="sr-only"
-          />
           <input type="hidden" name="circleId" value={circleId} />
           <input type="hidden" name="sessionId" value={lobby.sessionId} />
           <input type="hidden" name="filter" value={filter} />

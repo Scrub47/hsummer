@@ -42,7 +42,6 @@ import {
 import { applyFilter } from "@/lib/booth/filters";
 import { coverCrop, frameSlots, type Slot } from "@/lib/booth/layout";
 import { assignPositions } from "@/lib/booth/positions";
-import { assignShotFiles } from "@/lib/booth/shot-files";
 import { MEMORY_CAPTION_MAX } from "@/lib/memories/fields";
 import { themeBundle } from "@/lib/booth/themes";
 
@@ -337,6 +336,7 @@ function Capture({
   action: (
     previous: PassActionState,
     formData: FormData,
+    shotBytes?: readonly Uint8Array[],
   ) => Promise<PassActionState>;
   hidden: Record<string, string>;
   participants?: string[];
@@ -655,6 +655,7 @@ function Review({
   action: (
     previous: PassActionState,
     formData: FormData,
+    shotBytes?: readonly Uint8Array[],
   ) => Promise<PassActionState>;
   hidden: Record<string, string>;
   participants?: string[];
@@ -663,7 +664,15 @@ function Review({
   doneHref: string | null;
   onRetake: () => void;
 }) {
-  const [state, formAction, pending] = useActionState(action, initialState);
+  const [state, formAction, pending] = useActionState(
+    async (previous: PassActionState, formData: FormData) => {
+      const shotBytes = await Promise.all(
+        shots.map(async (blob) => new Uint8Array(await blob.arrayBuffer())),
+      );
+      return action(previous, formData, shotBytes);
+    },
+    initialState,
+  );
   const dateLabel = new Intl.DateTimeFormat("en-US", {
     month: "long",
     day: "numeric",
@@ -680,18 +689,6 @@ function Review({
         sources={sources}
       />
       <form className="flex flex-col gap-4" action={formAction}>
-        <input
-          ref={(node) => {
-            if (node) assignShotFiles(node, shots);
-          }}
-          type="file"
-          name="shot"
-          multiple
-          accept="image/jpeg"
-          tabIndex={-1}
-          aria-hidden="true"
-          className="sr-only"
-        />
         {Object.entries(hidden).map(([name, value]) => (
           <input key={name} type="hidden" name={name} value={value} />
         ))}

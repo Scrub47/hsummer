@@ -74,6 +74,23 @@ function shotFiles(formData: FormData): File[] {
 }
 
 /**
+ * Frames captured in the browser. A file appended onto the form in script
+ * does not survive the server-action request, so the page sends the bytes
+ * as an argument. Tests still pass files in the form.
+ */
+function framesFromAction(
+  formData: FormData,
+  shotBytes?: readonly Uint8Array[],
+): File[] {
+  if (!shotBytes || shotBytes.length === 0) return shotFiles(formData);
+  return shotBytes.map((bytes, index) => {
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return new File([copy], `shot-${index}.jpg`, { type: "image/jpeg" });
+  });
+}
+
+/**
  * Saves a finished Solo strip. The shots were taken in the browser. This is
  * the first write: one transaction for the session and the memory, then the
  * JPEGs. A failed upload deletes that memory, and the trigger deletes the
@@ -82,11 +99,12 @@ function shotFiles(formData: FormData): File[] {
 export async function saveSoloBooth(
   _previous: BoothActionState,
   formData: FormData,
+  shotBytes?: readonly Uint8Array[],
 ): Promise<BoothActionState> {
   const session = await getSession();
   if (!session) redirect("/sign-in?next=/circles");
 
-  const files = shotFiles(formData);
+  const files = framesFromAction(formData, shotBytes);
   const parsed = parseBoothForm({
     circleId: formData.get("circleId"),
     theme: formData.get("theme"),
@@ -223,11 +241,12 @@ const finishedSchema = z.object({
 export async function startPassBooth(
   _previous: PassActionState,
   formData: FormData,
+  shotBytes?: readonly Uint8Array[],
 ): Promise<PassActionState> {
   const session = await getSession();
   if (!session) redirect("/sign-in?next=/circles");
 
-  const files = shotFiles(formData);
+  const files = framesFromAction(formData, shotBytes);
   const picked = participantIds(formData).filter((id) => id !== session.userId);
   const layoutValue = formData.get("layout");
   const layout =
@@ -355,11 +374,12 @@ export async function startPassBooth(
 export async function submitPassTurn(
   _previous: PassActionState,
   formData: FormData,
+  shotBytes?: readonly Uint8Array[],
 ): Promise<PassActionState> {
   const session = await getSession();
   if (!session) redirect("/sign-in?next=/circles");
 
-  const files = shotFiles(formData);
+  const files = framesFromAction(formData, shotBytes);
   const parsed = parsePassTurn({
     sessionId: formData.get("sessionId"),
     filter: formData.get("filter"),
@@ -673,11 +693,12 @@ export async function markTogetherReady(
 export async function submitTogetherShots(
   _previous: PassActionState,
   formData: FormData,
+  shotBytes?: readonly Uint8Array[],
 ): Promise<PassActionState> {
   const session = await getSession();
   if (!session) redirect("/sign-in?next=/circles");
 
-  const files = shotFiles(formData);
+  const files = framesFromAction(formData, shotBytes);
   const parsed = parsePassTurn({
     sessionId: formData.get("sessionId"),
     filter: formData.get("filter"),
