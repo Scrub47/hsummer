@@ -71,6 +71,30 @@ describe("saveSoloBooth", () => {
     expect(uploads[0]?.path).toBe(`${circleId}/${sessionId}/0.jpg`);
   });
 
+  it("reads JPEG bytes passed beside the form", async () => {
+    const uploads: { path: string; bytes: Uint8Array }[] = [];
+    getSession.mockResolvedValue(
+      session([], uploads, {
+        data: {
+          session_id: sessionId,
+          memory_id: memoryId,
+          paths: [
+            `${circleId}/${sessionId}/0.jpg`,
+            `${circleId}/${sessionId}/1.jpg`,
+          ],
+        },
+        error: null,
+      }),
+    );
+    const jpeg = jpegWithExif();
+    const result = await saveSoloBooth(previous, form({ layout: "2-cut" }), [
+      jpeg,
+      jpeg,
+    ]);
+    expect(result).toEqual({ error: null, saved: true });
+    expect(uploads).toHaveLength(2);
+  });
+
   it("reads a JPEG blob that is not a File", async () => {
     const uploads: { path: string; bytes: Uint8Array }[] = [];
     getSession.mockResolvedValue(
