@@ -141,9 +141,12 @@ async function expectNotice(page: Page, pattern: RegExp) {
     await expect(target).toBeVisible({ timeout: 20_000 });
   } catch (error) {
     const alerts = await page.getByRole("alert").allTextContents();
-    throw new Error(`missing ${pattern}; alerts=${JSON.stringify(alerts)}`, {
-      cause: error,
-    });
+    const statuses = await page.getByRole("status").allTextContents();
+    const main = await page.locator("main").innerText();
+    throw new Error(
+      `missing ${pattern}; alerts=${JSON.stringify(alerts)}; statuses=${JSON.stringify(statuses)}; main=${JSON.stringify(main.slice(0, 800))}`,
+      { cause: error },
+    );
   }
 }
 

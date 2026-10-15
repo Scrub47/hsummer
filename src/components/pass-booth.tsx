@@ -72,6 +72,9 @@ export function PassBooth({
     (turn) => turn.status === "open" && !turn.waitingOnYou,
   );
   const closed = turns.filter((turn) => turn.status !== "open");
+  // Finishing a pass revalidates this page and drops the session from the
+  // open-turn list, which unmounts the form. The result has to live here.
+  const [turnResult, setTurnResult] = useState<PassActionState | null>(null);
 
   return (
     <div className="flex flex-col gap-8">
@@ -85,7 +88,27 @@ export function PassBooth({
           {PASS_UNAVAILABLE}
         </p>
       ) : null}
-      {yours ? <TurnShoot circleId={circleId} turn={yours} /> : null}
+      {turnResult?.error ? (
+        <p className="text-sm text-accent" role="alert">
+          {turnResult.error}
+        </p>
+      ) : null}
+      {turnResult?.notice ? (
+        <p className="text-sm text-pine" role="status">
+          {turnResult.notice}{" "}
+          {turnResult.notice.includes("memory wall") ? (
+            <Link
+              href={`/circles/${circleId}#memory-heading`}
+              className="font-medium"
+            >
+              See it on the wall
+            </Link>
+          ) : null}
+        </p>
+      ) : null}
+      {yours ? (
+        <TurnShoot circleId={circleId} turn={yours} onSettled={setTurnResult} />
+      ) : null}
       {waiting.map((turn) => (
         <WaitingCard key={turn.sessionId} circleId={circleId} turn={turn} />
       ))}
@@ -151,7 +174,15 @@ function WaitingCard({ circleId, turn }: { circleId: string; turn: PassTurn }) {
   );
 }
 
-function TurnShoot({ circleId, turn }: { circleId: string; turn: PassTurn }) {
+function TurnShoot({
+  circleId,
+  turn,
+  onSettled,
+}: {
+  circleId: string;
+  turn: PassTurn;
+  onSettled: (result: PassActionState) => void;
+}) {
   return (
     <Capture
       title={`Your turn, ${turn.partnerName} already took theirs`}
@@ -172,6 +203,7 @@ function TurnShoot({ circleId, turn }: { circleId: string; turn: PassTurn }) {
       }}
       submitLabel="Add your frames"
       doneHref={`/circles/${circleId}#memory-heading`}
+      onSettled={onSettled}
     />
   );
 }
@@ -262,6 +294,7 @@ function Capture({
   caption,
   submitLabel,
   doneHref,
+  onSettled,
 }: {
   title: string;
   detail: string;
@@ -280,6 +313,7 @@ function Capture({
   caption?: boolean;
   submitLabel: string;
   doneHref: string | null;
+  onSettled?: (result: PassActionState) => void;
 }) {
   const [ownFilter, setOwnFilter] = useState<BoothFilter>("none");
   const filter = fixedFilter ?? ownFilter;
@@ -451,6 +485,7 @@ function Capture({
           caption={caption ?? false}
           submitLabel={submitLabel}
           doneHref={doneHref}
+          onSettled={onSettled}
           onRetake={() => {
             cancelRef.current = true;
             stopStream(streamRef.current);
@@ -582,6 +617,7 @@ function Review({
   caption,
   submitLabel,
   doneHref,
+  onSettled,
   onRetake,
 }: {
   theme: BoothTheme;
@@ -597,12 +633,17 @@ function Review({
   caption: boolean;
   submitLabel: string;
   doneHref: string | null;
+  onSettled?: (result: PassActionState) => void;
   onRetake: () => void;
 }) {
   const shotsRef = useRef(shots);
+  const settledRef = useRef(onSettled);
   useEffect(() => {
     shotsRef.current = shots;
   }, [shots]);
+  useEffect(() => {
+    settledRef.current = onSettled;
+  }, [onSettled]);
   const [state, formAction, pending] = useActionState(
     async (previous: PassActionState, formData: FormData) => {
       const shotBytes = await Promise.all(
@@ -610,10 +651,13 @@ function Review({
           async (blob) => new Uint8Array(await blob.arrayBuffer()),
         ),
       );
-      return action(previous, formData, shotBytes);
+      const result = await action(previous, formData, shotBytes);
+      settledRef.current?.(result);
+      return result;
     },
     initialState,
   );
+  const reported = Boolean(onSettled);
   const dateLabel = new Intl.DateTimeFormat("en-US", {
     month: "long",
     day: "numeric",
@@ -647,12 +691,12 @@ function Review({
             />
           </>
         ) : null}
-        {state.error ? (
+        {!reported && state.error ? (
           <p className="text-sm text-accent" role="alert">
             {state.error}
           </p>
         ) : null}
-        {state.notice ? (
+        {!reported && state.notice ? (
           <p className="text-sm text-pine" role="status">
             {state.notice}{" "}
             {doneHref && state.notice.includes("memory wall") ? (
