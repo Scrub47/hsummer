@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { DemoBanner } from "@/components/demo-banner";
+import { LeaveCircleForm } from "@/components/leave-circle-form";
 import { BucketList } from "@/components/bucket-list";
 import { CircleMoods } from "@/components/circle-moods";
 import { InvitePanel } from "@/components/invite-panel";
@@ -11,9 +15,16 @@ import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
 import { RecentPings } from "@/components/recent-pings";
 import { RenameCircleForm } from "@/components/rename-circle-form";
 import { SignedInHeader } from "@/components/signed-in-header";
+import { StillUs } from "@/components/still-us";
+import { CircleMute } from "@/components/circle-mute";
 import { ThinkingOfYou } from "@/components/thinking-of-you";
+import { circleNeedsPicker } from "@/lib/circles/fields";
+import { loadPassBooth } from "@/lib/booth/load";
 import { loadBucketItems } from "@/lib/bucket/load";
+import { prepareCircle } from "@/lib/circles/prepare";
 import { loadCircle } from "@/lib/circles/load";
+import { loadStillUs } from "@/lib/countdowns/load";
+import { pushOrigin } from "@/lib/auth/request-origin";
 import { loadLetters } from "@/lib/letters/load";
 import { calendarDate } from "@/lib/memories/fields";
 import { loadMemories } from "@/lib/memories/load";
@@ -42,10 +53,8 @@ export default async function CirclePage({
     (member) => member.userId !== session.userId,
   );
   const partner = others.length === 1 ? others[0] : null;
-  const showThinkingOfYou =
-    circle.circleType === "couple" &&
-    circle.status === "active" &&
-    partner !== null;
+  const gestures = circle.status === "active" && others.length >= 1;
+  const needsPicker = circleNeedsPicker(others.length);
   const self = circle.members.find(
     (member) => member.userId === session.userId,
   );
@@ -53,15 +62,36 @@ export default async function CirclePage({
     circle.members.map((member) => [member.userId, member.displayName]),
   );
   const zone = self?.timezone ?? "UTC";
-  const [pings, bucket, moods, memories, letters] = await Promise.all([
-    showThinkingOfYou
-      ? loadRecentPings(session, circle.id, names, zone)
-      : Promise.resolve([]),
-    loadBucketItems(session, circle.id, names),
-    loadCurrentMoods(session, circle.id, zone),
-    loadMemories(session, circle.id, names),
-    loadLetters(session, circle.id, names),
-  ]);
+  if (circle.status !== "archived") {
+    await prepareCircle(session, circle.id, pushOrigin(await headers()));
+  }
+  const [pings, bucket, moods, memories, letters, stillUs, pass] =
+    await Promise.all([
+      gestures
+        ? loadRecentPings(session, circle.id, names, zone)
+        : Promise.resolve([]),
+      loadBucketItems(session, circle.id, names),
+      loadCurrentMoods(session, circle.id, zone),
+      loadMemories(session, circle.id, names),
+      loadLetters(session, circle.id, names),
+      loadStillUs(session, circle.id, zone),
+      loadPassBooth(session, circle.id, names, zone),
+    ]);
+  const yourTurn =
+    pass.ok &&
+    pass.turns.some((turn) => turn.waitingOnYou && turn.status === "open");
+  const waitingOnPartner =
+    pass.ok &&
+    pass.turns.some(
+      (turn) =>
+        turn.status === "open" && turn.startedByMe && !turn.waitingOnYou,
+    );
+  const waitingLabel = pass.ok
+    ? pass.turns.find(
+        (turn) =>
+          turn.status === "open" && turn.startedByMe && !turn.waitingOnYou,
+      )?.stillWaiting
+    : null;
 
   const memoryPhotos =
     memories.ok && memories.wall.memories.some((memory) => memory.photoUrl);
@@ -88,21 +118,34 @@ export default async function CirclePage({
           <h1 className="mt-3 font-serif text-5xl tracking-tight">
             {circle.title}
           </h1>
-          {circle.status === "pending" ? (
+          {circle.isDemo ? (
+            <div className="mt-4">
+              <DemoBanner />
+            </div>
+          ) : null}
+          {circle.isDemo ? (
+            <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
+              Look around Alex and Jordan&apos;s circle. Nothing you type is
+              saved.
+            </p>
+          ) : circle.status === "pending" ? (
             <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
               This circle is waiting for one more person. Share the invite link.
-              You can set a mood, add to the memory wall, and start the bucket
-              list now. Letters and Thinking of You stay closed until you both
-              are here.
+              You can set a mood, set the Still Us date, open the photo booth,
+              add to the memory wall, and start the bucket list now. Letters,
+              Thinking of You, and Pass the booth stay closed until you both are
+              here.
             </p>
           ) : (
             <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
               {others.length > 0
                 ? `You're here with ${others.map((member) => member.displayName).join(", ")}.`
                 : "You're the only one here right now."}{" "}
-              {showThinkingOfYou
-                ? "Set a mood, write a letter, add a memory, tap Thinking of You — it goes to your partner — or add to the bucket list."
-                : "Set a mood, add a memory, or add to the bucket list."}
+              {gestures
+                ? needsPicker
+                  ? "Set a mood, check Still Us, write a letter to one person, open the photo booth, add a memory, or tap Thinking of You — you choose who, or everyone."
+                  : "Set a mood, check Still Us, write a letter, open the photo booth, add a memory, tap Thinking of You — it goes to your partner — or add to the bucket list."
+                : "Set a mood, check Still Us, open the photo booth, add a memory, or add to the bucket list."}
             </p>
           )}
         </div>
@@ -113,7 +156,7 @@ export default async function CirclePage({
             selfId={session.userId}
             partnerName={partner?.displayName ?? null}
             waiting={circle.status === "pending"}
-            canShare={showThinkingOfYou}
+            canShare={gestures}
             members={circle.members.map((member) => ({
               userId: member.userId,
               displayName: member.displayName,
@@ -129,11 +172,32 @@ export default async function CirclePage({
           </p>
         )}
 
+        {stillUs.ok ? (
+          <StillUs
+            circleId={circle.id}
+            circleType={circle.circleType}
+            countdowns={stillUs.countdowns}
+            checkpoints={stillUs.checkpoints}
+          />
+        ) : (
+          <p className="max-w-xl text-sm leading-6 text-foreground/70">
+            Still Us isn&apos;t in the database yet. Apply{" "}
+            <code>supabase/migrations/20261228120000_still_us.sql</code> in the
+            Supabase SQL editor, then reload this page.
+          </p>
+        )}
+
         {letters.ok ? (
           <Letters
             circleId={circle.id}
             partnerName={partner?.displayName ?? null}
-            canWrite={showThinkingOfYou}
+            partnerTimeZone={partner?.timezone ?? zone}
+            canWrite={gestures}
+            people={others.map((member) => ({
+              userId: member.userId,
+              displayName: member.displayName,
+              timezone: member.timezone,
+            }))}
             pending={circle.status === "pending"}
             letters={letters.letters}
             categories={letters.categories}
@@ -145,6 +209,31 @@ export default async function CirclePage({
             Supabase SQL editor, then reload this page.
           </p>
         )}
+
+        <section className="flex flex-col gap-4">
+          <h2 className="font-serif text-3xl tracking-tight">Photo booth</h2>
+          <p className="max-w-xl text-sm leading-6 text-foreground/80">
+            Take a strip on this phone, or pass one back and forth. Nothing is
+            saved while you shoot alone. A passed booth is saved for everyone in
+            the circle once the last frame is in.
+          </p>
+          {yourTurn ? (
+            <p className="text-sm font-medium text-pine">
+              It&apos;s your turn in the photo booth.
+            </p>
+          ) : null}
+          {waitingOnPartner && waitingLabel ? (
+            <p className="text-sm text-foreground/70">
+              A booth is waiting on {waitingLabel}.
+            </p>
+          ) : null}
+          <Link
+            href={`/circles/${circle.id}/booth`}
+            className="inline-flex h-12 w-fit items-center rounded-full bg-accent px-5 text-base font-medium text-accent-ink"
+          >
+            {yourTurn ? "Take your frames" : "Open the photo booth"}
+          </Link>
+        </section>
 
         {memories.ok ? (
           <MemoryWall
@@ -182,20 +271,34 @@ export default async function CirclePage({
           </p>
         )}
 
-        {showThinkingOfYou && partner ? (
+        {gestures ? (
           <>
             <ThinkingOfYou
               circleId={circle.id}
-              partnerName={partner.displayName}
+              partnerName={
+                partner?.displayName ??
+                (needsPicker ? "someone here" : "your partner")
+              }
+              people={others.map((member) => ({
+                userId: member.userId,
+                displayName: member.displayName,
+              }))}
             />
             <RecentPings pings={pings} selfId={session.userId} />
           </>
         ) : null}
 
+        {circle.circleType !== "couple" && !circle.isDemo ? (
+          <CircleMute circleId={circle.id} mutedUntil={circle.mutedUntil} />
+        ) : null}
+
         <InvitePanel
           circleId={circle.id}
+          circleType={circle.circleType}
           status={circle.status}
           invite={circle.invite}
+          closed={circle.inviteClosed}
+          demo={circle.isDemo}
         />
 
         <section>
@@ -226,7 +329,10 @@ export default async function CirclePage({
           </ul>
         </section>
 
-        <RenameCircleForm circleId={circle.id} name={circle.name} />
+        {circle.isDemo ? null : (
+          <RenameCircleForm circleId={circle.id} name={circle.name} />
+        )}
+        {circle.isDemo ? null : <LeaveCircleForm circleId={circle.id} />}
       </main>
     </div>
   );

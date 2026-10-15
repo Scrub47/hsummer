@@ -1,14 +1,19 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { DemoBanner } from "@/components/demo-banner";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { PushPanel } from "@/components/push-panel";
 import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
 import { SignedInHeader } from "@/components/signed-in-header";
+import { prepareCircle } from "@/lib/circles/prepare";
 import { loadCircle, loadCircles } from "@/lib/circles/load";
+import { pushOrigin } from "@/lib/auth/request-origin";
 import { loadCurrentMoods } from "@/lib/moods/load";
 import { AVATAR_SIGNED_URL_SECONDS } from "@/lib/profile/fields";
+import { loadAccountFlags } from "@/lib/account/load";
 import { loadOwnProfile } from "@/lib/profile/load";
 import { getSession } from "@/lib/supabase/session";
 
@@ -20,15 +25,25 @@ export default async function HomePage() {
   const session = await getSession();
   if (!session) redirect("/sign-in");
 
-  const [profile, circles] = await Promise.all([
+  const [profile, circles, account] = await Promise.all([
     loadOwnProfile(session),
     loadCircles(session),
+    loadAccountFlags(session),
   ]);
+  const origin = pushOrigin(await headers());
+  await Promise.all(
+    circles.circles
+      .filter((circle) => circle.status !== "archived")
+      .map((circle) => prepareCircle(session, circle.id, origin)),
+  );
   const pending = circles.circles.filter(
     (circle) => circle.status === "pending",
   );
   const activeCouple = circles.circles.find(
     (circle) => circle.status === "active" && circle.circleType === "couple",
+  );
+  const activeCircle = circles.circles.find(
+    (circle) => circle.status === "active",
   );
   const homeMoods = activeCouple
     ? await Promise.all([
@@ -51,6 +66,7 @@ export default async function HomePage() {
       />
       <SignedInHeader current="home" />
       <main className="flex flex-1 flex-col gap-10 py-16">
+        {account.isDemo ? <DemoBanner /> : null}
         <div>
           <div className="flex items-center gap-5">
             {profile ? (
@@ -72,7 +88,9 @@ export default async function HomePage() {
               ? "A circle is waiting for one more person. Share the invite link. Thinking of You stays closed until you both are here."
               : activeCouple
                 ? "Your circle is active. Open it for a letter, moods, the memory wall, the bucket list, or Thinking of You."
-                : "Create a circle and send one invite link. Thinking of You starts once you're both here."}
+                : activeCircle
+                  ? "Your circle is open. Letters, Thinking of You, and the photo booth are in there."
+                  : "Create a circle and send one invite link. Thinking of You starts once you're both here."}
           </p>
           <p className="mt-4">
             <Link
@@ -154,7 +172,7 @@ export default async function HomePage() {
             </ul>
           </section>
         ) : null}
-        <PushPanel />
+        {account.isDemo ? null : <PushPanel />}
       </main>
     </div>
   );

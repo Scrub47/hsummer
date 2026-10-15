@@ -59,6 +59,11 @@ test("circles redirect to sign-in when there is no session", async ({
   await expect(page).toHaveURL(
     /\/sign-in\?next=%2Fcircles%2F11111111-1111-4111-8111-111111111111$/,
   );
+
+  await page.goto("/circles/11111111-1111-4111-8111-111111111111/booth");
+  await expect(page).toHaveURL(
+    /\/sign-in\?next=%2Fcircles%2F11111111-1111-4111-8111-111111111111%2Fbooth$/,
+  );
 });
 
 test("the test sign-in route is closed without the local flag", async ({

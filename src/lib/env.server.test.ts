@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  getCronSecret,
+  getQstashConfig,
+  getSentryDsn,
   getSupabaseSecretKey,
   getUpstashConfig,
   getVapidConfig,
@@ -14,6 +17,11 @@ const KEYS = [
   "NEXT_PUBLIC_VAPID_PUBLIC_KEY",
   "UPSTASH_REDIS_REST_URL",
   "UPSTASH_REDIS_REST_TOKEN",
+  "QSTASH_TOKEN",
+  "QSTASH_CURRENT_SIGNING_KEY",
+  "QSTASH_NEXT_SIGNING_KEY",
+  "CRON_SECRET",
+  "SENTRY_DSN",
 ] as const;
 
 const original = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
@@ -67,5 +75,41 @@ describe("server env", () => {
       url: "https://example.upstash.io",
       token: "real-token-value",
     });
+  });
+
+  it("treats QStash as optional until the token and both signing keys are set", () => {
+    delete process.env.QSTASH_TOKEN;
+    delete process.env.QSTASH_CURRENT_SIGNING_KEY;
+    delete process.env.QSTASH_NEXT_SIGNING_KEY;
+    expect(getQstashConfig()).toBeNull();
+
+    process.env.QSTASH_TOKEN = "your-qstash-token";
+    process.env.QSTASH_CURRENT_SIGNING_KEY = "current-signing-key";
+    process.env.QSTASH_NEXT_SIGNING_KEY = "next-signing-key";
+    expect(getQstashConfig()).toBeNull();
+
+    process.env.QSTASH_TOKEN = "qstash-token-value";
+    expect(getQstashConfig()).toEqual({
+      token: "qstash-token-value",
+      currentSigningKey: "current-signing-key",
+      nextSigningKey: "next-signing-key",
+    });
+  });
+
+  it("requires a long cron secret and an https Sentry DSN", () => {
+    delete process.env.CRON_SECRET;
+    delete process.env.SENTRY_DSN;
+    expect(getCronSecret()).toBeNull();
+    expect(getSentryDsn()).toBeNull();
+
+    process.env.CRON_SECRET = "short";
+    process.env.SENTRY_DSN = "http://key@example.invalid/1";
+    expect(getCronSecret()).toBeNull();
+    expect(getSentryDsn()).toBeNull();
+
+    process.env.CRON_SECRET = "cron-secret-value";
+    process.env.SENTRY_DSN = "https://public@example.invalid/1";
+    expect(getCronSecret()).toBe("cron-secret-value");
+    expect(getSentryDsn()).toBe("https://public@example.invalid/1");
   });
 });

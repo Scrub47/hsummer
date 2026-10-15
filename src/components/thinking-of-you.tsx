@@ -19,13 +19,18 @@ type Status = { tone: "error" | "ok"; text: string } | null;
 export function ThinkingOfYou({
   circleId,
   partnerName,
+  people = [],
 }: {
   circleId: string;
   partnerName: string;
+  people?: { userId: string; displayName: string }[];
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [status, setStatus] = useState<Status>(null);
+  const [recipient, setRecipient] = useState(
+    people.length > 1 ? (people[0]?.userId ?? "everyone") : "",
+  );
   const inflight = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressSent = useRef(false);
@@ -50,10 +55,27 @@ export function ThinkingOfYou({
     setPending(true);
     setStatus(null);
     try {
+      const chosen =
+        people.length > 1
+          ? recipient === "everyone"
+            ? null
+            : recipient
+          : undefined;
+      if (people.length > 1 && secretVariant && chosen === null) {
+        setStatus({
+          tone: "error",
+          text: "The Missing note goes to one person.",
+        });
+        return;
+      }
       const response = await fetch("/api/pings", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ circleId, secretVariant }),
+        body: JSON.stringify({
+          circleId,
+          secretVariant,
+          ...(chosen !== undefined ? { toUserId: chosen } : {}),
+        }),
       });
       const body = (await response.json().catch(() => null)) as {
         error?: string;
@@ -69,7 +91,14 @@ export function ThinkingOfYou({
         });
         return;
       }
-      setStatus({ tone: "ok", text: successText(body, partnerName) });
+      const label =
+        people.length > 1
+          ? recipient === "everyone"
+            ? "everyone"
+            : (people.find((person) => person.userId === recipient)
+                ?.displayName ?? partnerName)
+          : partnerName;
+      setStatus({ tone: "ok", text: successText(body, label) });
       router.refresh();
     } catch {
       setStatus({ tone: "error", text: "That ping couldn't be sent." });
@@ -79,8 +108,27 @@ export function ThinkingOfYou({
     }
   }
 
+  const many = people.length > 1;
+
   return (
     <section className="flex flex-col gap-4">
+      {many ? (
+        <label className="flex flex-col gap-2 text-sm font-medium">
+          Who this is for
+          <select
+            value={recipient}
+            onChange={(event) => setRecipient(event.target.value)}
+            className="h-12 rounded-2xl border border-line bg-card px-4 text-base font-normal"
+          >
+            {people.map((person) => (
+              <option key={person.userId} value={person.userId}>
+                {person.displayName}
+              </option>
+            ))}
+            <option value="everyone">Everyone</option>
+          </select>
+        </label>
+      ) : null}
       <button type="button" className="sr-only" onClick={() => void send(true)}>
         {hiddenLabel}
       </button>
@@ -116,8 +164,9 @@ export function ThinkingOfYou({
         {pending ? "Sending…" : "Thinking of You"}
       </button>
       <p className="text-sm leading-6 text-foreground/80">
-        For {partnerName}. One tap. On an iPhone, the notification arrives after
-        Hsummer is on the Home Screen and notifications are on.
+        {many
+          ? "Choose one person, or everyone. A long press sends Missing you to one person, not to everyone."
+          : `For ${partnerName}. One tap. On an iPhone, the notification arrives after Hsummer is on the Home Screen and notifications are on.`}
       </p>
       {status ? (
         <p

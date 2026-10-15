@@ -3,12 +3,13 @@
  *
  * The seven open-when categories are the defaults. A circle can add its
  * own. The database checks the same shapes. A signed-in person can write
- * 10 letters in 10 minutes. Delivery on a clock is a later week; a letter
- * written here is delivered as it is saved.
+ * 10 letters in 10 minutes. A letter with no time is delivered as it is
+ * saved. A later time is stored as a UTC instant in the recipient's zone.
  */
 
 import { z } from "zod";
 
+import { demoWriteMessage } from "@/lib/account/copy";
 import { isCircleId } from "@/lib/bucket/fields";
 
 export const DEFAULT_LETTER_CATEGORIES = [
@@ -158,6 +159,8 @@ export function letterWriteFailure(
   code: string | undefined,
 ): string | null {
   if (!message && !code) return null;
+  const demo = demoWriteMessage(message);
+  if (demo) return demo;
   if (
     code === "42P01" ||
     code === "PGRST205" ||
@@ -177,6 +180,9 @@ export function letterWriteFailure(
     message?.includes("duplicate key")
   ) {
     return "Pick a category from the list, or add one that isn't already there.";
+  }
+  if (message?.includes("hsummer_letter_schedule")) {
+    return "Pick a time at least a minute from now, and within two years.";
   }
   if (message?.includes("hsummer_letter_recipient")) {
     return "That letter needs both of you still in the circle.";

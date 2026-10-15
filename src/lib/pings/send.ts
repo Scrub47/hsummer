@@ -9,13 +9,15 @@ import {
   PING_RATE_LIMIT_MESSAGE,
   PING_WINDOW_MINUTES,
   circlePingInsert,
-  partnerReasonMessage,
   pingSendAllowed,
   pingWriteFailure,
-  resolveCouplePartner,
+  recipientReasonMessage,
+  resolveCircleRecipient,
+  type RecipientRequest,
 } from "@/lib/pings/fields";
 import { enforceSharedLimit } from "@/lib/rate-limit/enforce";
 import { buildPingNotification } from "@/lib/push/payload";
+import { deliverGroupPushes } from "@/lib/push/group-delivery";
 import { deliverTestPushes, subscriptionsToPrune } from "@/lib/push/prune";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Session } from "@/lib/supabase/session";
@@ -39,8 +41,11 @@ const UNAVAILABLE =
   "Thinking of You isn't available yet. Apply the week 4 SQL in the Supabase SQL editor, then try again.";
 
 /**
- * Inserts one Thinking of You for the partner in an active couple, then pushes
- * it to every device saved for that person.
+ * Inserts one Thinking of You, then pushes it.
+ *
+ * A couple, and any circle of two, always reaches the other person. The
+ * request must not name them. A larger circle names one person or everyone.
+ * Couple pushes are not batched. Group pushes are.
  *
  * The insert uses the caller's session, so RLS decides whether the row is
  * allowed. The secret key is used only afterwards, to reach devices the caller
@@ -57,6 +62,8 @@ export async function sendThinkingOfYou(
      * generic Thinking of You sentence. The emoji is stored on the ping row.
      */
     moodEmoji?: string | null;
+    /** Omitted means the other person, which is only valid for a circle of two. */
+    recipient?: RecipientRequest;
   },
 ): Promise<PingSendResponse> {
   const circle = await session.supabase
@@ -95,21 +102,24 @@ export async function sendThinkingOfYou(
     return { status: 503, body: { error: UNAVAILABLE } };
   }
 
-  const partner = resolveCouplePartner({
+  const memberIds = (members.data ?? []).map((row) => row.user_id);
+  const partner = resolveCircleRecipient({
     selfId: session.userId,
     circleType: circle.data.circle_type,
     status: circle.data.status,
-    activeMemberIds: (members.data ?? []).map((row) => row.user_id),
+    activeMemberIds: memberIds,
+    request: input.recipient ?? { kind: "auto" },
+    allowBroadcast: true,
   });
   if (!partner.ok) {
-    const failure = partnerReasonMessage(partner.reason);
+    const failure = recipientReasonMessage(partner.reason, "ping");
     return { status: failure.status, body: { error: failure.error } };
   }
 
   const ping = circlePingInsert({
     circleId: input.circleId,
     fromUserId: session.userId,
-    toUserId: partner.partnerId,
+    toUserId: partner.toUserId,
     secretVariant: input.secretVariant,
     moodEmoji: input.moodEmoji ?? null,
   });
@@ -150,8 +160,36 @@ export async function sendThinkingOfYou(
   revalidatePath(`/circles/${input.circleId}`);
   revalidatePath("/home");
 
+  if (circle.data.circle_type !== "couple") {
+    const targets =
+      partner.toUserId === null
+        ? memberIds.filter((id) => id !== session.userId)
+        : [partner.toUserId];
+    const grouped = await deliverGroupPushes({
+      circleId: input.circleId,
+      userIds: targets,
+      origin: input.origin,
+      specific: buildPingNotification(input.origin, {
+        secretVariant: inserted.data.secret_variant,
+        circleId: input.circleId,
+      }),
+    });
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        pingId: inserted.data.id,
+        secretVariant: inserted.data.secret_variant,
+        devices: 0,
+        sent: 0,
+        removed: 0,
+        push: grouped === "unconfigured" ? "unconfigured" : "none",
+      },
+    };
+  }
+
   const delivery = await pushToPartner({
-    partnerId: partner.partnerId,
+    partnerId: partner.toUserId ?? "",
     origin: input.origin,
     circleId: input.circleId,
     secretVariant: inserted.data.secret_variant,

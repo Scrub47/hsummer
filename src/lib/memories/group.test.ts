@@ -22,6 +22,7 @@ function card(overrides: Partial<MemoryCard> = {}): MemoryCard {
     author: "you",
     mine: true,
     letterId: null,
+    booth: null,
     ...overrides,
   };
 }

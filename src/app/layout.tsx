@@ -53,8 +53,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       className={`${outfit.variable} ${fraunces.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-background font-sans text-foreground">
+        <a href="#content" className="skip-link">
+          Skip to content
+        </a>
         <ServiceWorkerRegister />
-        {children}
+        <div id="content">{children}</div>
         <SiteFooter />
       </body>
     </html>

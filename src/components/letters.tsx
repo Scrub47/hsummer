@@ -5,11 +5,14 @@ import { useRouter } from "next/navigation";
 
 import {
   addLetterCategory,
+  cancelLetter,
   deleteLetterCategory,
   openLetter,
+  rescheduleLetter,
   sendLetter,
   type LetterActionState,
 } from "@/app/circles/letter-actions";
+import { MemberChoice } from "@/components/member-choice";
 import { useCircleLive } from "@/components/use-circle-live";
 import {
   DEFAULT_LETTER_CATEGORIES,
@@ -20,8 +23,13 @@ import {
   type LetterDesign,
 } from "@/lib/letters/fields";
 import type { LetterCard, LetterCategory } from "@/lib/letters/view";
+import { formatInZone } from "@/lib/schedule/time";
 
-const initialState: LetterActionState = { error: null, saved: false };
+const initialState: LetterActionState = {
+  error: null,
+  saved: false,
+  notice: null,
+};
 
 /**
  * Dear <name>. In a couple the other person is the recipient. A letter
@@ -31,17 +39,21 @@ const initialState: LetterActionState = { error: null, saved: false };
 export function Letters({
   circleId,
   partnerName,
+  partnerTimeZone,
   canWrite,
   pending,
   letters,
   categories,
+  people = [],
 }: {
   circleId: string;
   partnerName: string | null;
+  partnerTimeZone: string;
   canWrite: boolean;
   pending: boolean;
   letters: LetterCard[];
   categories: LetterCategory[];
+  people?: { userId: string; displayName: string; timezone: string }[];
 }) {
   const router = useRouter();
   const refresh = () => router.refresh();
@@ -56,9 +68,11 @@ export function Letters({
         <p className="mt-3 max-w-xl text-sm leading-6 text-foreground/80">
           {pending
             ? "Letters open once you're both here. Share the invite link."
-            : canWrite && partnerName
-              ? `Write to ${partnerName}. It opens with their name. Until they break the seal, the words stay off this page.`
-              : "Letters go to one person. Choosing someone in a larger circle comes later."}
+            : canWrite && people.length > 1
+              ? "Write to one person. A letter is never sent to everyone. Until they break the seal, the words stay off this page."
+              : canWrite && partnerName
+                ? `Write to ${partnerName}. It opens with their name. Until they break the seal, the words stay off this page.`
+                : "Letters go to one person."}
         </p>
         <p className="mt-2 text-sm text-foreground/70" role="status">
           {live === "live"
@@ -69,11 +83,13 @@ export function Letters({
         </p>
       </div>
 
-      {canWrite && partnerName ? (
+      {canWrite && (partnerName || people.length > 1) ? (
         <WriteLetter
           circleId={circleId}
-          partnerName={partnerName}
+          partnerName={partnerName ?? "them"}
+          partnerTimeZone={partnerTimeZone}
           categories={categories}
+          people={people}
         />
       ) : null}
 
@@ -94,7 +110,11 @@ export function Letters({
               {letter.sealed ? (
                 <SealedLetter circleId={circleId} letter={letter} />
               ) : (
-                <OpenedLetter letter={letter} />
+                <OpenedLetter
+                  circleId={circleId}
+                  letter={letter}
+                  partnerTimeZone={partnerTimeZone}
+                />
               )}
             </li>
           ))}
@@ -107,15 +127,26 @@ export function Letters({
 function WriteLetter({
   circleId,
   partnerName,
+  partnerTimeZone,
   categories,
+  people,
 }: {
   circleId: string;
   partnerName: string;
+  partnerTimeZone: string;
   categories: LetterCategory[];
+  people: { userId: string; displayName: string; timezone: string }[];
 }) {
   const [state, formAction, pending] = useActionState(sendLetter, initialState);
   const [design, setDesign] = useState<LetterDesign>("minimal");
+  const [when, setWhen] = useState<"now" | "later">("now");
+  const [seenSaved, setSeenSaved] = useState(state.saved);
   const formRef = useRef<HTMLFormElement>(null);
+
+  if (state.saved !== seenSaved) {
+    setSeenSaved(state.saved);
+    if (state.saved) setWhen("now");
+  }
 
   useEffect(() => {
     if (state.saved) formRef.current?.reset();
@@ -125,6 +156,76 @@ function WriteLetter({
     <form ref={formRef} action={formAction} className="flex flex-col gap-4">
       <input type="hidden" name="circleId" value={circleId} />
       <input type="hidden" name="design" value={design} />
+      <MemberChoice
+        people={people}
+        name="recipientId"
+        legend="Who this letter is for"
+      />
+      <fieldset className="flex flex-col gap-3">
+        <legend className="text-sm font-medium">When it arrives</legend>
+        <div className="flex flex-wrap gap-2">
+          <label className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-line bg-card px-4 text-sm">
+            <input
+              type="radio"
+              name="when"
+              value="now"
+              checked={when === "now"}
+              onChange={() => setWhen("now")}
+            />
+            Now
+          </label>
+          <label className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-line bg-card px-4 text-sm">
+            <input
+              type="radio"
+              name="when"
+              value="later"
+              checked={when === "later"}
+              onChange={() => setWhen("later")}
+            />
+            Later
+          </label>
+        </div>
+        {when === "later" ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="letter-deliver-date"
+                className="text-sm font-medium"
+              >
+                Date
+              </label>
+              <input
+                id="letter-deliver-date"
+                name="deliverDate"
+                type="date"
+                required
+                className="h-12 rounded-2xl border border-line bg-background px-4 text-base"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="letter-deliver-time"
+                className="text-sm font-medium"
+              >
+                Time
+              </label>
+              <input
+                id="letter-deliver-time"
+                name="deliverTime"
+                type="time"
+                required
+                defaultValue="08:00"
+                className="h-12 rounded-2xl border border-line bg-background px-4 text-base"
+              />
+            </div>
+            <p className="text-sm leading-6 text-foreground/70 sm:col-span-2">
+              {people.length > 1
+                ? "8:00 AM means 8:00 AM in the recipient's timezone."
+                : `This is ${partnerName}'s time (${partnerTimeZone}). 8:00 AM means 8:00 AM where they are.`}
+            </p>
+          </div>
+        ) : null}
+      </fieldset>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-2">
           <label htmlFor="letter-category" className="text-sm font-medium">
@@ -208,7 +309,7 @@ function WriteLetter({
       ) : null}
       {state.saved && !state.error ? (
         <p className="text-sm text-pine" role="status">
-          Sent to {partnerName}.
+          {state.notice ?? `Sent to ${partnerName}.`}
         </p>
       ) : null}
       <button
@@ -308,7 +409,20 @@ function RemoveCategory({
   );
 }
 
-function OpenedLetter({ letter }: { letter: LetterCard }) {
+function OpenedLetter({
+  circleId,
+  letter,
+  partnerTimeZone,
+}: {
+  circleId: string;
+  letter: LetterCard;
+  partnerTimeZone: string;
+}) {
+  const arrival =
+    letter.status === "scheduled" && letter.scheduledFor
+      ? formatInZone(letter.scheduledFor, partnerTimeZone)
+      : null;
+
   return (
     <article
       id={`letter-${letter.id}`}
@@ -329,16 +443,113 @@ function OpenedLetter({ letter }: { letter: LetterCard }) {
       ) : null}
       <p className="mt-4 text-sm text-foreground/70">
         {letter.status === "cancelled"
-          ? "Cancelled."
+          ? "Cancelled. It won't arrive."
           : letter.status === "scheduled"
-            ? "Not delivered yet."
+            ? arrival
+              ? `Arrives ${arrival}, in their time.`
+              : "Not delivered yet."
             : letter.mine
               ? letter.openedAt
                 ? "You wrote this. They've opened it."
                 : "You wrote this. The seal is still on it."
               : `From ${letter.fromName}.`}
       </p>
+      {letter.mine && letter.status === "scheduled" ? (
+        <ScheduledControls circleId={circleId} letterId={letter.id} />
+      ) : null}
     </article>
+  );
+}
+
+function ScheduledControls({
+  circleId,
+  letterId,
+}: {
+  circleId: string;
+  letterId: string;
+}) {
+  const [reschedule, rescheduleAction, rescheduling] = useActionState(
+    rescheduleLetter,
+    initialState,
+  );
+  const [cancel, cancelAction, cancelling] = useActionState(
+    cancelLetter,
+    initialState,
+  );
+
+  return (
+    <div className="mt-4 flex flex-col gap-3">
+      <form action={rescheduleAction} className="flex flex-col gap-3">
+        <input type="hidden" name="circleId" value={circleId} />
+        <input type="hidden" name="letterId" value={letterId} />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-2">
+            <label
+              htmlFor={`reschedule-date-${letterId}`}
+              className="text-sm font-medium"
+            >
+              New date
+            </label>
+            <input
+              id={`reschedule-date-${letterId}`}
+              name="deliverDate"
+              type="date"
+              required
+              className="h-12 rounded-2xl border border-line bg-background px-4 text-base"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label
+              htmlFor={`reschedule-time-${letterId}`}
+              className="text-sm font-medium"
+            >
+              New time
+            </label>
+            <input
+              id={`reschedule-time-${letterId}`}
+              name="deliverTime"
+              type="time"
+              required
+              defaultValue="08:00"
+              className="h-12 rounded-2xl border border-line bg-background px-4 text-base"
+            />
+          </div>
+        </div>
+        {reschedule.error ? (
+          <p className="text-sm text-accent" role="alert">
+            {reschedule.error}
+          </p>
+        ) : null}
+        {reschedule.notice ? (
+          <p className="text-sm text-pine" role="status">
+            {reschedule.notice}
+          </p>
+        ) : null}
+        <button
+          type="submit"
+          disabled={rescheduling}
+          className="h-10 self-start rounded-full border border-line bg-card px-4 text-sm font-medium disabled:opacity-60"
+        >
+          {rescheduling ? "Saving…" : "Change the time"}
+        </button>
+      </form>
+      <form action={cancelAction}>
+        <input type="hidden" name="circleId" value={circleId} />
+        <input type="hidden" name="letterId" value={letterId} />
+        {cancel.error ? (
+          <p className="mb-2 text-sm text-accent" role="alert">
+            {cancel.error}
+          </p>
+        ) : null}
+        <button
+          type="submit"
+          disabled={cancelling}
+          className="text-sm font-medium text-foreground/70 underline decoration-foreground/30"
+        >
+          {cancelling ? "Cancelling…" : "Cancel this letter"}
+        </button>
+      </form>
+    </div>
   );
 }
 
@@ -390,6 +601,8 @@ function SealedLetter({
   if (phase === "open" && body) {
     return (
       <OpenedLetter
+        circleId={circleId}
+        partnerTimeZone="UTC"
         letter={{
           ...letter,
           sealed: false,

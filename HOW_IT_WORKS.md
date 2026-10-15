@@ -1,8 +1,8 @@
 # How Hsummer works
 
-This is the map of the repository as it stands after the memory wall. It is written for reading the code, not as a changelog.
+This is the map of the repository as it stands after launch readiness (leave, account deletion, personal export, and the seeded demo). It is written for reading the code, not as a changelog.
 
-Hsummer is a private space shared by a Circle: a couple, a few friends, or a family. Profiles came first. Who may read one is a single function, and that function now includes people who share an active circle. Circles, memberships, invite links, pings, a shared bucket list, a current mood per person, and a memory wall are in the database. A 1:1 ping is readable only by the sender and the recipient. A bucket item is readable and editable by every active member of that circle. A mood is readable by active members and writable only by the person it belongs to. A memory is readable by every active member when its visibility is the whole circle, and only by the author plus the people they picked when visibility is selected. A letter is readable by the sender, and by the recipient only after it is delivered. Opening it adds one memory that only those two can see.
+Hsummer is a private space shared by a Circle: a couple, a few friends, or a family. Profiles came first. Who may read one is a single function, and that function now includes people who share an active circle. Circles, memberships, invite links, pings, a shared bucket list, a current mood per person, and a memory wall are in the database. A 1:1 ping is readable only by the sender and the recipient. A bucket item is readable and editable by every active member of that circle. A mood is readable by active members and writable only by the person it belongs to. A memory is readable by every active member when its visibility is the whole circle, and only by the author plus the people they picked when visibility is selected. A letter is readable by the sender, and by the recipient only after it is delivered. Opening it adds one memory that only those two can see. A couple circle also has one Still Us countdown. Hitting a checkpoint adds one memory the whole circle can see. The photo booth draws a strip on the phone. Solo adds one memory the whole circle can see only when you save. Pass the Booth adds that memory only after both people have filled their frames.
 
 ## Shape of the app
 
@@ -20,10 +20,18 @@ Next.js (App Router) on Vercel
   src/app/circles/bucket-actions.ts  add, edit, remove a bucket item
   src/app/circles/mood-actions.ts    set or clear your current mood
   src/app/circles/memory-actions.ts  add or remove a memory; strip photo EXIF
-  src/app/circles/letter-actions.ts  write a letter, add a category, open the seal
+  src/app/circles/booth-actions.ts   save a Solo strip, or pass frames to your partner
+  src/app/circles/letter-actions.ts  write, schedule, cancel, or open a letter
+  src/app/circles/countdown-actions.ts  reunion date, checkpoints, mark hit
   src/app/join/actions.ts          redeem an invite link
   src/app/api/push/*               save a device, send a test push
   src/app/api/pings                Thinking of You, then push the partner
+  src/app/api/letters/deliver      QStash callback for a scheduled letter
+  src/app/circles/leave-actions.ts leave one circle
+  src/app/profile/delete-actions.ts delete the signed-in account
+  src/app/api/account/export       ZIP of what this person can see
+  src/app/api/demo/enter           sign in as the fictional demo couple
+  src/app/api/cron/daily           purge, sweep, demo reset, old exports
         │
         ▼
 Supabase
@@ -31,9 +39,11 @@ Supabase
   Postgres: profiles, account_private, circles, members, invites,
             pings, bucket_items, current_moods, memories,
             memory_viewers, letters, letter_categories,
-            push_subscriptions
-  Realtime: bucket_items, current_moods, memories, and letters
-  Storage: private buckets "avatars", "memories", and "backups"
+            countdowns, checkpoints, push_subscriptions,
+            booth_sessions, booth_contributors, booth_shots
+  Realtime: bucket_items, current_moods, memories, letters,
+            countdowns, and checkpoints
+  Storage: private buckets "avatars", "memories", "backups", and "exports"
   Row Level Security: circle rows for active members; a 1:1 ping
                       or letter only for its sender and recipient
 ```
@@ -129,7 +139,7 @@ Server Actions default to a 1 MB body. `next.config.ts` raises that to 3 MB so a
 
 ## Circles and invite links
 
-A circle has a type (`couple`, `group`, `family`, `friends`), an optional name, and a status. Status is not written by the app. A trigger counts `circle_members` rows with `left_at` null: 0 is `archived`, 1 is `pending`, 2 or more is `active`. The create form only offers a couple. The other types are accepted by `create_circle` so the RLS tests can build a 3-person circle. `circle_type` is not mentioned in any policy. It chooses the invite default (couples get `max_uses = 1`; everyone else is open until expiry) and, in the ping insert trigger only, rejects a whole-circle ping in a couple.
+A circle has a type (`couple`, `group`, `family`, `friends`), an optional name, and a status. Status is not written by the app. A trigger counts `circle_members` rows with `left_at` null: 0 is `archived`, 1 is `pending`, 2 or more is `active`. The create form offers a couple, a group, a family, or friends. Couple stays the default radio, so a form that does not pick a type is still a couple. `circle_type` is not mentioned in any policy. It chooses the invite default (couples get `max_uses = 1`; everyone else is open until expiry) and, in the ping insert trigger only, rejects a whole-circle ping in a couple.
 
 `private.is_active_member(circle_id)` is the plan's helper, kept in the `private` schema. It is `security definer` with an empty `search_path`. Policies on circles, members, invites, and redemptions call it. If it ran as the caller, the member policy would recurse through itself.
 
@@ -141,9 +151,9 @@ Redeem is one transaction. It records the attempt, locks the circle, locks the i
 
 `/join/[token]` is the link. Signed out, it asks the person to sign in and comes back via `next`. Signed in, it previews the circle name and posts to `redeem_invite`. Nothing joins them until they confirm.
 
-While a circle is pending, its page is the invite prompt. Thinking of You is not shown there. After the second person joins, an active couple gets one button and a short list of recent pings. The button does not ask who to send to. `resolveCouplePartner` returns the only other active member, and the route refuses a group, a pending circle, and any body that includes `toUserId`.
+While a circle is pending, its page is the invite prompt. Thinking of You is not shown there. After at least one other person joins, the button is shown. A couple, and any circle of two, does not ask who to send to. `resolveCircleRecipient` with `auto` returns the only other active member. A larger circle sends `toUserId` as one member, or null for everyone. A couple body that names someone is refused (`couple_picker`). A pending circle is refused.
 
-`BROADCAST_PINGS_ENABLED` is false. A whole-circle ping is a row with `to_user_id` null. The select policy lets every active member read that shape, and the insert policy allows the null, so the RLS suite can create a 3-member group directly and prove both sides: the third member sees the null row and does not see a 1:1 row between the other two. The app never writes the null. A couple cannot write it either. The insert trigger reads `circle_type` and raises `hsummer_couple_needs_recipient`. That read stays out of the policies. `circle_type` is still only a default.
+`BROADCAST_PINGS_ENABLED` is true. A whole-circle ping is a row with `to_user_id` null. The select policy lets every active member read that shape. A couple cannot write it. The insert trigger reads `circle_type` and raises `hsummer_couple_needs_recipient`. That read stays out of the policies. `circle_type` is still only a default. A circle of two that is not a couple also skips the picker and pings the other person. Letters are never broadcast.
 
 The same trigger stamps `sent_at` from the database clock and allows 10 pings per sender per 10 minutes, across every circle. An advisory lock makes two overlapping requests share one count. The route counts with `count: "exact"` and returns 429 with a plain sentence when the person is already at the cap. If that count cannot be read, the route refuses the send instead of guessing. The trigger remains the check a direct insert cannot skip.
 
@@ -177,7 +187,7 @@ PostgREST's upsert writes every column in the body when a row already exists, in
 
 The circle page lists every member's mood and a row of buttons. Tapping one submits that emoji. The share checkbox is off. That save does not insert a ping and does not call the push sender. Home shows the same list for the active couple, and it does not have the buttons. Realtime on `current_moods` calls `router.refresh()` the same way the bucket list does, after the browser passes the signed-in access token. If Realtime is off, a reload shows the other person's mood. Own saves show up without it, because the action calls `revalidatePath`.
 
-Checking **Also send this as a ping** still upserts the mood first. It then calls `sendThinkingOfYou` with the emoji. That function builds a `mood-share` row (`mood_emoji` set, `secret_variant` false) and inserts it with the caller's session, so the ping policies and the 10-in-10-minutes trigger still apply. Upstash, when both of its variables are set, checks the same `ping:` key before the insert. The push body stays "Thinking of you." The emoji is not a field on the notification. The recent list inside the app says "Feeling" plus the emoji. If the ping is refused (the cap, a circle that is not an active couple), the mood row is already saved and the page says so. `POST /api/pings` still rejects a body that includes a mood. The checkbox is the only way the app writes `mood-share`. A couple share goes to the partner. Picking someone in a group is later.
+Checking **Also send this as a ping** still upserts the mood first. It then calls `sendThinkingOfYou` with the emoji. That function builds a `mood-share` row (`mood_emoji` set, `secret_variant` false) and inserts it with the caller's session, so the ping policies and the 10-in-10-minutes trigger still apply. Upstash, when both of its variables are set, checks the same `ping:` key before the insert. The push body stays "Thinking of you." The emoji is not a field on the notification. The recent list inside the app says "Feeling" plus the emoji. If the ping is refused (the cap, a circle that is not an active couple), the mood row is already saved and the page says so. `POST /api/pings` still rejects a body that includes a mood. The checkbox is the only way the app writes `mood-share`. A couple share goes to the partner. In a larger circle the share box also asks who, or everyone.
 
 Clearing a mood deletes your own row. That does not send a ping.
 
@@ -197,21 +207,65 @@ The page asks Storage for a signed URL that lasts five minutes (`MEMORY_SIGNED_U
 
 `public.circle_memory_bytes(circle id)` returns the sum for an active member and null for anyone else, so the usage line is the whole circle and not only the photos this person can see. Realtime on `memories` refreshes the page. Adding a viewer bumps `updated_at` so that change is included.
 
+A saved Solo strip is another kind of memory, `photo-strip`. It has no `photo_path`. The bytes that count toward the 100 MB quota are the sum of the frame JPEGs, stored on the memory as `photo_bytes`. The wall draws the strip again from those frames.
+
+## Photo booth
+
+Solo Booth is one phone. Capture, the theme, the filter, and Download all happen in the browser. No `booth_sessions` row exists until Save to this circle. Pass the Booth is the async mode. Live Together is the third mode on the same page: one shutter, then a fallback to a pass if the live channel fails.
+
+The page is `/circles/[id]/booth`. It works while the circle is still pending. The preview is a `<video>` with `playsInline`, `muted`, and `autoPlay`, and the element is mirrored with CSS. `getUserMedia` is called from the Use the camera button, with `audio: false`, because the permissions policy allows `camera=(self)` and refuses the microphone. The captured frame is drawn from the video element, so it is not mirrored and text in the picture reads the right way. If permission is denied, the camera is missing, or the page is not a secure context, the message tells an iPhone user where to allow the camera for the Home Screen app and for Safari, and the library picker still works. The picker copies the chosen files before it clears the input. That list is live, so clearing it first would keep only the photo already being read.
+
+A strip is 600×1800. 4-cut is four frames. 2-cut is two taller ones. Kawaii and Minimal are separate theme files (`src/lib/booth/themes/kawaii.ts` and `minimal.ts`): palette, type, padding, and stickers. The layout math only reads those numbers. Filters (black and white, sepia, warm, cool, grain) run on the slot-sized frame. Grain uses the pixel index, so the same photo does not change between saves. Each frame is a JPEG at about 0.9 quality, at that slot's size, with no EXIF because it came from a canvas. Save sends those bytes as an argument of the server action. A `File` appended onto the form in script does not arrive, and the save would say the strip is missing photos. The circle, theme, layout, and filter are hidden fields on that form. A pass does the same for `startPassBooth` and `submitPassTurn`, and the filter in that request is the one that person picked. The server sniffs the bytes and strips metadata again, and it refuses anything that is not a JPEG.
+
+Save calls `save_solo_booth`. That function inserts the session (`mode = solo`, `status = complete`), one contributor whose `assigned_positions` are every frame, the shot rows, and one `memories` row with `kind = photo-strip` and `visibility = circle`, in one transaction. The tag is `photo-booth`. The calendar date is the saver's timezone. Authenticated clients have no insert grant on the booth tables, and a direct insert of a photo-strip memory is rejected. The same 10-memories-per-10-minutes limit and the 100 MB circle quota apply. Upstash, when it is configured, checks `memory:{user id}` first.
+
+The action then uploads each JPEG into the private `memories` bucket at `{circle id}/{session id}/{position}.jpg`. If an upload fails, it deletes the memory. That delete removes the session, and the shot trigger removes any object that landed. There is no combined image in storage. The wall signs each frame for five minutes and draws the strip again with the theme that was saved. Those signed URLs are another origin, so the wall canvas can show the frames and cannot export them. Download on the booth page exports a canvas whose frames are still local blobs.
+
+Download uses the share sheet when the phone allows sharing a file, and otherwise a normal download. It does not call the server.
+
+Pass the Booth is the async mode. A couple, and any circle of two, still uses `create_pass_booth`: the starter shoots the top half (`creatorPositions`: frames 0 and 1 on a 4-cut, frame 0 on a 2-cut) and the other person gets the rest. A larger circle uses `create_pass_booth_picked`. The starter is first in the plan, so they get any extra frame (`assignPositions`). A 4-cut with three people is 2 + 1 + 1. A 2-cut only fits two people. The database refuses a couple on the picked function (`hsummer_booth_couple`) and refuses a person who is not an active member. A pending circle still cannot start.
+
+Live Together is `open_together_booth`. A couple, and any circle of two, includes both people. A larger circle picks a subset. The lobby lasts 10 minutes. Each person taps ready, which calls `mark_together_ready` and stores their clock offset when it is in range. When the last person is ready, `capture_at` is about five seconds ahead and `expires_at` moves to two minutes after that. `GET /api/time` is sampled three times. The smallest round trip wins. The shutter fires when `clientNow + offset >= captureAt`. Shots before `capture_at` are refused (`hsummer_booth_early`). Save your frames sends those JPEGs as bytes to `submitTogetherShots`. The private Realtime topic is `together:<session id>`, broadcast plus presence, and only a contributor who is still an active member can join it. The policies that enforce that live on `realtime.messages`. The migration assumes that table's owner when the current role is allowed to, then puts the role back. A local database that excludes Realtime often cannot assume the owner, so that block notices and skips. The hosted SQL editor applies the policies when its role can. If that channel errors before the shutter, the person who opened the lobby can call `fallback_together_to_pass`. The same people keep their frames, and the booth becomes a pass. A member who was not picked cannot mark ready and cannot read `booth_clock_samples`. The daily cron calls `expire_together_booths` in addition to `sweep_quiet_circles`. The sweep function is not replaced, because its body contains deletes.
+
+Group pushes go through `deliverGroupPushes`. The first event in a minute is sent. Further events in that minute are held. The next event after the minute, if any were held, is one nameless "You have new updates in a circle." A couple never uses that path. `muted_until` on the caller's own membership silences their group pushes. "Until I turn this off" stores `9999-12-31T00:00:00.000Z`. The demo circle and a couple do not show the mute control. `set_invite_max_uses` sets a group link's cap from 1 to 100, or null until expiry. A couple link stays at one use.
+
+The JPEGs upload after the rows exist, into the same private `memories` bucket. A failed upload calls `discard_pass_booth`, which deletes that open session only when the partner has no frames yet. The partner later calls `submit_pass_shots` for their positions and `finish_pass_booth`. Finish is the step that inserts the photo-strip memory, and only when every position has a shot. The memory's author is whoever finished it. The wall labels a pass with both names. Each person's filter is baked into their JPEG. If the two filters differ, the caption line says Passed and does not pretend there was one filter. Saving the partner's frames revalidates the booth page. A finished session is no longer an open turn, so the form that submitted it unmounts. The sentence about the memory wall is stored on the booth page itself, which stays mounted, and that is where "See it on the wall" is drawn.
+
+An open pass expires 7 days after it starts. Opening the circle calls `expire_pass_booths`, and so does loading the booth page. That marks the session expired and deletes the unfinished frames. The shot trigger deletes the JPEGs. The same call deletes a booth object with no shot row that is older than 24 hours. A memory photo uses a different path, so it is not matched. The starter can cancel an open pass. The partner cannot. Cancel removes the frames and does not create a memory.
+
+While the pass is open, cancelled, or expired, select policies and `can_read_booth_object` allow only the two contributors. Those policies call `private.is_booth_contributor`, a security definer function, instead of selecting `booth_contributors` from inside a policy on that table. A direct select would re-enter the same policy until Postgres reports infinite recursion, and the client would see an error rather than an empty list. A finished pass is `status = complete`, and every active member can read it, the same as a solo strip. There is still no insert or update grant on the booth tables. Upstash, when it is configured, checks `booth-pass:{user id}` before a start (10 per 10 minutes, matching the SQL count) and `memory:{user id}` before the partner's frames, because that step can create a memory. The push, when VAPID is configured, says "It's your turn in the photo booth." and opens `/circles/{id}/booth`. It does not include a name, a caption, or a photo. No new environment variable and no new region: Supabase stays in Oregon (`us-west-2`), Vercel stays in `pdx1`, and Upstash Redis stays in `us-west-2`.
+
+Leaving a circle does not yet cancel an open pass. That happens with the leave flow.
+
 ## Letters
 
-`letters` is one person writing to one other person in the same circle. The page calls it Dear and then their name. That name is the recipient's display name, read when the page renders, not stored on the row. In a couple there is no recipient field. `resolveCouplePartner` is the same helper Thinking of You uses, so a pending circle and a group both refuse the write. The group picker is a later phase. The database still allows a letter to any other active member, which is how the isolation test builds a 3-person circle.
+`letters` is one person writing to one other person in the same circle. The page calls it Dear and then their name. That name is the recipient's display name, read when the page renders, not stored on the row. A couple, and any circle of two, has no recipient field. A larger circle sends `recipientId`. A letter is never sent to everyone. The database still hides a 1:1 letter from a third member.
 
 Seven categories are in code and in `private.letter_category_known`: need motivation, need help, feeling sad, feeling lonely, distance is too hard, when we fight, when you miss me. A circle adds more in `letter_categories`. Those rows are readable by every active member. They are labels, not letter text. A built-in name cannot be added again. Ten new labels per person per 10 minutes.
 
 The body is up to 8,000 characters. An optional title is up to 80 and cannot contain `@`. Design is `minimal`, `kawaii`, or `retro-film`, which only changes the paper on the page. `circle_type` is not in any letter policy.
 
-Who can read a row: the sender, always; the recipient only when `delivered_at` is set; nobody else. A member who has set `left_at` fails `is_active_member` and gets nothing. A signed-in insert cannot set `delivered_at`, `opened_at`, `status`, `scheduled_for`, or `qstash_message_id`. The before-insert trigger delivers the letter immediately (`status = delivered`, `delivered_at = now()`) and allows 10 letters per 10 minutes. Upstash, when both of its variables are set, checks `letter:{user id}` first. A direct insert never reaches Upstash.
+Who can read a row: the sender, always; the recipient only when `delivered_at` is set; nobody else. A member who has set `left_at` fails `is_active_member` and gets nothing. A signed-in insert cannot set `delivered_at`, `opened_at`, `status`, or `qstash_message_id`. The sender can set `scheduled_for`. The before-insert trigger delivers a letter written for now (`status = delivered`, `delivered_at = now()`). A time at least a minute ahead and at most two years ahead stays `scheduled`, with `delivered_at` null. Anything sooner raises `hsummer_letter_schedule`. Ten letters per 10 minutes still applies. Upstash Redis, when both of its variables are set, checks `letter:{user id}` first. A direct insert never reaches Redis. QStash is a different Upstash product and is not that rate limit.
 
-`scheduled_for` and `qstash_message_id` are on the table for the next week. This week does not call QStash. A service-role insert may leave a row scheduled, which is how the test proves the recipient sees zero rows before `delivered_at`. The sender can cancel that row. A delivered row matches no update policy, so the writer cannot edit it after it is sent.
+The clock the sender picks is the recipient's timezone, stored as a UTC instant. `2027-02-14 08:00` in `America/Los_Angeles` is `2027-02-14T16:00:00.000Z`. A time that does not exist on a daylight-saving spring-forward morning is refused. `qstash_message_id` stays off the authenticated grants. The secret key writes it after QStash accepts the message.
+
+When `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, and `QSTASH_NEXT_SIGNING_KEY` are all set, and the site origin is public https, `queueLetterDelivery` publishes to `https://qstash.upstash.io` (QStash is global; there is no region in that URL). Redis stays in `us-west-2`. The callback is `POST /api/letters/deliver`. It checks the `upstash-signature` header with both signing keys before it reads or writes. A missing key or a bad signature is 401 and does not deliver. `deliver_scheduled_letter` is service-role only. It returns `early` (the route answers 500 so QStash retries), `delivered`, `already`, `cancelled`, or `missing`. If either person has left, the row is cancelled. A signed-in insert still refuses a recipient who is not an active member. The service-role insert can store a scheduled letter for someone who has a membership row and has already left, so that same delivery path can cancel it. An immediate letter to that person is still refused.
+
+If any QStash variable is missing, the origin is localhost, the publish fails, or the message id cannot be stored, the letter stays `scheduled` and nothing is queued. Opening the app calls `deliver_due_letters` for each active circle. That delivers rows whose `scheduled_for` is already in the past, for letters the caller sent or is meant to receive. The same open calls `sync_auto_checkpoints`. Both are safe to repeat. The push, when VAPID is configured, still says "You have a new letter."
+
+The sender can cancel a scheduled letter or move its time. Cancel deletes the QStash message when the id was stored. A new time deletes the old message and publishes another. A delivered row matches no update policy, so the writer cannot edit it after it is sent.
 
 The recipient's page does not include the body until they open it. The open button plays a short seal animation, then `open_letter` sets `opened_at` and inserts one `memories` row with `kind = letter`, `visibility = selected`, and the recipient in `memory_viewers`. The memory stores the title, or the words "A letter", not the body. The author of that memory is the sender, so both people can read it and a third member cannot. A second open returns the same memory. The sender cannot add another viewer or flip the memory to the whole circle. The push, when VAPID is configured, says "You have a new letter." and nothing else.
 
-Leaving a circle does not yet cancel a letter that is still waiting. That belongs with the leave flow.
+Leaving a circle does not yet cancel a letter that is still waiting from the leave screen. Delivery does cancel it when the callback or the app-open path sees that a person has left. The leave screen itself is a later week.
+
+## Still Us
+
+A countdown is a label and a calendar date, with no time and no zone. Days remaining are calendar days in the viewer's own timezone, so two people looking at the same reunion on the same local date see the same count. A couple circle gets one row, label "Still Us", `target_date` null, from an after-insert trigger on `circles`. The week 12 migration also inserts that row for couple circles that already exist. The couple cannot insert a second countdown or delete the one they have (`hsummer_countdown_couple`). That limit is the trigger, which reads `circle_type`. The policies do not. A group, family, or friends circle can hold several countdowns. The extra form is on the circle page when the type is not couple.
+
+Checkpoints sit on a countdown in the same circle. `trigger` is `auto-by-date` or `manual`. Ten new checkpoints per person per 10 minutes, in the trigger and in `checkpoint:{user id}` when Redis is configured. `hit_at` is not granted on insert or update. `sync_auto_checkpoints` sets it for auto checkpoints whose date is today or earlier in the caller's timezone, under an advisory lock for that circle. `hit_checkpoint` does the same for a manual row, and a second tap returns the same memory. Both file one `memories` row with `kind = milestone`, `visibility = circle`, `body` equal to the checkpoint label, and tag `still-us`. A unique index on `checkpoint_id` plus a swallowed unique violation means two devices opening the app create one memory. The push says "A countdown checkpoint was reached." and does not include the label.
+
+A milestone has no photo and no delete button on the wall. Deleting the checkpoint cascades the memory. An unhit checkpoint can be removed. A hit one cannot, from the action.
 
 ## Push
 
@@ -235,7 +289,7 @@ The ping is inserted before the push, with the user's client. If the secret key 
 
 `src/lib/env.ts` is safe for Client Components. It only reads `NEXT_PUBLIC_` variables, and it reads them as `process.env.NEXT_PUBLIC_SOMETHING` rather than `process.env[name]`. Next.js inlines public variables into the browser bundle only for that static form. Placeholder values from `.env.example` count as "not configured", so copying the example file cannot accidentally call a fake project.
 
-`src/lib/env.server.ts` imports `server-only`. A Client Component that imported it would fail the build. The VAPID private key, the Supabase secret key, and the optional Upstash token are read there, inside the request, not at module scope. Thinking of You uses the secret key that was already required. The bucket list does not add a required variable. Upstash is read only by the rate-limit helper, and only when both of its variables are set.
+`src/lib/env.server.ts` imports `server-only`. A Client Component that imported it would fail the build. The VAPID private key, the Supabase secret key, the optional Upstash Redis token, and the optional QStash token and signing keys are read there, inside the request, not at module scope. Thinking of You uses the secret key that was already required. The bucket list does not add a required variable. Redis is read only by the rate-limit helper, and only when both of its variables are set. QStash is read only by the letter scheduler and the deliver route, and only when all three of its variables are set. A placeholder value counts as missing, so scheduling degrades to the app-open path.
 
 ## PWA files
 
@@ -283,7 +337,7 @@ GitHub Actions runs three jobs on every pull request and on `main`. The first ru
 
 Playwright's smoke project loads the landing page and the sign-in page with placeholder keys forced in, clicks the magic-link button, checks that `/home`, `/profile`, and `/circles` redirect when nobody is signed in, and checks that `POST /api/test/sign-in` is 404. It does not create a user.
 
-The local project (`playwright.local.config.ts`) throws unless `NEXT_PUBLIC_SUPABASE_URL` is a local http URL and both API keys are set. It starts its own server with `E2E_TEST_AUTH=1` and refuses to reuse a server that is already running, so it cannot attach to a dev server pointed at production. The spec opens `/sign-in`, posts to the test route, creates a couple circle named "Me & Summer", reads the invite link, opens that link signed out, signs in as the second person, confirms **Join circle**, and taps **Thinking of You**. It also writes a letter, checks the partner cannot see the body, and opens the seal. The partner's recent list shows the ping. It then sets a mood with the share box off (the partner sees it, and the recent list does not gain a "Feeling" row) and sets another mood with the box on (the recent list shows the emoji). It adds two notes in different months, a note only the author can see, and a one-pixel PNG. The tag filter hides the other month. The partner sees the shared note and the photo, and does not see the private note. VAPID stays a placeholder, so the button's status line says notifications are not configured, and the row is still saved.
+The local project (`playwright.local.config.ts`) throws unless `NEXT_PUBLIC_SUPABASE_URL` is a local http URL and both API keys are set. It starts its own server with `E2E_TEST_AUTH=1` and refuses to reuse a server that is already running, so it cannot attach to a dev server pointed at production. The spec opens `/sign-in`, posts to the test route, creates a couple circle named "Me & Summer", reads the invite link, opens that link signed out, signs in as the second person, confirms **Join circle**, and taps **Thinking of You**. The partner's recent list shows the ping. It then sets a mood with the share box off (the partner sees it, and the recent list does not gain a "Feeling" row) and sets another mood with the box on (the recent list shows the emoji). It adds two notes in different months, a note only the author can see, and a one-pixel PNG. The tag filter hides the other month. The partner sees the shared note and the photo, and does not see the private note. It writes a letter, checks the partner cannot see the body, and opens the seal. It sets the Still Us date, marks a manual checkpoint, and checks both walls show that one memory. It then schedules a later letter and checks the partner cannot see that body. VAPID stays a placeholder, so the button's status line says notifications are not configured, and the row is still saved.
 
 A separate workflow, `.github/workflows/db-backup.yml`, is the weekly dump. It is not part of the pull-request jobs. See Backups below.
 
@@ -305,85 +359,125 @@ The restore drill is in the README. Short version: decrypt, `npx supabase db res
 
 Cache Components (the Next.js 16 default for new apps) are off. Signed-in pages depend on the request cookie, and there is no public data worth caching yet. The comment is in `next.config.ts`.
 
-Scheduled letter delivery (QStash) and Still Us countdowns are later weeks. Copying the `avatars` and `memories` buckets into the weekly backup is later too. The database dump is what week 6 stores. `completed_at` is set when a bucket item is marked done, and that does not add a memory. The wall is notes and photos added by hand. Join is limited by `private.join_attempts`, now serialized. Pings, invites, and memories are each limited by their own insert trigger. Upstash, when its two variables are set, checks the same caps first and is not required. Memory photos are stripped of EXIF before they are stored. A JPEG, or a photo the phone labeled HEIC, is drawn to a canvas in the browser first so the pixels are upright and the file is under 2 MB. A small PNG or WebP is uploaded as-is and stripped on the server. Profile photos go through the same canvas step, and the server removes EXIF and text chunks before the avatar object is saved. A signed photo URL lasts five minutes. While a photo is on screen, the page asks for a new one before that, and again when the phone wakes. An image that already failed does that once. Avatar URLs last an hour and refresh the same way. The age-confirmation column is null until that screen exists. The group-circle create form, recipient pickers, and whole-circle pings from the app are later. The leave screen is later too; leaving is possible through the membership column so the status rule and the access cutoff can be tested. `POST /api/pings` still refuses a mood field. The share checkbox is what writes `mood-share`, and only for the partner in an active couple.
+Copying the `avatars` and `memories` buckets into the weekly backup is later. Cancelling a waiting letter from the leave screen is later too; delivery already cancels it when a person has left. A daily cron was not added. Opening the app is what hits auto checkpoints and delivers a letter whose time has passed when QStash is not configured. The database dump is what week 6 stores. `completed_at` is set when a bucket item is marked done, and that does not add a memory. The wall is notes and photos added by hand. Join is limited by `private.join_attempts`, now serialized. Pings, invites, and memories are each limited by their own insert trigger. Upstash, when its two variables are set, checks the same caps first and is not required. Memory photos are stripped of EXIF before they are stored. A JPEG, or a photo the phone labeled HEIC, is drawn to a canvas in the browser first so the pixels are upright and the file is under 2 MB. A small PNG or WebP is uploaded as-is and stripped on the server. Profile photos go through the same canvas step, and the server removes EXIF and text chunks before the avatar object is saved. A signed photo URL lasts five minutes. While a photo is on screen, the page asks for a new one before that, and again when the phone wakes. An image that already failed does that once. Avatar URLs last an hour and refresh the same way. The age-confirmation column is null until that screen exists. The group-circle create form, recipient pickers, and whole-circle pings from the app are later. The leave screen is later too; leaving is possible through the membership column so the status rule and the access cutoff can be tested. `POST /api/pings` still refuses a mood field. The share checkbox is what writes `mood-share`, and only for the partner in an active couple.
 
 ## File map
 
-| Path                                     | What it is                                                           |
-| ---------------------------------------- | -------------------------------------------------------------------- |
-| `src/app/page.tsx`                       | Landing page                                                         |
-| `src/app/sign-in/page.tsx`               | Sign-in page (server), renders the form                              |
-| `src/app/sign-in/actions.ts`             | Magic link and Google, after the auth rate limit                     |
-| `src/app/privacy/page.tsx`               | Privacy explanation for the beta. Not legal advice.                  |
-| `src/app/terms/page.tsx`                 | Terms explanation for the beta. Not legal advice.                    |
-| `src/components/site-footer.tsx`         | Copyright line, privacy link, terms link                             |
-| `src/lib/security/headers.ts`            | CSP, HSTS, and the other document headers                            |
-| `src/lib/auth/attempt.ts`                | Auth rate limit: Upstash, then `consume_auth_attempt`                |
-| `src/lib/auth/turnstile.ts`              | Checks the Google sign-in widget token with Cloudflare               |
-| `SECURITY_AUDIT.md`                      | Item-by-item audit and where each control lives                      |
-| `SECURITY.md`                            | How to report a vulnerability in private                             |
-| `src/app/home/page.tsx`                  | Signed-in home. Shows the profile, circles, and the test push.       |
-| `src/app/circles/page.tsx`               | List circles and create a couple circle                              |
-| `src/app/circles/[id]/page.tsx`          | Letters, mood, memory wall, bucket list, invite, and Thinking of You |
-| `src/app/circles/letter-actions.ts`      | Write a letter, add a category, and open the seal                    |
-| `src/components/letters.tsx`             | The Dear form, the seal, and the opened letter                       |
-| `src/lib/letters/fields.ts`              | Categories, designs, sizes, and write-error sentences                |
-| `src/lib/letters/load.ts`                | Load letters. Omits a sealed body from the recipient's page          |
-| `src/lib/letters/notify.ts`              | Push "You have a new letter." to the recipient's devices             |
-| `src/app/circles/memory-actions.ts`      | Add or remove a memory. Strips EXIF, then uploads.                   |
-| `src/components/memory-wall.tsx`         | The wall, month groups, tag filter, and the add form                 |
-| `src/components/refresh-signed-urls.tsx` | Asks for new signed URLs before they expire                          |
-| `src/lib/memories/prepare-photo.ts`      | Browser resize, HEIC, and JPEG orientation                           |
-| `src/lib/circles/invite-token.ts`        | Keeps the raw invite token in localStorage                           |
-| `src/lib/memories/fields.ts`             | Sizes, tags, dates, the five-minute URL, write-error sentences       |
-| `src/lib/memories/photo.ts`              | Magic-byte check and EXIF / text-chunk stripping                     |
-| `src/lib/memories/group.ts`              | Month groups and the tag filter                                      |
-| `src/lib/memories/load.ts`               | Load the wall and sign each photo for five minutes                   |
-| `src/app/circles/mood-actions.ts`        | Set or clear your current mood. Share calls the ping sender.         |
-| `src/components/circle-moods.tsx`        | The mood buttons, the share box, and the Realtime subscription       |
-| `src/lib/moods/fields.ts`                | The six moods, write-error sentences, and the saved-status line      |
-| `src/lib/moods/load.ts`                  | Load the circle's current moods                                      |
-| `src/app/circles/bucket-actions.ts`      | Add, edit, and remove a bucket item                                  |
-| `src/components/bucket-list.tsx`         | The list, the add form, and the Realtime subscription                |
-| `src/components/bucket-item.tsx`         | One item: edit, status, and remove                                   |
-| `src/lib/bucket/fields.ts`               | Categories, dates, links, and write-error sentences                  |
-| `src/lib/bucket/load.ts`                 | Load and sort the circle's items                                     |
-| `src/lib/rate-limit/enforce.ts`          | Optional Upstash check, with a Postgres fallback                     |
-| `src/app/api/pings/route.ts`             | Send Thinking of You to the partner                                  |
-| `src/components/thinking-of-you.tsx`     | The button, including the hidden `Missing<name>` control             |
-| `src/components/recent-pings.tsx`        | The short list of pings this person is allowed to see                |
-| `src/lib/pings/fields.ts`                | Request shape, partner resolution, rate-limit numbers                |
-| `src/lib/pings/send.ts`                  | Insert under RLS, then push to every device of the recipient         |
-| `src/lib/pings/load.ts`                  | Recent pings for the circle page                                     |
-| `src/lib/supabase/admin.ts`              | Secret-key client, used to deliver and prune partner devices         |
-| `src/app/circles/actions.ts`             | Create, rename, regenerate invite                                    |
-| `src/app/join/[token]/page.tsx`          | Sign in, then confirm the invite                                     |
-| `src/app/join/actions.ts`                | Redeem the token                                                     |
-| `src/lib/circles/fields.ts`              | Names, token shape, rate-limit numbers                               |
-| `src/lib/circles/load.ts`                | Load a circle, its members, and signed avatars                       |
-| `src/app/profile/page.tsx`               | View and edit the signed-in user's profile                           |
-| `src/app/profile/actions.ts`             | Save profile, remove photo                                           |
-| `src/components/profile-form.tsx`        | Name, timezone, and photo fields                                     |
-| `src/components/profile-avatar.tsx`      | Round photo or initial                                               |
-| `src/components/signed-in-header.tsx`    | Home, Profile, and sign-out                                          |
-| `src/components/sign-in-form.tsx`        | Google button and magic-link form                                    |
-| `src/components/push-panel.tsx`          | Enable, test, and disable notifications                              |
-| `src/lib/profile/fields.ts`              | Name, timezone, and image checks                                     |
-| `src/lib/profile/stored-avatar.ts`       | Strips EXIF from a profile photo before upload                       |
-| `src/lib/profile/load.ts`                | Load the caller's profile and a signed avatar URL                    |
-| `src/app/auth/callback/route.ts`         | Exchange the auth code or token hash                                 |
-| `src/app/auth/sign-out/route.ts`         | Clear the session                                                    |
-| `src/app/api/push/subscribe/route.ts`    | Save or delete this device                                           |
-| `src/app/api/push/test/route.ts`         | Send the test push and prune dead rows                               |
-| `src/lib/supabase/`                      | Browser client, server client, proxy, session helper                 |
-| `src/lib/database.types.ts`              | Hand-written types for the tables                                    |
-| `src/app/api/test/sign-in/route.ts`      | Local-only Playwright sign-in. 404 everywhere else.                  |
-| `src/lib/auth/local-supabase.ts`         | The URL and flag gate for that route                                 |
-| `e2e/circle-flow.spec.ts`                | Sign in, create, invite, join, ping against local Supabase           |
-| `playwright.local.config.ts`             | Refuses to start unless the Supabase URL is local                    |
-| `scripts/backup-lib.mjs`                 | Session-pooler check, retention of 8 dumps, upload errors            |
-| `scripts/upload-backup.mjs`              | Uploads the encrypted dump and deletes older ones                    |
-| `.github/workflows/db-backup.yml`        | Weekly `pg_dump`, encrypt, upload to the private bucket              |
-| `supabase/migrations/`                   | SQL applied to the database                                          |
-| `supabase/tests/rls.test.ts`             | Two-user RLS checks, including the backups bucket                    |
-| `supabase/config.toml`                   | Local Supabase CLI config                                            |
+| Path                                     | What it is                                                                     |
+| ---------------------------------------- | ------------------------------------------------------------------------------ |
+| `src/app/page.tsx`                       | Landing page                                                                   |
+| `src/app/sign-in/page.tsx`               | Sign-in page (server), renders the form                                        |
+| `src/app/sign-in/actions.ts`             | Magic link and Google, after the auth rate limit                               |
+| `src/app/privacy/page.tsx`               | Privacy explanation for the beta. Not legal advice.                            |
+| `src/app/terms/page.tsx`                 | Terms explanation for the beta. Not legal advice.                              |
+| `src/components/site-footer.tsx`         | Copyright line, privacy link, terms link                                       |
+| `src/lib/security/headers.ts`            | CSP, HSTS, and the other document headers                                      |
+| `src/lib/auth/attempt.ts`                | Auth rate limit: Upstash, then `consume_auth_attempt`                          |
+| `src/lib/auth/turnstile.ts`              | Checks the Google sign-in widget token with Cloudflare                         |
+| `SECURITY_AUDIT.md`                      | Item-by-item audit and where each control lives                                |
+| `SECURITY.md`                            | How to report a vulnerability in private                                       |
+| `src/app/home/page.tsx`                  | Signed-in home. Shows the profile, circles, and the test push.                 |
+| `src/app/circles/page.tsx`               | List circles and create a couple circle                                        |
+| `src/app/circles/[id]/page.tsx`          | Still Us, letters, mood, memory wall, bucket list, invite, and Thinking of You |
+| `src/app/circles/letter-actions.ts`      | Write, schedule, cancel, reschedule, and open a letter                         |
+| `src/app/circles/countdown-actions.ts`   | Save the reunion date, add a checkpoint, mark it, or remove it                 |
+| `src/app/api/letters/deliver/route.ts`   | Signed QStash callback. Delivers one letter.                                   |
+| `src/components/letters.tsx`             | The Dear form, Now or Later, the seal, and the opened letter                   |
+| `src/components/still-us.tsx`            | The countdown, the day count, and the checkpoints                              |
+| `src/lib/schedule/time.ts`               | Calendar days and a wall-clock time in an IANA zone                            |
+| `src/lib/schedule/qstash.ts`             | Publish, cancel, and verify. Skips the network when keys are absent            |
+| `src/lib/letters/schedule.ts`            | Stores the message id, or leaves the letter waiting                            |
+| `src/lib/circles/prepare.ts`             | On app load: sync checkpoints and deliver due letters                          |
+| `src/lib/countdowns/load.ts`             | Load countdowns and checkpoints for the circle page                            |
+| `src/lib/letters/fields.ts`              | Categories, designs, sizes, and write-error sentences                          |
+| `src/lib/letters/load.ts`                | Load letters. Omits a sealed body from the recipient's page                    |
+| `src/lib/letters/notify.ts`              | Push "You have a new letter." to the recipient's devices                       |
+| `src/app/circles/memory-actions.ts`      | Add or remove a memory. Strips EXIF, then uploads.                             |
+| `src/components/memory-wall.tsx`         | The wall, month groups, tag filter, and the add form                           |
+| `src/components/refresh-signed-urls.tsx` | Asks for new signed URLs before they expire                                    |
+| `src/lib/memories/prepare-photo.ts`      | Browser resize, HEIC, and JPEG orientation                                     |
+| `src/lib/circles/invite-token.ts`        | Keeps the raw invite token in localStorage                                     |
+| `src/lib/memories/fields.ts`             | Sizes, tags, dates, the five-minute URL, write-error sentences                 |
+| `src/lib/memories/photo.ts`              | Magic-byte check and EXIF / text-chunk stripping                               |
+| `src/lib/memories/group.ts`              | Month groups and the tag filter                                                |
+| `src/lib/memories/load.ts`               | Load the wall and sign each photo for five minutes                             |
+| `src/app/circles/mood-actions.ts`        | Set or clear your current mood. Share calls the ping sender.                   |
+| `src/components/circle-moods.tsx`        | The mood buttons, the share box, and the Realtime subscription                 |
+| `src/lib/moods/fields.ts`                | The six moods, write-error sentences, and the saved-status line                |
+| `src/lib/moods/load.ts`                  | Load the circle's current moods                                                |
+| `src/app/circles/bucket-actions.ts`      | Add, edit, and remove a bucket item                                            |
+| `src/components/bucket-list.tsx`         | The list, the add form, and the Realtime subscription                          |
+| `src/components/bucket-item.tsx`         | One item: edit, status, and remove                                             |
+| `src/lib/bucket/fields.ts`               | Categories, dates, links, and write-error sentences                            |
+| `src/lib/bucket/load.ts`                 | Load and sort the circle's items                                               |
+| `src/lib/rate-limit/enforce.ts`          | Optional Upstash check, with a Postgres fallback                               |
+| `src/app/api/pings/route.ts`             | Send Thinking of You to the partner                                            |
+| `src/components/thinking-of-you.tsx`     | The button, including the hidden `Missing<name>` control                       |
+| `src/components/recent-pings.tsx`        | The short list of pings this person is allowed to see                          |
+| `src/lib/pings/fields.ts`                | Request shape, partner resolution, rate-limit numbers                          |
+| `src/lib/pings/send.ts`                  | Insert under RLS, then push to every device of the recipient                   |
+| `src/lib/pings/load.ts`                  | Recent pings for the circle page                                               |
+| `src/lib/supabase/admin.ts`              | Secret-key client, used to deliver and prune partner devices                   |
+| `src/app/circles/actions.ts`             | Create, rename, regenerate invite                                              |
+| `src/app/join/[token]/page.tsx`          | Sign in, then confirm the invite                                               |
+| `src/app/join/actions.ts`                | Redeem the token                                                               |
+| `src/lib/circles/fields.ts`              | Names, token shape, rate-limit numbers                                         |
+| `src/lib/circles/load.ts`                | Load a circle, its members, and signed avatars                                 |
+| `src/app/profile/page.tsx`               | View and edit the signed-in user's profile                                     |
+| `src/app/profile/actions.ts`             | Save profile, remove photo                                                     |
+| `src/components/profile-form.tsx`        | Name, timezone, and photo fields                                               |
+| `src/components/profile-avatar.tsx`      | Round photo or initial                                                         |
+| `src/components/signed-in-header.tsx`    | Home, Profile, and sign-out                                                    |
+| `src/components/sign-in-form.tsx`        | Google button and magic-link form                                              |
+| `src/components/push-panel.tsx`          | Enable, test, and disable notifications                                        |
+| `src/lib/profile/fields.ts`              | Name, timezone, and image checks                                               |
+| `src/lib/profile/stored-avatar.ts`       | Strips EXIF from a profile photo before upload                                 |
+| `src/lib/profile/load.ts`                | Load the caller's profile and a signed avatar URL                              |
+| `src/app/auth/callback/route.ts`         | Exchange the auth code or token hash                                           |
+| `src/app/auth/sign-out/route.ts`         | Clear the session                                                              |
+| `src/app/api/push/subscribe/route.ts`    | Save or delete this device                                                     |
+| `src/app/api/push/test/route.ts`         | Send the test push and prune dead rows                                         |
+| `src/lib/supabase/`                      | Browser client, server client, proxy, session helper                           |
+| `src/lib/database.types.ts`              | Hand-written types for the tables                                              |
+| `src/app/api/test/sign-in/route.ts`      | Local-only Playwright sign-in. 404 everywhere else.                            |
+| `src/lib/auth/local-supabase.ts`         | The URL and flag gate for that route                                           |
+| `e2e/circle-flow.spec.ts`                | Sign in, create, invite, join, ping against local Supabase                     |
+| `playwright.local.config.ts`             | Refuses to start unless the Supabase URL is local                              |
+| `scripts/backup-lib.mjs`                 | Session-pooler check, retention of 8 dumps, upload errors                      |
+| `scripts/upload-backup.mjs`              | Uploads the encrypted dump and deletes older ones                              |
+| `.github/workflows/db-backup.yml`        | Weekly `pg_dump`, encrypt, upload to the private bucket                        |
+| `supabase/migrations/`                   | SQL applied to the database                                                    |
+| `supabase/tests/rls.test.ts`             | Two-user RLS checks, including the backups bucket                              |
+| `supabase/config.toml`                   | Local Supabase CLI config                                                      |
+| `src/app/circles/leave-actions.ts`       | Leave one circle and cancel its QStash messages                                |
+| `src/app/profile/delete-actions.ts`      | Delete the signed-in account                                                   |
+| `src/components/leave-circle-form.tsx`   | Keep or remove contributions                                                   |
+| `src/components/delete-account-form.tsx` | Confirm account deletion                                                       |
+| `src/components/export-button.tsx`       | Download the personal ZIP                                                      |
+| `src/lib/export/build.ts`                | RLS-scoped JSON plus the image bytes                                           |
+| `src/lib/export/zip.ts`                  | Store-method ZIP, no extra dependency                                          |
+| `src/lib/demo/reset.ts`                  | Rebuild Alex and Jordan and upload the generated JPEG                          |
+| `src/app/api/demo/enter/route.ts`        | Reviewer session as Alex                                                       |
+| `src/app/api/cron/daily/route.ts`        | Daily purge, sweep, demo reset, export cleanup                                 |
+| `src/app/api/health/route.ts`            | Liveness check that does not read the database                                 |
+| `src/lib/monitor/sentry.ts`              | Optional server-only Sentry store API                                          |
+| `src/app/confirm-age/page.tsx`           | 13+ confirmation for a session that does not have one yet                      |
+| `vercel.json`                            | Daily cron at 11:00 UTC. No region override                                    |
+
+## Leave, delete, export, and the demo
+
+`public.leave_circle` is the only way the app ends a membership. It sets `left_at`, cancels undelivered letters to or from that person, cancels open booth sessions they are in, and returns any QStash message ids so `src/lib/account/cancel-messages.ts` can delete those deliveries. The default keeps photos, notes, sent letters, and booth frames. `remove_content` deletes those in this circle only. Shared plans (bucket list, countdown, checkpoints) stay. A strip that was only theirs is deleted. A shared strip keeps the other person's frames and shows an empty frame where theirs was. That is why `booth_shots.user_id` is now nullable and the contributor foreign key no longer cascades into the shot row.
+
+A couple that has dropped below two active members, and already has someone who left, cannot mint a new invite. `private.circle_invites_couple_closed` raises `hsummer_couple_closed`. The history stays. The person who remains starts a new circle for someone else. A brand-new pending couple can still invite.
+
+`public.delete_own_account` leaves every circle first, then deletes pings, moods, push subscriptions, and avatar objects under that user's folder. It then disables six author-lock triggers, deletes `auth.users`, and enables the triggers again. `ON DELETE SET NULL` clears `created_by`, `from_user_id`, and a kept `to_user_id` or booth `user_id`, which the app shows as Former member. The disable is required because those guards refuse to change the author columns. It is transactional: a failed delete rolls the disable back. Membership rows themselves cascade away with the login, so the circle's status is refreshed while the person is still a member, inside `depart_circle`.
+
+`refresh_circle_status` sets `archived_at` the first time a circle reaches zero members and clears it if someone rejoins. `purge_archived_circles` deletes non-demo circles whose `archived_at` is at least 30 days old. It refuses a call when `auth.uid()` is set, and only `service_role` can execute it.
+
+`POST /api/account/export` builds a ZIP with `src/lib/export/build.ts`. The queries use the signed-in session, so Row Level Security drops other people's members-only letters and selected memories. Image bytes are downloaded from the private memories bucket and stored in the ZIP under `files/`. Push keys, emails, and QStash ids are not included. An archive of 3.5 MB or less is returned directly. A larger one is uploaded to the private `exports` bucket at `pending/{timestamp}_{userId}_{uuid}.zip` and the response is a 10-minute signed URL. The daily cron deletes objects in that folder whose timestamp is older than an hour. Three exports per hour per person.
+
+The demo is one circle, id `a11ce000-0000-4000-8000-0000000000c3`, named Alex & Jordan. Alex (`alex.demo@hsummer.invalid`) is who Try demo signs in as. Jordan is the other member. `public.seed_demo_circle` rebuilds only that circle's fictional rows. Triggers refuse writes unless `hsummer.demo_seed` is `1`, which is set only inside the seed. A real account cannot join the demo circle. A demo account cannot join a real circle, leave, upload, or subscribe to push. The service-role upload of the generated JPEG is allowed because `auth.uid()` is null. The password is random and is not stored. The landing-page form posts to `POST /api/demo/enter`, which resets the circle, then signs the browser in as Alex.
+
+Sign-in asks for a 13+ confirmation after the "not configured" check, so the smoke test still sees that message when Supabase is missing. The server sets an httpOnly cookie `hsummer_age` for one hour. The auth callback writes `account_private.age_confirmed_at` when that cookie is present. The proxy sends a signed-in person with a null timestamp to `/confirm-age`. A query error, or a missing row, does not lock the app. Playwright's test sign-in sets the timestamp itself.
+
+`SENTRY_DSN` is optional and server-only. `src/lib/monitor/sentry.ts` posts to Sentry's store API. The browser posts a short message to `/api/client-error`. With the DSN empty, both paths do nothing. `GET /api/health` is the uptime check. `vercel.json` schedules the daily job at 11:00 UTC and does not set a Vercel region. Regions stay Supabase Oregon (`us-west-2`), Vercel `pdx1`, and Upstash Redis `us-west-2`.

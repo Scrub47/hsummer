@@ -14,6 +14,7 @@ import {
   setCurrentMood,
   type MoodActionState,
 } from "@/app/circles/mood-actions";
+import { MemberChoice } from "@/components/member-choice";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { useCircleLive } from "@/components/use-circle-live";
 import { MOODS, moodSavedMessage } from "@/lib/moods/fields";
@@ -208,10 +209,23 @@ export function CircleMoods({
               <span className="mt-1 block text-foreground/70">
                 {partnerName
                   ? `Sends Thinking of You to ${partnerName}, with the same limit as that button.`
-                  : "Sends Thinking of You to your partner."}
+                  : "Choose one person, or everyone. A couple always shares with their partner."}
               </span>
             </span>
           </label>
+        ) : null}
+        {canShare ? (
+          <MemberChoice
+            people={members
+              .filter((member) => member.userId !== selfId)
+              .map((member) => ({
+                userId: member.userId,
+                displayName: member.displayName,
+              }))}
+            name="recipientId"
+            includeEveryone
+            legend="Share with"
+          />
         ) : null}
         {state.error ? (
           <p className="text-sm leading-6" role="alert">

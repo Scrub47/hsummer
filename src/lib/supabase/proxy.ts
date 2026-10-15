@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { redirectOrigin } from "@/lib/auth/request-origin";
@@ -126,6 +127,20 @@ export async function updateSession(request: NextRequest) {
     return finish(copySessionHeaders(supabaseResponse, redirect));
   }
 
+  if (userId && isProtectedPage(pathname)) {
+    const age = await readAgeConfirmed(supabase, userId);
+    if (age === false) {
+      const next = `${pathname}${request.nextUrl.search}`;
+      const redirect = NextResponse.redirect(
+        new URL(
+          `/confirm-age?next=${encodeURIComponent(next)}`,
+          redirectOrigin(request),
+        ),
+      );
+      return finish(copySessionHeaders(supabaseResponse, redirect));
+    }
+  }
+
   if (userId && pathname === "/sign-in") {
     const nextPath = safeNextPath(
       request.nextUrl.searchParams.get("next"),
@@ -138,6 +153,28 @@ export async function updateSession(request: NextRequest) {
   }
 
   return finish(supabaseResponse);
+}
+
+/**
+ * False only when the row exists and the 13+ column is still null.
+ * A missing row or a query error leaves the person through, so an
+ * unapplied migration does not lock every page.
+ */
+async function readAgeConfirmed(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<boolean | null> {
+  try {
+    const { data, error } = await supabase
+      .from("account_private")
+      .select("age_confirmed_at")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return data.age_confirmed_at !== null;
+  } catch {
+    return null;
+  }
 }
 
 function supabaseOriginFromEnv(): string | null {

@@ -20,6 +20,7 @@ const PLACEHOLDER_SNIPPETS = [
   "your-service",
   "your-vapid",
   "your-upstash",
+  "your-qstash",
   "your-redis",
   "your-turnstile",
   "you@example.com",

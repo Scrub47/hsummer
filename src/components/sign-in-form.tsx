@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { requestMagicLink, startGoogleSignIn } from "@/app/sign-in/actions";
+import { AGE_REQUIRED_MESSAGE } from "@/lib/account/copy";
 import { getSupabaseBrowserConfig, getTurnstileSiteKey } from "@/lib/env";
 
 const ERROR_COPY: Record<string, string> = {
@@ -26,6 +27,7 @@ export function SignInForm({
     errorCode ? "error" : "ok",
   );
   const [pending, setPending] = useState<"google" | "email" | null>(null);
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const turnstileRef = useRef<HTMLDivElement>(null);
   const turnstileSiteKey = getTurnstileSiteKey();
@@ -75,6 +77,12 @@ export function SignInForm({
       return;
     }
 
+    if (!ageConfirmed) {
+      setMessageTone("error");
+      setMessage(AGE_REQUIRED_MESSAGE);
+      return;
+    }
+
     if (turnstileSiteKey && !captchaToken) {
       setMessageTone("error");
       setMessage("Complete the check, then try again.");
@@ -85,6 +93,7 @@ export function SignInForm({
     const result = await startGoogleSignIn({
       nextPath,
       captchaToken: captchaToken ?? undefined,
+      ageConfirmed: true,
     });
     if (!result.ok) {
       setPending(null);
@@ -108,6 +117,12 @@ export function SignInForm({
       return;
     }
 
+    if (!ageConfirmed) {
+      setMessageTone("error");
+      setMessage(AGE_REQUIRED_MESSAGE);
+      return;
+    }
+
     if (turnstileSiteKey && !captchaToken) {
       setMessageTone("error");
       setMessage("Complete the check, then try again.");
@@ -120,6 +135,7 @@ export function SignInForm({
       nextPath,
       captchaToken: captchaToken ?? undefined,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ageConfirmed: true,
     });
     setPending(null);
 
@@ -181,6 +197,16 @@ export function SignInForm({
           placeholder="you@example.com"
           className="h-12 rounded-2xl border border-line bg-card px-4 text-base outline-none ring-pine/40 focus:ring-2"
         />
+        <label className="flex items-start gap-3 text-sm leading-6">
+          <input
+            type="checkbox"
+            name="age"
+            checked={ageConfirmed}
+            onChange={(event) => setAgeConfirmed(event.target.checked)}
+            className="mt-1"
+          />
+          <span>I am 13 or older</span>
+        </label>
         <button
           type="submit"
           disabled={pending !== null}

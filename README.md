@@ -2,7 +2,7 @@
 
 Made for couples, built for groups, friends, and families.
 
-A private shared space for people who are far apart. Couples are the first audience. The same Circle holds a couple, a few friends, or a family, and the database already isolates each person. Group screens come later. This repository is the app through letters: sign-in, profiles, couple circles, Thinking of You, a bucket list, moods, photos and notes, and a letter that opens with your partner's name.
+A private shared space for people who are far apart. Couples are the first audience. The same Circle holds a couple, a few friends, or a family, and the database already isolates each person. Group screens come later. This repository is the app through Phase 3 (Still Us and the photo booth) plus launch readiness: leaving a circle, deleting an account, downloading your data, and a seeded demo couple.
 
 ## Screenshots
 
@@ -25,8 +25,14 @@ These slots are empty on purpose. Add a PNG under `docs/screenshots/` and drop i
 - Set a mood. It shows in the circle. A notification is sent only if you check the share box.
 - Add notes and photos to the memory wall. Group them by month and tag. Show them to the whole circle, or only to the people you pick. Photo links expire after five minutes.
 - Write a letter. It opens with your partner's name. They break a seal to read it. The memory of that letter stays between the two of you. A push, if their phone is subscribed, says only "You have a new letter."
+- Set a Still Us date and checkpoints. A letter can be set to arrive later.
+- Take a Solo photo strip, or pass the booth so your partner fills the other frames. Live Together is later.
+- Leave a circle. The default keeps what you added. You can remove your photos, notes, sent letters, and booth frames instead. Scheduled letters to or from you are cancelled.
+- Download a ZIP of the JSON and image files you can already see. It is not a backup of the whole database.
+- Delete your account. Your login, avatar files, and push subscriptions go with it. Shared contributions stay as Former member unless you remove them.
+- Try the demo from the landing page. Alex and Jordan are fictional. The circle resets every night and does not take uploads.
 
-Not in this version: countdowns, scheduled letter delivery, the photo booth, group-circle screens, leaving a circle, account deletion, and a personal export. See [HOW_IT_WORKS.md](./HOW_IT_WORKS.md) for how the code is put together.
+Not in this version: group-circle screens and Live Together. See [HOW_IT_WORKS.md](./HOW_IT_WORKS.md) for how the code is put together.
 
 ## Tech stack
 
@@ -39,7 +45,31 @@ Not in this version: countdowns, scheduled letter delivery, the photo booth, gro
 | Tests                 | Vitest, Playwright, and a Row Level Security suite against local Supabase                |
 | Backup                | Weekly GitHub Action: `pg_dump`, encrypt, upload to a private bucket                     |
 
-Do not move those regions. Preview and production on Vercel stay in `pdx1`. The Supabase project stays in Oregon. An Upstash database, if you create one, stays in `us-west-2`.
+Do not move those regions. Preview and production on Vercel stay in `pdx1`. The Supabase project stays in Oregon. An Upstash database, if you create one, stays in `us-west-2`. QStash is global and has no region. `vercel.json` lists the daily cron only. It does not set a region.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  browser[Browser]
+  next[Next.js on Vercel pdx1]
+  supabase[Supabase Oregon]
+  redis[Upstash Redis us-west-2]
+  qstash[QStash global]
+  push[Browser push service]
+  sentry[Sentry optional]
+
+  browser --> next
+  next --> supabase
+  next --> redis
+  next --> qstash
+  qstash --> next
+  next --> push
+  push --> browser
+  next --> sentry
+```
+
+The browser talks only to this app. Postgres, Auth, and Storage are Supabase. Redis is the optional rate-limit counter. QStash wakes the app when a scheduled letter is due. Sentry receives an error report only when `SENTRY_DSN` is set.
 
 ## Run it locally
 
@@ -100,6 +130,11 @@ Apply each file in `supabase/migrations` once, in filename order, in the SQL edi
 | `20261130120000_memories.sql`                        | memory wall, private `memories` bucket      |
 | `20261207120000_security_hardening.sql`              | narrower column grants, auth attempt counts |
 | `20261221120000_letters.sql`                         | letters, custom categories, letter memories |
+| `20261228120000_still_us.sql`                        | scheduled letters, Still Us countdowns      |
+| `20270104120000_solo_booth.sql`                      | Solo photo booth, photo-strip memories      |
+| `20270118120000_pass_the_booth.sql`                  | Pass the Booth: async frames, 7-day expiry  |
+| `20270125120000_launch_readiness.sql`                | Leave, delete account, demo circle, exports |
+| `20270215120000_group_circles_and_live_together.sql` | Group pickers, mute, Live Together          |
 
 In **Authentication → URL Configuration**, set the Site URL and add redirect URLs:
 
@@ -182,3 +217,42 @@ Web push on iOS works only from a site that was added to the Home Screen, and on
 3. Open Hsummer from the new icon, sign in, tap **Enable notifications**, then **Send test notification**.
 
 The notification text is generic on purpose. Lock screens are visible to other people.
+
+## Scheduled letters (QStash)
+
+QStash is global. There is no region to pick. Redis rate limits are a different Upstash product and stay in `us-west-2`. Supabase stays in Oregon (`us-west-2`). The Vercel project stays in `pdx1`. Do not add a `vercel.json` region override for this.
+
+If the three QStash variables are missing, a letter set for later still saves. It arrives the next time one of you opens Hsummer after that time.
+
+1. Open [console.upstash.com](https://console.upstash.com).
+2. In the left sidebar, open **QStash**. This is not the Redis database. There is no region dropdown.
+3. Copy **QSTASH_TOKEN** from the QStash details page.
+4. Open the **Signing Keys** tab. Copy **QSTASH_CURRENT_SIGNING_KEY** (current) and **QSTASH_NEXT_SIGNING_KEY** (next).
+5. In the Vercel project, open **Settings → Environment Variables**.
+6. Add each name as a **Sensitive** variable for **Production** and **Preview**. Sensitive variables cannot be stored for Development. Skip Development, or add the same names there as plain (non-sensitive) variables if you need local `vercel env pull`. Local `.env.local` can hold them either way.
+7. Redeploy. A new variable is not visible to a deployment that is already running.
+
+The callback is `POST /api/letters/deliver`. It rejects a body whose `upstash-signature` does not verify. Preview deployments protected by Vercel Authentication will answer 401 to QStash before that check runs. Test the on-time arrival on Production, or turn protection off for that path while you try it.
+
+## Daily cron and error reports
+
+`GET /api/cron/daily` runs at 11:00 UTC. It purges circles that have been empty for 30 days, sweeps quiet passes and checkpoints, expires Live Together lobbies past their time, resets the demo couple, and deletes export ZIPs older than an hour.
+
+| Name          | Vercel type | Environments                                                                                                                           |
+| ------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `CRON_SECRET` | Sensitive   | Production. Add Preview only if that deployment should run the cron. At least 16 characters. The route answers 401 when it is missing. |
+| `SENTRY_DSN`  | Sensitive   | Production and Preview, optional. Server only. Do not use `NEXT_PUBLIC_SENTRY_DSN`. The app runs the same when it is empty.            |
+
+`GET /api/health` returns `{ "ok": true }` and does not touch the database. Point an uptime check there if you want one.
+
+`GET /api/time` returns `{ "serverNow": <unix ms> }` for the Live Together shutter. It does not read the database. No new environment variable is required. Realtime uses the Supabase URL and the publishable key that are already set.
+
+Supabase Realtime on the Free plan includes 2 million messages a month, 200 peak connections, and a 256 KB message size ([Realtime pricing](https://supabase.com/docs/guides/realtime/pricing)). A three-person lobby is inside that. Free does not bill overage; going past the quota starts a grace period instead of a charge. Pro is 5 million messages, 500 peak connections, and a 3 MB message size. The channel is a private broadcast and presence topic named `together:<session id>`. Existing circle updates stay on the public `postgres_changes` channels.
+
+## Security
+
+Row Level Security is the access check. The secret key is server-only. Invite tokens are stored as hashes. Photo and avatar buckets are private. The export bucket is private and has no client policy. A personal ZIP contains only rows that person can already read, plus the image bytes, and never another person's members-only letter.
+
+The historical pass is [SECURITY_AUDIT.md](./SECURITY_AUDIT.md). The Phase 5 section of that file explains the statements in `20270125120000_launch_readiness.sql` that Supabase may flag. Those deletes run when someone leaves, deletes an account, or when the daily job purges a circle that has been empty for 30 days. Applying the migration does not delete existing rows.
+
+The Phase 4 section explains `20270215120000_group_circles_and_live_together.sql`. Supabase may flag `CREATE OR REPLACE` of `private.memories_guard` and the `DELETE` inside `release_together_shots`. Applying the file does not delete rows. The delete runs only when a Live Together upload fails, and only for that person's frames. Regions stay Supabase Oregon (`us-west-2`), Vercel `pdx1`, and Upstash Redis `us-west-2`. Phase 4 adds no environment variables.

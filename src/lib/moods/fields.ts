@@ -9,6 +9,7 @@
 
 import { z } from "zod";
 
+import { demoWriteMessage } from "@/lib/account/copy";
 import { isCircleId } from "@/lib/bucket/fields";
 
 export const MOODS = [
@@ -47,6 +48,8 @@ export function moodWriteFailure(
   code: string | undefined,
 ): string | null {
   if (!message && !code) return null;
+  const demo = demoWriteMessage(message);
+  if (demo) return demo;
   if (
     code === "42P01" ||
     code === "PGRST205" ||

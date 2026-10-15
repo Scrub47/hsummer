@@ -130,6 +130,8 @@ describe("loadCircle", () => {
     ]);
     expect(signed).toBe(1);
     expect(circle?.invite?.maxUses).toBe(1);
+    expect(circle?.isDemo).toBe(false);
+    expect(circle?.inviteClosed).toBe(false);
   });
 
   it("does not sign a path outside that member's folder", async () => {

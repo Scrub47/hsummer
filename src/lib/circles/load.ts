@@ -43,6 +43,11 @@ export type CircleInviteView = {
 export type CircleDetail = CircleSummary & {
   invite: CircleInviteView | null;
   members: CircleMemberView[];
+  isDemo: boolean;
+  /** A couple that already lost a member cannot mint another invite. */
+  inviteClosed: boolean;
+  /** This viewer's mute. Other people's mute stays off this object. */
+  mutedUntil: string | null;
 };
 
 /**
@@ -93,7 +98,7 @@ export async function loadCircle(
 ): Promise<CircleDetail | null> {
   const circle = await session.supabase
     .from("circles")
-    .select("id, name, circle_type, status, created_at")
+    .select("id, name, circle_type, status, created_at, is_demo")
     .eq("id", circleId)
     .maybeSingle();
 
@@ -103,14 +108,17 @@ export async function loadCircle(
 
   const members = await session.supabase
     .from("circle_members")
-    .select("user_id, joined_at, left_at")
+    .select("user_id, joined_at, left_at, muted_until")
     .eq("circle_id", circleId)
-    .is("left_at", null)
     .order("joined_at", { ascending: true });
 
   if (members.error) return null;
 
-  const memberIds = (members.data ?? []).map((row) => row.user_id);
+  const activeMembers = (members.data ?? []).filter(
+    (row) => row.left_at === null,
+  );
+  const someoneLeft = (members.data ?? []).some((row) => row.left_at !== null);
+  const memberIds = activeMembers.map((row) => row.user_id);
   const profiles =
     memberIds.length === 0
       ? { data: [], error: null }
@@ -126,7 +134,7 @@ export async function loadCircle(
   );
 
   const memberViews: CircleMemberView[] = [];
-  for (const member of members.data ?? []) {
+  for (const member of activeMembers) {
     const profile = profileById.get(member.user_id);
     memberViews.push({
       userId: member.user_id,
@@ -152,7 +160,13 @@ export async function loadCircle(
 
   return {
     ...summary,
+    isDemo: circle.data.is_demo === true,
+    inviteClosed:
+      summary.circleType === "couple" && someoneLeft && memberViews.length < 2,
     members: memberViews,
+    mutedUntil:
+      activeMembers.find((member) => member.user_id === session.userId)
+        ?.muted_until ?? null,
     invite: invite.data
       ? {
           id: invite.data.id,

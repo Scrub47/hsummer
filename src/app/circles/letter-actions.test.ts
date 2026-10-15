@@ -123,7 +123,7 @@ describe("sendLetter", () => {
       }),
     );
 
-    expect(state).toEqual({ error: null, saved: true });
+    expect(state).toEqual({ error: null, saved: true, notice: null });
     expect(inserted).toEqual([
       {
         circle_id: circleId,

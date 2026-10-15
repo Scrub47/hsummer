@@ -89,6 +89,9 @@ export function buildContentSecurityPolicy(options: CspOptions): string {
     `img-src ${imgSrc.join(" ")}`,
     "font-src 'self'",
     `connect-src ${connectSrc.join(" ")}`,
+    // The booth draws a blob into an image and may play a camera stream.
+    // media-src falls back to default-src, which would block blob:.
+    "media-src 'self' blob:",
     `frame-src ${frameSrc.join(" ")}`,
     "worker-src 'self'",
     "manifest-src 'self'",
@@ -107,8 +110,10 @@ export function staticSecurityHeaders(https: boolean): Record<string, string> {
   const headers: Record<string, string> = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
+    // camera=(self) lets the Home Screen app call getUserMedia. The
+    // microphone stays off, so a request that asks for audio is refused.
     "Permissions-Policy":
-      "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+      "camera=(self), microphone=(), geolocation=(), payment=(), usb=()",
     "X-Frame-Options": "DENY",
   };
   if (https) {
