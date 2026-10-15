@@ -35,6 +35,7 @@ import {
 import { MEMORY_CAPTION_MAX } from "@/lib/memories/fields";
 import { applyFilter } from "@/lib/booth/filters";
 import { coverCrop, frameSlots, type Slot } from "@/lib/booth/layout";
+import { assignShotFiles } from "@/lib/booth/shot-files";
 import { themeBundle } from "@/lib/booth/themes";
 
 const initialState: BoothActionState = { error: null, saved: false };
@@ -408,15 +409,7 @@ function Review({
   onRetake: () => void;
 }) {
   const [state, formAction, pending] = useActionState(
-    async (previous: BoothActionState, formData: FormData) => {
-      shots.forEach((blob, index) => {
-        formData.append(
-          "shot",
-          new File([blob], `shot-${index}.jpg`, { type: "image/jpeg" }),
-        );
-      });
-      return saveSoloBooth(previous, formData);
-    },
+    saveSoloBooth,
     initialState,
   );
   const bundle = themeBundle(theme);
@@ -459,6 +452,18 @@ function Review({
         className="flex flex-col gap-4 rounded-3xl border border-line bg-card p-5"
         action={formAction}
       >
+        <input
+          ref={(node) => {
+            if (node) assignShotFiles(node, shots);
+          }}
+          type="file"
+          name="shot"
+          multiple
+          accept="image/jpeg"
+          tabIndex={-1}
+          aria-hidden="true"
+          className="sr-only"
+        />
         <input type="hidden" name="circleId" value={circleId} />
         <input type="hidden" name="theme" value={theme} />
         <input type="hidden" name="layout" value={layout} />
