@@ -49,7 +49,11 @@ test("pass a 4-cut: one person shoots, the other finishes the strip", async ({
     const jpeg = await jpegFile(page);
     await page.getByLabel("Photos for your frames").setInputFiles([jpeg, jpeg]);
     await page.getByRole("button", { name: "Pass it to Summer" }).click();
-    await expectNotice(page, /Passed on/);
+    await expect(
+      page.getByRole("status").filter({ hasText: /Passed on/ }),
+    ).toBeVisible({
+      timeout: 20_000,
+    });
 
     await partnerPage.reload();
     await expect(
@@ -64,7 +68,9 @@ test("pass a 4-cut: one person shoots, the other finishes the strip", async ({
       .getByLabel("Photos for your frames")
       .setInputFiles([partnerJpeg, partnerJpeg]);
     await partnerPage.getByRole("button", { name: "Add your frames" }).click();
-    await expectNotice(partnerPage, /memory wall/);
+    await expect(
+      partnerPage.getByRole("status").filter({ hasText: /memory wall/ }),
+    ).toBeVisible({ timeout: 20_000 });
 
     await page.goto(page.url().replace(/\/booth$/, ""));
     await expect(page.getByText("you and Summer")).toBeVisible({
@@ -127,28 +133,15 @@ test("download a kawaii strip, then save it on the memory wall", async ({
     .getByLabel("Photos from your library")
     .setInputFiles([jpeg, jpeg, jpeg, jpeg]);
   await page.getByRole("button", { name: "Save to this circle" }).click();
-  await expectNotice(page, /Saved on the memory wall/);
+  await expect(
+    page.getByRole("status").filter({ hasText: /Saved on the memory wall/ }),
+  ).toBeVisible({ timeout: 20_000 });
   await page.getByRole("link", { name: "See it on the wall" }).click();
   await expect(
     page.getByRole("img", { name: /photo booth strip from you/i }),
   ).toBeVisible();
   await expect(page.getByText("Kawaii · 4-cut · No filter")).toBeVisible();
 });
-
-async function expectNotice(page: Page, pattern: RegExp) {
-  const target = page.getByRole("status").filter({ hasText: pattern });
-  try {
-    await expect(target).toBeVisible({ timeout: 20_000 });
-  } catch (error) {
-    const alerts = await page.getByRole("alert").allTextContents();
-    const statuses = await page.getByRole("status").allTextContents();
-    const main = await page.locator("main").innerText();
-    throw new Error(
-      `missing ${pattern}\nalerts=${JSON.stringify(alerts)}\nstatuses=${JSON.stringify(statuses)}\nmain=${JSON.stringify(main.slice(0, 1500))}`,
-      { cause: error },
-    );
-  }
-}
 
 async function jpegFile(page: Page) {
   const bytes = await page.evaluate(async () => {
