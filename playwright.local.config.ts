@@ -37,7 +37,7 @@ if (!isLocalSupabaseUrl(supabaseUrl) || !publishable || !secret) {
 
 export default defineConfig({
   testDir: "e2e",
-  testMatch: "circle-flow.spec.ts",
+  testMatch: ["circle-flow.spec.ts", "booth-flow.spec.ts"],
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,

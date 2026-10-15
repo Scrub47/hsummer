@@ -24,6 +24,8 @@ describe("content security policy", () => {
     expect(csp).toContain("https://abcd.supabase.co");
     expect(csp).toContain("wss://abcd.supabase.co");
     expect(csp).toContain("worker-src 'self'");
+    expect(csp).toContain("img-src 'self' blob:");
+    expect(csp).toContain("media-src 'self' blob:");
     expect(csp).toContain("upgrade-insecure-requests");
     expect(csp).not.toContain("unsafe-eval");
     expect(csp).not.toContain("unsafe-inline");
@@ -56,6 +58,15 @@ describe("static security headers", () => {
     );
     expect(staticSecurityHeaders(true)["X-Content-Type-Options"]).toBe(
       "nosniff",
+    );
+    expect(staticSecurityHeaders(true)["Permissions-Policy"]).toContain(
+      "camera=(self)",
+    );
+    expect(staticSecurityHeaders(true)["Permissions-Policy"]).toContain(
+      "microphone=()",
+    );
+    expect(staticSecurityHeaders(true)["Permissions-Policy"]).not.toContain(
+      "camera=()",
     );
     expect(
       isHttpsRequest({

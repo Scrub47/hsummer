@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  getQstashConfig,
   getSupabaseSecretKey,
   getUpstashConfig,
   getVapidConfig,
@@ -14,6 +15,9 @@ const KEYS = [
   "NEXT_PUBLIC_VAPID_PUBLIC_KEY",
   "UPSTASH_REDIS_REST_URL",
   "UPSTASH_REDIS_REST_TOKEN",
+  "QSTASH_TOKEN",
+  "QSTASH_CURRENT_SIGNING_KEY",
+  "QSTASH_NEXT_SIGNING_KEY",
 ] as const;
 
 const original = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
@@ -66,6 +70,25 @@ describe("server env", () => {
     expect(getUpstashConfig()).toEqual({
       url: "https://example.upstash.io",
       token: "real-token-value",
+    });
+  });
+
+  it("treats QStash as optional until the token and both signing keys are set", () => {
+    delete process.env.QSTASH_TOKEN;
+    delete process.env.QSTASH_CURRENT_SIGNING_KEY;
+    delete process.env.QSTASH_NEXT_SIGNING_KEY;
+    expect(getQstashConfig()).toBeNull();
+
+    process.env.QSTASH_TOKEN = "your-qstash-token";
+    process.env.QSTASH_CURRENT_SIGNING_KEY = "current-signing-key";
+    process.env.QSTASH_NEXT_SIGNING_KEY = "next-signing-key";
+    expect(getQstashConfig()).toBeNull();
+
+    process.env.QSTASH_TOKEN = "qstash-token-value";
+    expect(getQstashConfig()).toEqual({
+      token: "qstash-token-value",
+      currentSigningKey: "current-signing-key",
+      nextSigningKey: "next-signing-key",
     });
   });
 });

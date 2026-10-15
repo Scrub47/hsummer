@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { BucketList } from "@/components/bucket-list";
@@ -11,9 +13,13 @@ import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
 import { RecentPings } from "@/components/recent-pings";
 import { RenameCircleForm } from "@/components/rename-circle-form";
 import { SignedInHeader } from "@/components/signed-in-header";
+import { StillUs } from "@/components/still-us";
 import { ThinkingOfYou } from "@/components/thinking-of-you";
 import { loadBucketItems } from "@/lib/bucket/load";
+import { prepareCircle } from "@/lib/circles/prepare";
 import { loadCircle } from "@/lib/circles/load";
+import { loadStillUs } from "@/lib/countdowns/load";
+import { pushOrigin } from "@/lib/auth/request-origin";
 import { loadLetters } from "@/lib/letters/load";
 import { calendarDate } from "@/lib/memories/fields";
 import { loadMemories } from "@/lib/memories/load";
@@ -53,7 +59,10 @@ export default async function CirclePage({
     circle.members.map((member) => [member.userId, member.displayName]),
   );
   const zone = self?.timezone ?? "UTC";
-  const [pings, bucket, moods, memories, letters] = await Promise.all([
+  if (circle.status !== "archived") {
+    await prepareCircle(session, circle.id, pushOrigin(await headers()));
+  }
+  const [pings, bucket, moods, memories, letters, stillUs] = await Promise.all([
     showThinkingOfYou
       ? loadRecentPings(session, circle.id, names, zone)
       : Promise.resolve([]),
@@ -61,6 +70,7 @@ export default async function CirclePage({
     loadCurrentMoods(session, circle.id, zone),
     loadMemories(session, circle.id, names),
     loadLetters(session, circle.id, names),
+    loadStillUs(session, circle.id, zone),
   ]);
 
   const memoryPhotos =
@@ -91,9 +101,9 @@ export default async function CirclePage({
           {circle.status === "pending" ? (
             <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
               This circle is waiting for one more person. Share the invite link.
-              You can set a mood, add to the memory wall, and start the bucket
-              list now. Letters and Thinking of You stay closed until you both
-              are here.
+              You can set a mood, set the Still Us date, open the photo booth,
+              add to the memory wall, and start the bucket list now. Letters and
+              Thinking of You stay closed until you both are here.
             </p>
           ) : (
             <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
@@ -101,8 +111,8 @@ export default async function CirclePage({
                 ? `You're here with ${others.map((member) => member.displayName).join(", ")}.`
                 : "You're the only one here right now."}{" "}
               {showThinkingOfYou
-                ? "Set a mood, write a letter, add a memory, tap Thinking of You — it goes to your partner — or add to the bucket list."
-                : "Set a mood, add a memory, or add to the bucket list."}
+                ? "Set a mood, check Still Us, write a letter, open the photo booth, add a memory, tap Thinking of You — it goes to your partner — or add to the bucket list."
+                : "Set a mood, check Still Us, open the photo booth, add a memory, or add to the bucket list."}
             </p>
           )}
         </div>
@@ -129,10 +139,26 @@ export default async function CirclePage({
           </p>
         )}
 
+        {stillUs.ok ? (
+          <StillUs
+            circleId={circle.id}
+            circleType={circle.circleType}
+            countdowns={stillUs.countdowns}
+            checkpoints={stillUs.checkpoints}
+          />
+        ) : (
+          <p className="max-w-xl text-sm leading-6 text-foreground/70">
+            Still Us isn&apos;t in the database yet. Apply{" "}
+            <code>supabase/migrations/20261228120000_still_us.sql</code> in the
+            Supabase SQL editor, then reload this page.
+          </p>
+        )}
+
         {letters.ok ? (
           <Letters
             circleId={circle.id}
             partnerName={partner?.displayName ?? null}
+            partnerTimeZone={partner?.timezone ?? zone}
             canWrite={showThinkingOfYou}
             pending={circle.status === "pending"}
             letters={letters.letters}
@@ -145,6 +171,21 @@ export default async function CirclePage({
             Supabase SQL editor, then reload this page.
           </p>
         )}
+
+        <section className="flex flex-col gap-4">
+          <h2 className="font-serif text-3xl tracking-tight">Photo booth</h2>
+          <p className="max-w-xl text-sm leading-6 text-foreground/80">
+            Take a strip on this phone. Nothing is saved while you shoot.
+            Download keeps it here. Save puts it on the memory wall for everyone
+            in the circle.
+          </p>
+          <Link
+            href={`/circles/${circle.id}/booth`}
+            className="inline-flex h-12 w-fit items-center rounded-full bg-accent px-5 text-base font-medium text-accent-ink"
+          >
+            Open the photo booth
+          </Link>
+        </section>
 
         {memories.ok ? (
           <MemoryWall
