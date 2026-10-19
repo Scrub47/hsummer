@@ -71,6 +71,19 @@ The SQL editor can mark `DROP CONSTRAINT`, `DROP NOT NULL`, `DELETE`, and `ALTER
 | `DELETE` inside `leave_circle`, `delete_own_account`, `purge_archived_circles`, and `seed_demo_circle`                                                            | These statements are function bodies. They do not run when the file is applied. Leave deletes this person's contributions only when they choose remove. Account deletion always removes that login, avatar objects, push subscriptions, moods, and pings. Shared rows stay unless they chose remove. Purge deletes a non-demo circle only after it has had zero members for 30 days. The demo seed deletes and rebuilds only the one fictional circle. |
 | `ALTER TABLE ... DISABLE TRIGGER` inside `private.set_author_guards`                                                                                              | Used only around the `auth.users` delete so `ON DELETE SET NULL` can clear author columns the guards normally lock. The function enables the triggers again before it returns. A failed delete rolls the transaction back, including the disable.                                                                                                                                                                                                      |
 
+## Phase 4 migration
+
+File: `supabase/migrations/20270215120000_group_circles_and_live_together.sql`. Paste it once, after `20270125120000_launch_readiness.sql`.
+
+Applying this file does not delete circles, letters, or photos.
+
+| Statement                                           | Why it is there                                                                                                                                                                                 |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CREATE OR REPLACE FUNCTION private.memories_guard` | Replaces the function body so a finished Live Together strip can be saved the same way a pass strip is. It does not drop a table, column, policy, or row. Supabase may flag the replacement.    |
+| `DELETE` inside `release_together_shots`            | Function body only. It does not run when the file is applied. After a Live Together upload fails, it deletes that caller's own `booth_shots` rows for that session. Other people's frames stay. |
+
+`on delete cascade` appears only on the new foreign keys. Enabling RLS on `realtime.messages`, when that schema exists, does not delete messages.
+
 ## Encryption decision
 
 Disk encryption is Supabase's. The app additionally hashes invite tokens and encrypts the weekly dump with GnuPG.

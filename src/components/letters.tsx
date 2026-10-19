@@ -12,6 +12,7 @@ import {
   sendLetter,
   type LetterActionState,
 } from "@/app/circles/letter-actions";
+import { MemberChoice } from "@/components/member-choice";
 import { useCircleLive } from "@/components/use-circle-live";
 import {
   DEFAULT_LETTER_CATEGORIES,
@@ -43,6 +44,7 @@ export function Letters({
   pending,
   letters,
   categories,
+  people = [],
 }: {
   circleId: string;
   partnerName: string | null;
@@ -51,6 +53,7 @@ export function Letters({
   pending: boolean;
   letters: LetterCard[];
   categories: LetterCategory[];
+  people?: { userId: string; displayName: string; timezone: string }[];
 }) {
   const router = useRouter();
   const refresh = () => router.refresh();
@@ -65,9 +68,11 @@ export function Letters({
         <p className="mt-3 max-w-xl text-sm leading-6 text-foreground/80">
           {pending
             ? "Letters open once you're both here. Share the invite link."
-            : canWrite && partnerName
-              ? `Write to ${partnerName}. It opens with their name. Until they break the seal, the words stay off this page.`
-              : "Letters go to one person. Choosing someone in a larger circle comes later."}
+            : canWrite && people.length > 1
+              ? "Write to one person. A letter is never sent to everyone. Until they break the seal, the words stay off this page."
+              : canWrite && partnerName
+                ? `Write to ${partnerName}. It opens with their name. Until they break the seal, the words stay off this page.`
+                : "Letters go to one person."}
         </p>
         <p className="mt-2 text-sm text-foreground/70" role="status">
           {live === "live"
@@ -78,12 +83,13 @@ export function Letters({
         </p>
       </div>
 
-      {canWrite && partnerName ? (
+      {canWrite && (partnerName || people.length > 1) ? (
         <WriteLetter
           circleId={circleId}
-          partnerName={partnerName}
+          partnerName={partnerName ?? "them"}
           partnerTimeZone={partnerTimeZone}
           categories={categories}
+          people={people}
         />
       ) : null}
 
@@ -123,11 +129,13 @@ function WriteLetter({
   partnerName,
   partnerTimeZone,
   categories,
+  people,
 }: {
   circleId: string;
   partnerName: string;
   partnerTimeZone: string;
   categories: LetterCategory[];
+  people: { userId: string; displayName: string; timezone: string }[];
 }) {
   const [state, formAction, pending] = useActionState(sendLetter, initialState);
   const [design, setDesign] = useState<LetterDesign>("minimal");
@@ -148,6 +156,11 @@ function WriteLetter({
     <form ref={formRef} action={formAction} className="flex flex-col gap-4">
       <input type="hidden" name="circleId" value={circleId} />
       <input type="hidden" name="design" value={design} />
+      <MemberChoice
+        people={people}
+        name="recipientId"
+        legend="Who this letter is for"
+      />
       <fieldset className="flex flex-col gap-3">
         <legend className="text-sm font-medium">When it arrives</legend>
         <div className="flex flex-wrap gap-2">
@@ -206,8 +219,9 @@ function WriteLetter({
               />
             </div>
             <p className="text-sm leading-6 text-foreground/70 sm:col-span-2">
-              This is {partnerName}&apos;s time ({partnerTimeZone}). 8:00 AM
-              means 8:00 AM where they are.
+              {people.length > 1
+                ? "8:00 AM means 8:00 AM in the recipient's timezone."
+                : `This is ${partnerName}'s time (${partnerTimeZone}). 8:00 AM means 8:00 AM where they are.`}
             </p>
           </div>
         ) : null}

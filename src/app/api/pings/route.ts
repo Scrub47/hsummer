@@ -8,8 +8,8 @@ import { getSession } from "@/lib/supabase/session";
  * Thinking of You. POST, not GET: a GET would run from a prefetch or an
  * embedded image and could buzz someone's phone.
  *
- * The body is `{ circleId, secretVariant? }`. There is no recipient field.
- * In a couple the other person is the recipient. Whole-circle pings stay off.
+ * The body is `{ circleId, secretVariant? }`. A couple omits the recipient.
+ * A larger circle may send `toUserId` as one member, or null for everyone.
  *
  * Node.js runtime (the default). `web-push` needs Node crypto.
  */
@@ -33,6 +33,7 @@ export async function POST(request: Request) {
     circleId: parsed.circleId,
     secretVariant: parsed.secretVariant,
     origin,
+    recipient: parsed.recipient,
   });
 
   return NextResponse.json(result.body, { status: result.status });

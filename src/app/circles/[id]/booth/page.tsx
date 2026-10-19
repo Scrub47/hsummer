@@ -4,7 +4,8 @@ import { notFound, redirect } from "next/navigation";
 
 import { BoothModes } from "@/components/booth-modes";
 import { SignedInHeader } from "@/components/signed-in-header";
-import { loadPassBooth } from "@/lib/booth/load";
+import { loadPassBooth, loadTogetherBooth } from "@/lib/booth/load";
+import { circleNeedsPicker } from "@/lib/circles/fields";
 import type { PassBlocked } from "@/lib/booth/fields";
 import { loadCircle } from "@/lib/circles/load";
 import { getSession } from "@/lib/supabase/session";
@@ -28,19 +29,12 @@ export default async function BoothPage({
   const others = circle.members.filter(
     (member) => member.userId !== session.userId,
   );
-  const partner = others.length === 1 ? others[0] : null;
-  const canStart =
-    circle.circleType === "couple" &&
-    circle.status === "active" &&
-    partner !== undefined &&
-    partner !== null;
+  const canStart = circle.status === "active" && others.length >= 1;
   const blocked: PassBlocked | null = canStart
     ? null
     : circle.status === "pending"
       ? "pending"
-      : circle.circleType !== "couple"
-        ? "group"
-        : "alone";
+      : "alone";
   const names = new Map(
     circle.members.map((member) => [member.userId, member.displayName]),
   );
@@ -53,6 +47,7 @@ export default async function BoothPage({
     names,
     self?.timezone ?? "UTC",
   );
+  const lobby = await loadTogetherBooth(session, circle.id, names);
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-6 py-10">
@@ -71,8 +66,14 @@ export default async function BoothPage({
           circleTitle={circle.title}
           canStart={canStart}
           blocked={blocked}
-          partnerName={partner?.displayName ?? null}
+          people={others.map((member) => ({
+            userId: member.userId,
+            displayName: member.displayName,
+          }))}
+          needsPicker={circleNeedsPicker(others.length)}
+          selfId={session.userId}
           turns={pass.ok ? pass.turns : []}
+          lobby={lobby}
           unavailable={!pass.ok}
         />
       </main>

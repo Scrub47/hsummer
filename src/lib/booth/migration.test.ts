@@ -103,3 +103,34 @@ describe("week 15 migration", () => {
     expect(week15).toContain("status = 'complete'");
   });
 });
+
+const phase4 = readFileSync(
+  path.join(
+    root,
+    "supabase/migrations/20270215120000_group_circles_and_live_together.sql",
+  ),
+  "utf8",
+);
+
+describe("phase 4 migration", () => {
+  it("adds group and live-together functions without dropping a table", () => {
+    expect(phase4).toContain("public.set_invite_max_uses");
+    expect(phase4).toContain("public.create_pass_booth_picked");
+    expect(phase4).toContain("public.open_together_booth");
+    expect(phase4).toContain("public.mark_together_ready");
+    expect(phase4).toContain("public.fallback_together_to_pass");
+    expect(phase4).toContain("public.expire_together_booths");
+    expect(phase4).toContain("public.release_together_shots");
+    expect(phase4).toContain("enable row level security");
+    expect(phase4).not.toMatch(/drop table/i);
+    expect(phase4).not.toMatch(/drop column/i);
+    expect(phase4).not.toMatch(/truncate /i);
+  });
+
+  it("explains the statements the SQL editor may flag", () => {
+    expect(phase4).toContain("CREATE OR REPLACE");
+    expect(phase4).toContain("private.memories_guard");
+    expect(phase4).toContain("release_together_shots");
+    expect(phase4).toContain("does not remove existing circles");
+  });
+});

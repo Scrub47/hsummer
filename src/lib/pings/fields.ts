@@ -7,8 +7,9 @@
  * same cap in the route (and in Upstash, when that is configured) and still
  * leaves the trigger in place, so a direct insert cannot skip it.
  *
- * A whole-circle ping (to_user_id null) is a real row shape. The app does not
- * send one until group UX. BROADCAST_PINGS_ENABLED is that flag.
+ * A whole-circle ping (to_user_id null) is a real row shape. A couple cannot
+ * send one. A circle of two skips the picker and pings the other person.
+ * A larger circle can ping one person or everyone.
  *
  * A shared mood is the same insert with ping_type mood-share. The public
  * POST route still refuses a mood field. The circle page builds that row
@@ -20,7 +21,8 @@ import { z } from "zod";
 import { demoWriteMessage } from "@/lib/account/copy";
 import { isMoodEmoji, type MoodEmoji } from "@/lib/moods/fields";
 
-export const BROADCAST_PINGS_ENABLED = false;
+/** Whole-circle pings are on for groups. A couple still cannot send one. */
+export const BROADCAST_PINGS_ENABLED = true;
 
 /** Successful sends inside the window. The 11th is refused. */
 export const PING_LIMIT = 10;
@@ -30,7 +32,7 @@ export const PING_RATE_LIMIT_MESSAGE =
   "You've sent a few of these just now. Wait a little and try again.";
 
 export const PING_BROADCAST_ERROR =
-  "Thinking of You goes to your partner. Whole-circle pings aren't available yet.";
+  "Choose one person, or everyone. A couple always pings their partner.";
 
 const CIRCLE_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -43,8 +45,35 @@ export type PartnerResolution =
         "archived" | "not_couple" | "pending" | "no_partner" | "ambiguous";
     };
 
+export type RecipientRequest =
+  { kind: "auto" } | { kind: "member"; userId: string } | { kind: "broadcast" };
+
+export type RecipientResolution =
+  | {
+      ok: true;
+      toUserId: string | null;
+      mode: "partner" | "chosen" | "broadcast";
+    }
+  | {
+      ok: false;
+      reason:
+        | "archived"
+        | "pending"
+        | "no_partner"
+        | "ambiguous"
+        | "not_member"
+        | "broadcast_refused"
+        | "needs_choice"
+        | "couple_picker";
+    };
+
 type Parsed =
-  | { ok: true; circleId: string; secretVariant: boolean }
+  | {
+      ok: true;
+      circleId: string;
+      secretVariant: boolean;
+      recipient: RecipientRequest;
+    }
   | { ok: false; status: 400; error: string };
 
 /**
@@ -83,11 +112,11 @@ export function resolveCouplePartner(input: {
 }
 
 /**
- * Body of POST /api/pings. A couple omits the recipient. Passing toUserId is
- * refused while broadcast pings are flagged off, so this route cannot be used
- * as a picker.
+ * Body of POST /api/pings. A couple omits the recipient. A larger circle
+ * sends `toUserId` as a member id, or null for everyone.
  */
 const pingBodySchema = z.record(z.string(), z.unknown());
+const userIdSchema = z.string().regex(CIRCLE_ID_PATTERN);
 
 export function parsePingRequest(body: unknown): Parsed {
   const parsed = pingBodySchema.safeParse(body);
@@ -97,8 +126,6 @@ export function parsePingRequest(body: unknown): Parsed {
 
   const record = parsed.data;
   if (
-    "toUserId" in record ||
-    "to_user_id" in record ||
     "pingType" in record ||
     "type" in record ||
     "moodEmoji" in record ||
@@ -107,10 +134,7 @@ export function parsePingRequest(body: unknown): Parsed {
     return { ok: false, status: 400, error: PING_BROADCAST_ERROR };
   }
 
-  const circleId = z
-    .string()
-    .regex(CIRCLE_ID_PATTERN)
-    .safeParse(record.circleId);
+  const circleId = userIdSchema.safeParse(record.circleId);
   if (!circleId.success) {
     return { ok: false, status: 400, error: "That circle isn't available." };
   }
@@ -119,11 +143,149 @@ export function parsePingRequest(body: unknown): Parsed {
     return { ok: false, status: 400, error: "That ping isn't valid." };
   }
 
+  let recipient: RecipientRequest = { kind: "auto" };
+  if ("toUserId" in record || "to_user_id" in record) {
+    const raw = "toUserId" in record ? record.toUserId : record.to_user_id;
+    if (raw === null) {
+      recipient = { kind: "broadcast" };
+    } else {
+      const id = userIdSchema.safeParse(raw);
+      if (!id.success) {
+        return {
+          ok: false,
+          status: 400,
+          error: "Choose a person in this circle.",
+        };
+      }
+      recipient = { kind: "member", userId: id.data };
+    }
+  }
+
+  if (recipient.kind === "broadcast" && record.secretVariant === true) {
+    return {
+      ok: false,
+      status: 400,
+      error: "The Missing note goes to one person.",
+    };
+  }
+
   return {
     ok: true,
     circleId: circleId.data,
     secretVariant: record.secretVariant === true,
+    recipient,
   };
+}
+
+/**
+ * Who a letter or a ping is for.
+ *
+ * A couple, and any circle with exactly one other person, ignores a picker:
+ * the request has to be "auto". A larger circle must name one member.
+ * Broadcast is a ping to everyone, and only there.
+ */
+export function resolveCircleRecipient(input: {
+  selfId: string;
+  circleType: string;
+  status: string;
+  activeMemberIds: readonly string[];
+  request: RecipientRequest;
+  allowBroadcast: boolean;
+}): RecipientResolution {
+  if (input.status === "archived") return { ok: false, reason: "archived" };
+  if (input.status !== "active") return { ok: false, reason: "pending" };
+
+  const others = input.activeMemberIds.filter((id) => id !== input.selfId);
+  if (others.length === 0) return { ok: false, reason: "no_partner" };
+
+  const pair = input.circleType === "couple" || others.length === 1;
+  if (input.request.kind === "broadcast") {
+    if (
+      !input.allowBroadcast ||
+      !BROADCAST_PINGS_ENABLED ||
+      input.circleType === "couple" ||
+      others.length < 2
+    ) {
+      return { ok: false, reason: "broadcast_refused" };
+    }
+    return { ok: true, toUserId: null, mode: "broadcast" };
+  }
+
+  if (input.request.kind === "member") {
+    if (pair) return { ok: false, reason: "couple_picker" };
+    if (!others.includes(input.request.userId)) {
+      return { ok: false, reason: "not_member" };
+    }
+    return { ok: true, toUserId: input.request.userId, mode: "chosen" };
+  }
+
+  if (!pair) return { ok: false, reason: "needs_choice" };
+  if (others.length !== 1) return { ok: false, reason: "ambiguous" };
+  const partnerId = others[0];
+  if (!partnerId) return { ok: false, reason: "no_partner" };
+  return { ok: true, toUserId: partnerId, mode: "partner" };
+}
+
+export function recipientReasonMessage(
+  reason: Exclude<RecipientResolution, { ok: true }>["reason"],
+  kind: "ping" | "letter",
+): { status: number; error: string } {
+  switch (reason) {
+    case "pending":
+    case "no_partner":
+      return {
+        status: 409,
+        error:
+          kind === "letter"
+            ? "Share the invite link first. Letters open once you're both here."
+            : "This circle is still waiting for someone else. Share the invite link.",
+      };
+    case "broadcast_refused":
+      return {
+        status: 400,
+        error:
+          kind === "letter"
+            ? "A letter goes to one person."
+            : "Thinking of You in a couple goes to your partner.",
+      };
+    case "couple_picker":
+      return {
+        status: 400,
+        error:
+          kind === "letter"
+            ? "This letter goes to your partner."
+            : "Thinking of You goes to your partner.",
+      };
+    case "needs_choice":
+      return {
+        status: 400,
+        error:
+          kind === "letter"
+            ? "Choose who this letter is for."
+            : "Choose who this is for, or everyone.",
+      };
+    case "not_member":
+      return { status: 400, error: "Choose someone who is in this circle." };
+    case "ambiguous":
+      return {
+        status: 400,
+        error: "Thinking of You needs exactly one partner in this circle.",
+      };
+    case "archived":
+      return { status: 404, error: "That circle isn't available." };
+  }
+}
+
+/** Form field. Missing means the circle of two should pick the other person. */
+export function parseRecipientField(value: unknown): RecipientRequest | null {
+  if (value === null || value === undefined) return { kind: "auto" };
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return { kind: "auto" };
+  if (trimmed === "everyone") return { kind: "broadcast" };
+  const id = userIdSchema.safeParse(trimmed);
+  if (!id.success) return null;
+  return { kind: "member", userId: id.data };
 }
 
 /** In-app phrase. The push payload must not use this — it contains a name. */
@@ -154,8 +316,7 @@ export function partnerReasonMessage(
     case "not_couple":
       return {
         status: 400,
-        error:
-          "Thinking of You goes to your partner. Group pings aren't available yet.",
+        error: "Choose who this is for, or everyone.",
       };
     case "ambiguous":
       return {
@@ -170,7 +331,7 @@ export function partnerReasonMessage(
 export type CirclePingRow = {
   circle_id: string;
   from_user_id: string;
-  to_user_id: string;
+  to_user_id: string | null;
   ping_type: "thinking-of-you" | "mood-share";
   mood_emoji: string | null;
   secret_variant: boolean;
@@ -185,10 +346,13 @@ export type CirclePingRow = {
 export function circlePingInsert(input: {
   circleId: string;
   fromUserId: string;
-  toUserId: string;
+  toUserId: string | null;
   secretVariant: boolean;
   moodEmoji: string | null;
 }): { ok: true; row: CirclePingRow } | { ok: false; error: string } {
+  if (input.toUserId === null && input.secretVariant) {
+    return { ok: false, error: "The Missing note goes to one person." };
+  }
   if (input.moodEmoji != null) {
     if (input.secretVariant || !isMoodEmoji(input.moodEmoji)) {
       return { ok: false, error: "That mood isn't one you can share." };

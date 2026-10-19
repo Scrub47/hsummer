@@ -134,6 +134,7 @@ Apply each file in `supabase/migrations` once, in filename order, in the SQL edi
 | `20270104120000_solo_booth.sql`                      | Solo photo booth, photo-strip memories      |
 | `20270118120000_pass_the_booth.sql`                  | Pass the Booth: async frames, 7-day expiry  |
 | `20270125120000_launch_readiness.sql`                | Leave, delete account, demo circle, exports |
+| `20270215120000_group_circles_and_live_together.sql` | Group pickers, mute, Live Together          |
 
 In **Authentication → URL Configuration**, set the Site URL and add redirect URLs:
 
@@ -235,7 +236,7 @@ The callback is `POST /api/letters/deliver`. It rejects a body whose `upstash-si
 
 ## Daily cron and error reports
 
-`GET /api/cron/daily` runs at 11:00 UTC. It purges circles that have been empty for 30 days, sweeps quiet passes and checkpoints, resets the demo couple, and deletes export ZIPs older than an hour.
+`GET /api/cron/daily` runs at 11:00 UTC. It purges circles that have been empty for 30 days, sweeps quiet passes and checkpoints, expires Live Together lobbies past their time, resets the demo couple, and deletes export ZIPs older than an hour.
 
 | Name          | Vercel type | Environments                                                                                                                           |
 | ------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------- |
@@ -244,8 +245,14 @@ The callback is `POST /api/letters/deliver`. It rejects a body whose `upstash-si
 
 `GET /api/health` returns `{ "ok": true }` and does not touch the database. Point an uptime check there if you want one.
 
+`GET /api/time` returns `{ "serverNow": <unix ms> }` for the Live Together shutter. It does not read the database. No new environment variable is required. Realtime uses the Supabase URL and the publishable key that are already set.
+
+Supabase Realtime on the Free plan includes 2 million messages a month, 200 peak connections, and a 256 KB message size ([Realtime pricing](https://supabase.com/docs/guides/realtime/pricing)). A three-person lobby is inside that. Free does not bill overage; going past the quota starts a grace period instead of a charge. Pro is 5 million messages, 500 peak connections, and a 3 MB message size. The channel is a private broadcast and presence topic named `together:<session id>`. Existing circle updates stay on the public `postgres_changes` channels.
+
 ## Security
 
 Row Level Security is the access check. The secret key is server-only. Invite tokens are stored as hashes. Photo and avatar buckets are private. The export bucket is private and has no client policy. A personal ZIP contains only rows that person can already read, plus the image bytes, and never another person's members-only letter.
 
 The historical pass is [SECURITY_AUDIT.md](./SECURITY_AUDIT.md). The Phase 5 section of that file explains the statements in `20270125120000_launch_readiness.sql` that Supabase may flag. Those deletes run when someone leaves, deletes an account, or when the daily job purges a circle that has been empty for 30 days. Applying the migration does not delete existing rows.
+
+The Phase 4 section explains `20270215120000_group_circles_and_live_together.sql`. Supabase may flag `CREATE OR REPLACE` of `private.memories_guard` and the `DELETE` inside `release_together_shots`. Applying the file does not delete rows. The delete runs only when a Live Together upload fails, and only for that person's frames. Regions stay Supabase Oregon (`us-west-2`), Vercel `pdx1`, and Upstash Redis `us-west-2`. Phase 4 adds no environment variables.

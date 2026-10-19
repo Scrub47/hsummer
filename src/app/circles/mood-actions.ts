@@ -12,6 +12,7 @@ import {
   moodWriteFailure,
   type MoodPush,
 } from "@/lib/moods/fields";
+import { parseRecipientField } from "@/lib/pings/fields";
 import { sendThinkingOfYou } from "@/lib/pings/send";
 import { getSession } from "@/lib/supabase/session";
 
@@ -72,11 +73,23 @@ export async function setCurrentMood(
   }
 
   const headerList = await headers();
+  const recipientField = formData.get("recipientId");
+  const recipient =
+    recipientField == null ? null : parseRecipientField(recipientField);
+  if (recipientField != null && !recipient) {
+    return {
+      error: "Choose who this is for, or everyone.",
+      saved: true,
+      shared: false,
+      push: null,
+    };
+  }
   const result = await sendThinkingOfYou(session, {
     circleId,
     secretVariant: false,
     origin: pushOrigin(headerList),
     moodEmoji: emoji,
+    ...(recipient ? { recipient } : {}),
   });
 
   if (result.status !== 200 || !("ok" in result.body)) {

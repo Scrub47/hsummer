@@ -24,7 +24,11 @@ import {
   parseDeliveryChoice,
   scheduleInstant,
 } from "@/lib/schedule/time";
-import { partnerReasonMessage, resolveCouplePartner } from "@/lib/pings/fields";
+import {
+  parseRecipientField,
+  recipientReasonMessage,
+  resolveCircleRecipient,
+} from "@/lib/pings/fields";
 import { enforceSharedLimit } from "@/lib/rate-limit/enforce";
 import { getSession, type Session } from "@/lib/supabase/session";
 
@@ -44,12 +48,13 @@ const UNAVAILABLE =
   "Letters aren't available yet. Apply the week 11 SQL in the Supabase SQL editor, then try again.";
 
 /**
- * Writes a letter to the other person in an active couple. There is no
- * recipient field. The insert uses the caller's session, so row-level
- * security decides. "Now" is delivered by the trigger. "Later" is a time
- * in the recipient's timezone. QStash delivers it then, when those keys
- * are set. Otherwise it arrives the next time one of you opens the app
- * after that time. The push, if it sends, says only that a letter arrived.
+ * Writes a letter to one person. A couple, and any circle of two, uses the
+ * other person. A larger circle sends recipientId. A letter is never sent
+ * to everyone. The insert uses the caller's session, so row-level security
+ * decides. "Now" is delivered by the trigger. "Later" is a time in the
+ * recipient's timezone. QStash delivers it then, when those keys are set.
+ * Otherwise it arrives the next time one of you opens the app after that
+ * time. The push, if it sends, says only that a letter arrived.
  */
 export async function sendLetter(
   _previous: LetterActionState,
@@ -95,7 +100,11 @@ export async function sendLetter(
   });
   if (!delivery.ok) return { error: delivery.error, saved: false };
 
-  const partner = await couplePartner(session, circleId);
+  const partner = await letterRecipient(
+    session,
+    circleId,
+    formData.get("recipientId"),
+  );
   if (!partner.ok) return { error: partner.error, saved: false };
 
   let scheduledFor: string | null = null;
@@ -477,10 +486,16 @@ export async function openLetter(
   return { error: null, body: row.data.body, title: row.data.title };
 }
 
-async function couplePartner(
+async function letterRecipient(
   session: Session,
   circleId: string,
+  recipientField: FormDataEntryValue | null,
 ): Promise<{ ok: true; partnerId: string } | { ok: false; error: string }> {
+  const request = parseRecipientField(recipientField);
+  if (!request) {
+    return { ok: false, error: "Choose who this letter is for." };
+  }
+
   const circle = await session.supabase
     .from("circles")
     .select("circle_type, status")
@@ -504,30 +519,25 @@ async function couplePartner(
     return { ok: false, error: UNAVAILABLE };
   }
 
-  const resolved = resolveCouplePartner({
+  const resolved = resolveCircleRecipient({
     selfId: session.userId,
     circleType: circle.data.circle_type,
     status: circle.data.status,
     activeMemberIds: members.data.map((row) => row.user_id),
+    request,
+    allowBroadcast: false,
   });
   if (!resolved.ok) {
-    if (resolved.reason === "pending") {
-      return {
-        ok: false,
-        error:
-          "Share the invite link first. Letters open once you're both here.",
-      };
-    }
-    if (resolved.reason === "not_couple") {
-      return {
-        ok: false,
-        error: "Choosing a person in a larger circle comes later.",
-      };
-    }
-    return { ok: false, error: partnerReasonMessage(resolved.reason).error };
+    return {
+      ok: false,
+      error: recipientReasonMessage(resolved.reason, "letter").error,
+    };
+  }
+  if (!resolved.toUserId) {
+    return { ok: false, error: "A letter goes to one person." };
   }
 
-  return { ok: true, partnerId: resolved.partnerId };
+  return { ok: true, partnerId: resolved.toUserId };
 }
 
 function stringField(value: FormDataEntryValue | null): string | null {

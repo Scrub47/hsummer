@@ -9,6 +9,7 @@ import {
   JOIN_USER_LIMIT,
   circleRpcFailure,
   circleTitle,
+  circleNeedsPicker,
   circleTypeOffered,
   hashInviteToken,
   hashIp,
@@ -22,15 +23,17 @@ import {
 } from "@/lib/circles/fields";
 
 describe("circle types", () => {
-  it("offers a couple and keeps the other types behind the flag", () => {
-    expect(GROUP_CIRCLE_TYPES_ENABLED).toBe(false);
+  it("offers a couple, a group, a family, and friends", () => {
+    expect(GROUP_CIRCLE_TYPES_ENABLED).toBe(true);
     expect(circleTypeOffered("couple")).toBe(true);
-    expect(circleTypeOffered("group")).toBe(false);
-    expect(circleTypeOffered("family")).toBe(false);
-    expect(circleTypeOffered("friends")).toBe(false);
+    expect(circleTypeOffered("group")).toBe(true);
+    expect(circleTypeOffered("family")).toBe(true);
+    expect(circleTypeOffered("friends")).toBe(true);
     expect(parseCircleType("couple")).toEqual({ ok: true, value: "couple" });
-    expect(parseCircleType("group").ok).toBe(false);
+    expect(parseCircleType("group")).toEqual({ ok: true, value: "group" });
     expect(parseCircleType("nope").ok).toBe(false);
+    expect(circleNeedsPicker(1)).toBe(false);
+    expect(circleNeedsPicker(2)).toBe(true);
   });
 
   it("gives a couple one use and leaves other types open", () => {

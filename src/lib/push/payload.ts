@@ -32,6 +32,13 @@ export const CHECKPOINT_NOTIFICATION_BODY =
 /** Pass the Booth. The lock screen does not say who, or what the photos are. */
 export const PASS_NOTIFICATION_BODY = "It's your turn in the photo booth.";
 
+/** Several group events folded into one buzz. No names. */
+export const GROUP_DIGEST_BODY = "You have new updates in a circle.";
+
+/** Live Together is waiting. No names. */
+export const TOGETHER_NOTIFICATION_BODY =
+  "A photo booth is ready when you are.";
+
 const CIRCLE_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -87,6 +94,36 @@ export function buildPassNotification(
   return {
     title: "Hsummer",
     body: PASS_NOTIFICATION_BODY,
+    url: new URL(path, base.origin).toString(),
+  };
+}
+
+export function buildDigestNotification(
+  origin: string,
+  circleId: string,
+): TestNotification {
+  const base = new URL(origin);
+  const path = CIRCLE_ID_PATTERN.test(circleId)
+    ? `/circles/${circleId}`
+    : "/home";
+  return {
+    title: "Hsummer",
+    body: GROUP_DIGEST_BODY,
+    url: new URL(path, base.origin).toString(),
+  };
+}
+
+export function buildTogetherNotification(
+  origin: string,
+  circleId: string,
+): TestNotification {
+  const base = new URL(origin);
+  const path = CIRCLE_ID_PATTERN.test(circleId)
+    ? `/circles/${circleId}/booth`
+    : "/home";
+  return {
+    title: "Hsummer",
+    body: TOGETHER_NOTIFICATION_BODY,
     url: new URL(path, base.origin).toString(),
   };
 }

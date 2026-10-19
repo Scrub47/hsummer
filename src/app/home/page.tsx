@@ -42,6 +42,9 @@ export default async function HomePage() {
   const activeCouple = circles.circles.find(
     (circle) => circle.status === "active" && circle.circleType === "couple",
   );
+  const activeCircle = circles.circles.find(
+    (circle) => circle.status === "active",
+  );
   const homeMoods = activeCouple
     ? await Promise.all([
         loadCircle(session, activeCouple.id),
@@ -85,7 +88,9 @@ export default async function HomePage() {
               ? "A circle is waiting for one more person. Share the invite link. Thinking of You stays closed until you both are here."
               : activeCouple
                 ? "Your circle is active. Open it for a letter, moods, the memory wall, the bucket list, or Thinking of You."
-                : "Create a circle and send one invite link. Thinking of You starts once you're both here."}
+                : activeCircle
+                  ? "Your circle is open. Letters, Thinking of You, and the photo booth are in there."
+                  : "Create a circle and send one invite link. Thinking of You starts once you're both here."}
           </p>
           <p className="mt-4">
             <Link

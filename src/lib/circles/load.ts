@@ -46,6 +46,8 @@ export type CircleDetail = CircleSummary & {
   isDemo: boolean;
   /** A couple that already lost a member cannot mint another invite. */
   inviteClosed: boolean;
+  /** This viewer's mute. Other people's mute stays off this object. */
+  mutedUntil: string | null;
 };
 
 /**
@@ -106,7 +108,7 @@ export async function loadCircle(
 
   const members = await session.supabase
     .from("circle_members")
-    .select("user_id, joined_at, left_at")
+    .select("user_id, joined_at, left_at, muted_until")
     .eq("circle_id", circleId)
     .order("joined_at", { ascending: true });
 
@@ -162,6 +164,9 @@ export async function loadCircle(
     inviteClosed:
       summary.circleType === "couple" && someoneLeft && memberViews.length < 2,
     members: memberViews,
+    mutedUntil:
+      activeMembers.find((member) => member.user_id === session.userId)
+        ?.muted_until ?? null,
     invite: invite.data
       ? {
           id: invite.data.id,
