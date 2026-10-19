@@ -98,12 +98,32 @@ export async function deleteLetterMessage(messageId: string): Promise<void> {
   }
 }
 
+/**
+ * The URL QStash put in the signature. The query string is not part of the
+ * callback this app publishes, so it is removed before the check. A signature
+ * for a different URL does not pass.
+ */
+export function qstashCallbackUrl(requestUrl: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(requestUrl);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  if (url.username || url.password) return null;
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
 export async function verifyQstashRequest(input: {
   signature: string | null;
   body: string;
+  url: string | null;
 }): Promise<boolean> {
   const config = getQstashConfig();
-  if (!config || !input.signature) return false;
+  if (!config || !input.signature || !input.url) return false;
 
   const receiver = new Receiver({
     currentSigningKey: config.currentSigningKey,
@@ -114,6 +134,7 @@ export async function verifyQstashRequest(input: {
     return await receiver.verify({
       signature: input.signature,
       body: input.body,
+      url: input.url,
     });
   } catch {
     return false;
