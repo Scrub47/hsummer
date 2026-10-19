@@ -264,10 +264,9 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
 
     await openFeature(page, "Letters");
     await isaacLetters.getByRole("button", { name: "Write a letter" }).click();
-    // "Later" is a visible segment label around a 1px radio. Checking the
-    // radio itself hits the label, then the fixed tab bar. Click the label
-    // after it sits in the middle of the viewport.
-    const later = isaacLetters.getByText("Later", { exact: true });
+    // The Later choice is a pill. Its radio is visually hidden, and the fixed
+    // tab bar covers a control scrolled to the bottom edge.
+    const later = isaacLetters.getByTestId("letter-when-later");
     await scrollClearOfTabBar(later);
     await later.click();
     const deliverDate = isaacLetters.getByLabel("Date");
