@@ -80,6 +80,9 @@ export default async function ProfilePage() {
         >
           <h2 className="text-xl font-bold">Account</h2>
           <nav className="flex gap-4 text-sm font-bold">
+            <Link href="/profile/settings" className="underline">
+              Settings
+            </Link>
             <Link href="/privacy" className="underline">
               Privacy
             </Link>

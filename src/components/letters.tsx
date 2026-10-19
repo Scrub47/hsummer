@@ -13,6 +13,7 @@ import {
   type LetterActionState,
 } from "@/app/circles/letter-actions";
 import { EmptyState } from "@/components/empty-state";
+import { trackProductEvent } from "@/lib/analytics/client";
 import { LiveDot } from "@/components/live-dot";
 import { MemberChoice } from "@/components/member-choice";
 import { useCircleLive } from "@/components/use-circle-live";
@@ -166,8 +167,10 @@ function WriteLetter({
   }
 
   useEffect(() => {
-    if (state.saved) formRef.current?.reset();
-  }, [state.saved]);
+    if (!state.saved) return;
+    trackProductEvent("letter_sent");
+    formRef.current?.reset();
+  }, [state]);
 
   return (
     <form ref={formRef} action={formAction} className="flex flex-col gap-4">
@@ -606,6 +609,7 @@ function SealedLetter({
           setBody(result.body);
           setTitle(result.title);
           setPhase("open");
+          trackProductEvent("letter_opened");
           router.refresh();
         });
       },

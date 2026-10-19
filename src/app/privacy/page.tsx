@@ -93,6 +93,26 @@ export default function PrivacyPage() {
           </p>
         </section>
         <section className="flex flex-col gap-3">
+          <h2 className="font-serif text-2xl tracking-tight">Usage numbers</h2>
+          <p>
+            When product analytics is turned on, the site can count visits and a
+            short list of actions: a circle created, a letter sent, a ping, a
+            mood, a photo, a memory. It does not send letter text, names,
+            photos, or your email. The count is tied to your account id only.
+            Settings, under Privacy, has a switch that stops it immediately.
+            With the analytics key unset, none of that code loads.
+          </p>
+          <p>
+            Vercel can also count page views and page speed for the site as a
+            whole. That count is not tied to your name or email.
+          </p>
+          <p>
+            Feedback you send from Settings is a rating and an optional note. It
+            is stored so Isaac can read it. People in your circles cannot see
+            it, and you cannot read it back from the app.
+          </p>
+        </section>
+        <section className="flex flex-col gap-3">
           <h2 className="font-serif text-2xl tracking-tight">The demo</h2>
           <p>
             Try demo signs you into a fictional couple, Alex and Jordan. It is

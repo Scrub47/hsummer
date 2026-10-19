@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  getPostHogPublicConfig,
   getSupabaseBrowserConfig,
   getVapidPublicKey,
   isSecretSupabaseKey,
@@ -11,6 +12,8 @@ const KEYS = [
   "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "NEXT_PUBLIC_VAPID_PUBLIC_KEY",
+  "NEXT_PUBLIC_POSTHOG_KEY",
+  "NEXT_PUBLIC_POSTHOG_HOST",
 ] as const;
 
 const original = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
@@ -74,5 +77,23 @@ describe("public env", () => {
     );
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = `${header}.${anonPayload}.sig`;
     expect(getSupabaseBrowserConfig()?.key.endsWith(".sig")).toBe(true);
+  });
+
+  it("loads PostHog only for a real key and defaults the host", () => {
+    delete process.env.NEXT_PUBLIC_POSTHOG_KEY;
+    delete process.env.NEXT_PUBLIC_POSTHOG_HOST;
+    expect(getPostHogPublicConfig()).toBeNull();
+
+    process.env.NEXT_PUBLIC_POSTHOG_KEY = "your-posthog-key";
+    expect(getPostHogPublicConfig()).toBeNull();
+
+    process.env.NEXT_PUBLIC_POSTHOG_KEY = "phc_example_project_key";
+    expect(getPostHogPublicConfig()).toEqual({
+      key: "phc_example_project_key",
+      host: "https://us.i.posthog.com",
+    });
+
+    process.env.NEXT_PUBLIC_POSTHOG_HOST = "https://eu.i.posthog.com";
+    expect(getPostHogPublicConfig()?.host).toBe("https://eu.i.posthog.com");
   });
 });

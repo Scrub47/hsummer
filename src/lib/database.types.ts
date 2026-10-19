@@ -43,6 +43,8 @@ export type Database = {
           age_confirmed_at: string | null;
           notification_prefs: Record<string, boolean>;
           is_demo: boolean;
+          analytics_opt_out: boolean;
+          feedback_prompt_dismissed_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -50,11 +52,15 @@ export type Database = {
           age_confirmed_at?: string | null;
           notification_prefs?: Record<string, boolean>;
           is_demo?: boolean;
+          analytics_opt_out?: boolean;
+          feedback_prompt_dismissed_at?: string | null;
           created_at?: string;
         };
         Update: {
           age_confirmed_at?: string | null;
           notification_prefs?: Record<string, boolean>;
+          analytics_opt_out?: boolean;
+          feedback_prompt_dismissed_at?: string | null;
         };
         Relationships: [];
       };
@@ -601,6 +607,34 @@ export type Database = {
           endpoint?: string;
           p256dh?: string;
           auth?: string;
+        };
+        Relationships: [];
+      };
+      feedback: {
+        Row: {
+          id: string;
+          user_id: string;
+          rating: number;
+          message: string | null;
+          category: "bug" | "idea" | "love" | null;
+          app_version: string;
+          user_agent: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          rating: number;
+          message?: string | null;
+          category?: "bug" | "idea" | "love" | null;
+          app_version: string;
+          user_agent: string;
+          created_at?: string;
+        };
+        Update: {
+          rating?: number;
+          message?: string | null;
+          category?: "bug" | "idea" | "love" | null;
         };
         Relationships: [];
       };

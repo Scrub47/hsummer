@@ -11,6 +11,7 @@ import {
   type PassActionState,
   type TogetherActionState,
 } from "@/app/circles/booth-actions";
+import { trackProductEvent } from "@/lib/analytics/client";
 import {
   cameraAttempts,
   cameraErrorCopy,
@@ -28,6 +29,7 @@ import {
   BOOTH_FILTERS,
   BOOTH_LAYOUTS,
   BOOTH_THEMES,
+  PASS_FINISHED,
   PASS_PENDING,
   SHOT_JPEG_QUALITY,
   filterLabel,
@@ -236,6 +238,7 @@ function Lobby({
   const [remoteCapture, setRemoteCapture] = useState<string | null>(null);
   const [filter, setFilter] = useState<BoothFilter>("none");
   const [shots, setShots] = useState<Blob[]>([]);
+  const trackedStrip = useRef(false);
   const [shotState, shotAction, shotPending] = useActionState(
     async (previous: PassActionState, formData: FormData) => {
       const shotBytes = await Promise.all(
@@ -245,6 +248,11 @@ function Lobby({
     },
     passInitial,
   );
+  useEffect(() => {
+    if (trackedStrip.current || shotState.notice !== PASS_FINISHED) return;
+    trackedStrip.current = true;
+    trackProductEvent("strip_completed", { mode: "together" });
+  }, [shotState.notice]);
   const [error, setError] = useState<string | null>(null);
   const [countLabel, setCountLabel] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -432,6 +440,7 @@ function Lobby({
       }
       setShots(taken);
       setCountLabel(null);
+      trackProductEvent("booth_photo_taken");
     } catch {
       setError("Those photos couldn't be taken. Pass the booth instead.");
     } finally {

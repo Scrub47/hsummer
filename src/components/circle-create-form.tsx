@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { createCircle, type CreateCircleState } from "@/app/circles/actions";
 import { InfoTip } from "@/components/info-tip";
+import { trackProductEvent } from "@/lib/analytics/client";
 import { writeInviteToken } from "@/lib/circles/invite-token";
 
 const initialState: CreateCircleState = {
@@ -33,6 +34,10 @@ export function CircleCreateForm() {
 
   useEffect(() => {
     if (!state.token || !state.inviteId || !state.circleId) return;
+    const selected = document.querySelector<HTMLInputElement>(
+      'input[name="circleType"]:checked',
+    );
+    trackProductEvent("circle_created", { circle_type: selected?.value });
     writeInviteToken(state.inviteId, state.token);
     router.push(`/circles/${state.circleId}`);
   }, [router, state.circleId, state.inviteId, state.token]);

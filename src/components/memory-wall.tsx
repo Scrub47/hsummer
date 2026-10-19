@@ -16,6 +16,7 @@ import {
   type MemoryActionState,
 } from "@/app/circles/memory-actions";
 import { LiveDot } from "@/components/live-dot";
+import { trackProductEvent } from "@/lib/analytics/client";
 import { PhotoStrip } from "@/components/photo-strip";
 import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
 import { useCircleLive } from "@/components/use-circle-live";
@@ -171,6 +172,7 @@ function AddMemoryForm({
       setFormKey((key) => key + 1);
       setSelected(false);
       setLocalError(null);
+      trackProductEvent("memory_added");
     }
   }, [state]);
 

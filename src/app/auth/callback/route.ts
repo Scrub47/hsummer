@@ -3,8 +3,13 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 
 import { AGE_COOKIE } from "@/lib/account/age";
+import {
+  ANALYTICS_SIGNAL_COOKIE,
+  analyticsSignalCookie,
+} from "@/lib/analytics/signal";
 import { redirectOrigin } from "@/lib/auth/request-origin";
 import { safeNextPath } from "@/lib/auth/safe-next";
+import { isHttpsRequest } from "@/lib/security/headers";
 import { createClient } from "@/lib/supabase/server";
 
 const callbackQuery = z.object({
@@ -61,7 +66,7 @@ export async function GET(request: NextRequest) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
       await stampAge(supabase, request);
-      return NextResponse.redirect(new URL(nextPath, origin));
+      return finishSignIn(request, supabase, nextPath, origin);
     }
     return NextResponse.redirect(new URL("/sign-in?error=link", origin));
   }
@@ -73,7 +78,7 @@ export async function GET(request: NextRequest) {
     });
     if (!error) {
       await stampAge(supabase, request);
-      return NextResponse.redirect(new URL(nextPath, origin));
+      return finishSignIn(request, supabase, nextPath, origin);
     }
     return NextResponse.redirect(new URL("/sign-in?error=link", origin));
   }
@@ -89,6 +94,28 @@ const OTP_TYPES = new Set<EmailOtpType>([
   "email_change",
   "email",
 ]);
+
+async function finishSignIn(
+  request: NextRequest,
+  supabase: NonNullable<Awaited<ReturnType<typeof createClient>>>,
+  nextPath: string,
+  origin: string,
+) {
+  const response = NextResponse.redirect(new URL(nextPath, origin));
+  const { data } = await supabase.auth.getUser();
+  const created = data.user?.created_at;
+  const age = created ? Date.now() - Date.parse(created) : Number.NaN;
+  // A brand-new account, not a returning sign-in. Two minutes is enough
+  // for the redirect and short enough that a second visit does not count.
+  if (Number.isFinite(age) && age >= 0 && age < 2 * 60 * 1000) {
+    response.cookies.set(
+      ANALYTICS_SIGNAL_COOKIE,
+      "signed_up",
+      analyticsSignalCookie(isHttpsRequest(request)),
+    );
+  }
+  return response;
+}
 
 async function stampAge(
   supabase: NonNullable<Awaited<ReturnType<typeof createClient>>>,

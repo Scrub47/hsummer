@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Heart } from "lucide-react";
 
 import { pushToast } from "@/components/toast-host";
+import { trackProductEvent } from "@/lib/analytics/client";
 import { missingName } from "@/lib/pings/fields";
 
 const LONG_PRESS_MS = 700;
@@ -106,6 +107,7 @@ export function ThinkingOfYou({
                 ?.displayName ?? partnerName)
           : partnerName;
       setStatus({ tone: "ok", text: successText(body, label) });
+      trackProductEvent("ping_sent");
       pushToast("Ping sent");
       router.refresh();
     } catch {

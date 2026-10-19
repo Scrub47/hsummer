@@ -15,6 +15,7 @@ import {
   type MoodActionState,
 } from "@/app/circles/mood-actions";
 import { LiveDot } from "@/components/live-dot";
+import { trackProductEvent } from "@/lib/analytics/client";
 import { MemberChoice } from "@/components/member-choice";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { useCircleLive } from "@/components/use-circle-live";
@@ -91,6 +92,8 @@ export function CircleMoods({
       seen.current = state;
       setLatest("set");
       setFormKey((key) => key + 1);
+      trackProductEvent("mood_shared");
+      if (state.shared) trackProductEvent("ping_sent");
     }
   }, [state]);
 

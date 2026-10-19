@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 
+import {
+  posthogKeyConfigured,
+  posthogRewrites,
+} from "./src/lib/analytics/hosts";
 import { staticSecurityHeaders } from "./src/lib/security/headers";
+
+const posthogBrowser = posthogKeyConfigured(process.env.NEXT_PUBLIC_POSTHOG_KEY)
+  ? "./src/lib/analytics/posthog-browser.ts"
+  : "./src/lib/analytics/posthog-browser-stub.ts";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
@@ -13,6 +21,12 @@ const nextConfig: NextConfig = {
   // Static files skip the proxy, so they would not otherwise get these.
   // HSTS is omitted here: the proxy sets it on https document responses.
   // A static file served over http must not advertise HSTS.
+  // PostHog posts to /ingest/e and /ingest/e/. A trailing-slash redirect
+  // would drop the one with the slash before the rewrite can proxy it.
+  skipTrailingSlashRedirect: true,
+  async rewrites() {
+    return posthogRewrites(process.env.NEXT_PUBLIC_POSTHOG_HOST);
+  },
   async headers() {
     const security = staticSecurityHeaders(false);
     return [
@@ -36,6 +50,11 @@ const nextConfig: NextConfig = {
     },
   },
   turbopack: {
+    // An empty or placeholder key resolves the browser module to a stub, so
+    // posthog-js is not in the client bundle until a real key is set.
+    resolveAlias: {
+      "@/lib/analytics/posthog-browser": posthogBrowser,
+    },
     rules: {
       "*.css": {
         loaders: ["@tailwindcss/turbopack"],

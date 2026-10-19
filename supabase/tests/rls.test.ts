@@ -4112,6 +4112,125 @@ describe("phase 4 keeps a third member out of what they were not picked for", ()
   });
 });
 
+describe("feedback is insert-only for the author", () => {
+  const row = {
+    rating: 4,
+    message: "The booth was lovely.",
+    category: "love" as const,
+    app_version: "0.1.0",
+    user_agent: "rls-test",
+  };
+
+  it("lets the author insert and blocks select, update, and delete", async () => {
+    const inserted = await owner.from("feedback").insert({
+      ...row,
+      user_id: ownerId,
+    });
+    expect(inserted.error).toBeNull();
+
+    const selected = await owner.from("feedback").select("*");
+    expect(selected.error).toBeTruthy();
+    expect(selected.data).toBeNull();
+
+    const updated = await owner
+      .from("feedback")
+      .update({ message: "changed" })
+      .eq("user_id", ownerId);
+    expect(updated.error).toBeTruthy();
+
+    const deleted = await owner
+      .from("feedback")
+      .delete()
+      .eq("user_id", ownerId);
+    expect(deleted.error).toBeTruthy();
+
+    const adminRead = await admin
+      .from("feedback")
+      .select("user_id, rating, message, category, app_version")
+      .eq("user_id", ownerId)
+      .eq("message", "The booth was lovely.")
+      .single();
+    expect(adminRead.error).toBeNull();
+    expect(adminRead.data).toEqual({
+      user_id: ownerId,
+      rating: 4,
+      message: "The booth was lovely.",
+      category: "love",
+      app_version: "0.1.0",
+    });
+    expect(adminRead.data).not.toHaveProperty("email");
+  });
+
+  it("rewrites a forged author id and refuses a stranger's read", async () => {
+    const forged = await other.from("feedback").insert({
+      ...row,
+      user_id: ownerId,
+      message: "not theirs",
+    });
+    expect(forged.error).toBeNull();
+
+    const hidden = await other.from("feedback").select("rating");
+    expect(hidden.error).toBeTruthy();
+
+    const stored = await admin
+      .from("feedback")
+      .select("user_id, message")
+      .eq("message", "not theirs")
+      .single();
+    expect(stored.error).toBeNull();
+    expect(stored.data?.user_id).toBe(otherId);
+  });
+
+  it("rejects a bad rating, a long note, and an unknown category", async () => {
+    const rating = await owner.from("feedback").insert({
+      ...row,
+      user_id: ownerId,
+      rating: 9,
+    });
+    expect(rating.error).toBeTruthy();
+
+    const message = await owner.from("feedback").insert({
+      ...row,
+      user_id: ownerId,
+      message: "x".repeat(1001),
+    });
+    expect(message.error).toBeTruthy();
+
+    const category = await owner.from("feedback").insert({
+      ...row,
+      user_id: ownerId,
+      category: "spam" as "bug",
+    });
+    expect(category.error).toBeTruthy();
+  });
+
+  it("stops the sixth note inside an hour", async () => {
+    const email = `rls-feedback-${crypto.randomUUID()}@example.com`;
+    const userId = await createUser(admin, {
+      email,
+      displayName: "Feedback Writer",
+      timezone: "UTC",
+    });
+    const writer = await signIn(apiUrl, anonKey, email);
+    for (let index = 0; index < 5; index += 1) {
+      const extra = await writer.client.from("feedback").insert({
+        ...row,
+        user_id: userId,
+        message: `note ${index}`,
+      });
+      expect(extra.error).toBeNull();
+    }
+    const limited = await writer.client.from("feedback").insert({
+      ...row,
+      user_id: userId,
+      message: "one too many",
+    });
+    expect(limited.error?.message ?? "").toContain(
+      "hsummer_feedback_rate_limited",
+    );
+  });
+});
+
 async function rpc(
   client: Client,
   fn:
