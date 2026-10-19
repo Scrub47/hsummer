@@ -3,12 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches:
-      - main
-      # This branch is included so a push still starts CI when a pull_request
-      # webhook is dropped. Remove it once pull_request runs are reliable.
-      - cursor/redesign-part-2-1955
-  workflow_dispatch:
+    branches: [main]
 
 permissions:
   contents: read
