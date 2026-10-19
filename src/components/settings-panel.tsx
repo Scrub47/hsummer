@@ -37,7 +37,8 @@ const TOGGLES: {
 ];
 
 /**
- * Notifications, quiet hours, time zone, theme, and sounds.
+ * Which updates to send, quiet hours, time zone, theme, and sounds.
+ * Device push lives in the Notifications panel above this form.
  * Privacy (export, leave, delete) is rendered by the page under this form.
  */
 export function SettingsPanel({
@@ -89,7 +90,7 @@ export function SettingsPanel({
           aria-labelledby="notify-heading"
         >
           <h2 id="notify-heading" className="text-lg font-bold">
-            Notifications
+            Alerts
           </h2>
           <ul className="flex flex-col">
             {TOGGLES.map((toggle) => (
