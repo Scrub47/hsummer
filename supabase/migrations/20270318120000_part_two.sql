@@ -13,9 +13,10 @@
 --   * held_notifications — pings the app holds until quiet hours end.
 --     Authenticated clients cannot read or write it. The service role
 --     does, from the server.
---   * recipient_quiet_status — a circle member can ask whether someone
---     they share a circle with is in quiet hours, and the clock time
---     the hold ends. It does not return the rest of their settings.
+--   * recipient_quiet_status(target, at) — a circle member can ask
+--     whether someone they share a circle with is in quiet hours at a
+--     moment (default now()), and the clock time the hold ends. It does
+--     not return the rest of their settings.
 --
 -- Quiet hours themselves live in account_private.notification_prefs,
 -- which stays owner-only. The send path reads that row with the service
@@ -521,7 +522,15 @@ create index if not exists held_notifications_due_idx
 -- Quiet hours, asked by a circle member
 -- ---------------------------------------------------------------------------
 
-create or replace function public.recipient_quiet_status(target uuid)
+-- Adding `at` is a new signature. Drop both shapes so a second paste,
+-- and a database that already has the one-argument function, end on one function.
+drop function if exists public.recipient_quiet_status(uuid);
+drop function if exists public.recipient_quiet_status(uuid, timestamptz);
+
+create or replace function public.recipient_quiet_status(
+  target uuid,
+  at timestamptz default pg_catalog.now()
+)
 returns table (
   in_quiet boolean,
   resume_label text,
@@ -547,7 +556,9 @@ declare
   hour_part integer;
   minute_part integer;
   hour_12 integer;
+  moment timestamptz;
 begin
+  moment := coalesce(at, pg_catalog.now());
   if (select auth.uid()) is null then
     return;
   end if;
@@ -614,10 +625,10 @@ begin
   end if;
 
   begin
-    local_ts := pg_catalog.timezone(zone, pg_catalog.now());
+    local_ts := pg_catalog.timezone(zone, moment);
   exception
     when others then
-      local_ts := pg_catalog.timezone('UTC', pg_catalog.now());
+      local_ts := pg_catalog.timezone('UTC', moment);
   end;
 
   minutes := (extract(hour from local_ts))::integer * 60
@@ -648,10 +659,10 @@ begin
 end;
 $$;
 
-revoke all on function public.recipient_quiet_status(uuid)
+revoke all on function public.recipient_quiet_status(uuid, timestamptz)
   from public, anon, authenticated;
 
-grant execute on function public.recipient_quiet_status(uuid) to authenticated;
+grant execute on function public.recipient_quiet_status(uuid, timestamptz) to authenticated;
 
-comment on function public.recipient_quiet_status(uuid) is
-  'Quiet-hours status for yourself or someone you share an active circle with. An outsider and a former member get no row. The rest of notification_prefs stays hidden.';
+comment on function public.recipient_quiet_status(uuid, timestamptz) is
+  'Quiet-hours status at `at` (default now()) for yourself or someone you share an active circle with. An outsider and a former member get no row. The rest of notification_prefs stays hidden.';

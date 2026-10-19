@@ -47,11 +47,17 @@ describe("part 2 migration", () => {
       definers,
     );
     expect(sql).toContain(
-      "revoke all on function public.recipient_quiet_status(uuid)",
+      "drop function if exists public.recipient_quiet_status(uuid)",
+    );
+    expect(sql).toContain(
+      "drop function if exists public.recipient_quiet_status(uuid, timestamptz)",
+    );
+    expect(sql).toContain(
+      "revoke all on function public.recipient_quiet_status(uuid, timestamptz)",
     );
     expect(sql).toContain("from public, anon, authenticated");
     expect(sql).not.toContain(
-      "grant execute on function public.recipient_quiet_status(uuid) to anon",
+      "grant execute on function public.recipient_quiet_status(uuid, timestamptz) to anon",
     );
   });
 

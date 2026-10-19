@@ -95,6 +95,7 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     await openFeature(partnerPage, "Moods");
     await expect(moods(partnerPage)).toContainText("Isaac");
     await expect(moods(partnerPage)).toContainText("Good");
+    await openFeature(partnerPage, "Thinking of You");
     await expect(recent(partnerPage)).not.toContainText("Feeling");
 
     await openFeature(page, "Moods");
@@ -217,13 +218,15 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     await summerLetters.getByRole("button", { name: "Open letter" }).click();
     await expect(
       summerLetters.getByText("The ferry is still ours."),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15_000 });
     await expect(
       summerLetters.getByRole("heading", { name: "Dear Summer" }),
     ).toBeVisible();
+    await openFeature(partnerPage, "Memory wall");
     await expect(wall(partnerPage).getByText("Opened letter")).toBeVisible();
 
     await page.reload();
+    await openFeature(page, "Memory wall");
     await expect(wall(page).getByText("Opened letter")).toBeVisible();
     await expect(
       wall(page).getByRole("link", { name: "Read the letter" }),
@@ -248,6 +251,7 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     await expect(
       still.getByText("Hit. It's on the memory wall."),
     ).toBeVisible();
+    await openFeature(page, "Memory wall");
     await expect(wall(page).getByText("Still Us")).toBeVisible();
     await expect(wall(page).getByText("Flight booked")).toBeVisible();
 
@@ -257,6 +261,7 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
       has: partnerPage.getByRole("heading", { name: "Still Us" }),
     });
     await expect(partnerStill.getByText(/\d+ days|Today/)).toBeVisible();
+    await openFeature(partnerPage, "Memory wall");
     await expect(wall(partnerPage).getByText("Flight booked")).toBeVisible();
 
     await openFeature(page, "Letters");

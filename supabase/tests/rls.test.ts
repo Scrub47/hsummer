@@ -4449,18 +4449,19 @@ describe("part 2 keeps reactions, replies, and pins with the people who can see 
   });
 
   it("tells a circle member about quiet hours and tells an outsider and a former member nothing", async () => {
-    const now = new Date();
-    const minutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-    const start = (minutes + 24 * 60 - 30) % (24 * 60);
-    const end = (minutes + 31) % (24 * 60);
-    const fmt = (value: number) =>
-      `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
+    const zone = await other
+      .from("profiles")
+      .update({ timezone: "America/Los_Angeles" })
+      .eq("id", otherId)
+      .select("id");
+    expect(zone.error).toBeNull();
+
     const saved = await other
       .from("account_private")
       .update({
         notification_prefs: {
           pings: true,
-          quiet: { enabled: true, start: fmt(start), end: fmt(end) },
+          quiet: { enabled: true, start: "22:00", end: "08:00" },
         },
       })
       .eq("user_id", otherId)
@@ -4468,21 +4469,93 @@ describe("part 2 keeps reactions, replies, and pins with the people who can see 
     expect(saved.error).toBeNull();
     expect(saved.data?.length).toBe(1);
 
-    const partner = await owner.rpc("recipient_quiet_status", {
-      target: otherId,
-    });
-    expect(partner.error).toBeNull();
-    expect(partner.data?.[0]?.in_quiet).toBe(true);
-    expect(partner.data?.[0]?.pings_enabled).toBe(true);
-    expect(partner.data?.[0]?.resume_label).toMatch(/AM|PM/);
+    async function status(at?: string) {
+      return owner.rpc("recipient_quiet_status", {
+        target: otherId,
+        ...(at ? { at } : {}),
+      });
+    }
+
+    // 22:30 Pacific on 19 Oct 2026 (PDT, UTC-7). Overnight window wraps midnight.
+    const evening = await status("2026-10-20T05:30:00.000Z");
+    expect(evening.error).toBeNull();
+    expect(evening.data?.[0]?.in_quiet).toBe(true);
+    expect(evening.data?.[0]?.pings_enabled).toBe(true);
+    expect(evening.data?.[0]?.resume_label).toBe("8 AM");
+
+    // 00:30 Pacific, still inside the wrap.
+    const afterMidnight = await status("2026-10-20T07:30:00.000Z");
+    expect(afterMidnight.data?.[0]?.in_quiet).toBe(true);
+    expect(afterMidnight.data?.[0]?.resume_label).toBe("8 AM");
+
+    // 21:00 Pacific, before the window opens.
+    const before = await status("2026-10-20T04:00:00.000Z");
+    expect(before.data?.[0]?.in_quiet).toBe(false);
+    expect(before.data?.[0]?.resume_label).toBeNull();
+
+    // 08:00 Pacific is the end, and the end minute is not inside the window.
+    const resume = await status("2026-10-20T15:00:00.000Z");
+    expect(resume.data?.[0]?.in_quiet).toBe(false);
+    expect(resume.data?.[0]?.resume_label).toBeNull();
+
+    const daytime = await other
+      .from("profiles")
+      .update({ timezone: "America/New_York" })
+      .eq("id", otherId)
+      .select("id");
+    expect(daytime.error).toBeNull();
+    const sameDay = await other
+      .from("account_private")
+      .update({
+        notification_prefs: {
+          pings: true,
+          quiet: { enabled: true, start: "09:00", end: "17:00" },
+        },
+      })
+      .eq("user_id", otherId)
+      .select("user_id");
+    expect(sameDay.error).toBeNull();
+
+    // 10:00 Eastern (EDT, UTC-4). Same-day window, not a midnight wrap.
+    const inside = await status("2026-10-20T14:00:00.000Z");
+    expect(inside.data?.[0]?.in_quiet).toBe(true);
+    expect(inside.data?.[0]?.resume_label).toBe("5 PM");
+
+    // 08:30 Eastern, before 09:00.
+    const early = await status("2026-10-20T12:30:00.000Z");
+    expect(early.data?.[0]?.in_quiet).toBe(false);
+
+    // 17:00 Eastern, the end minute is outside.
+    const closing = await status("2026-10-20T21:00:00.000Z");
+    expect(closing.data?.[0]?.in_quiet).toBe(false);
+
+    const off = await other
+      .from("account_private")
+      .update({
+        notification_prefs: {
+          pings: true,
+          quiet: { enabled: true, start: "09:00", end: "09:00" },
+        },
+      })
+      .eq("user_id", otherId);
+    expect(off.error).toBeNull();
+    const equal = await status("2026-10-20T14:00:00.000Z");
+    expect(equal.data?.[0]?.in_quiet).toBe(false);
+
+    const live = await owner.rpc("recipient_quiet_status", { target: otherId });
+    expect(live.error).toBeNull();
+    expect(typeof live.data?.[0]?.in_quiet).toBe("boolean");
+    expect(live.data?.[0]?.pings_enabled).toBe(true);
 
     const outside = await outsider.rpc("recipient_quiet_status", {
       target: otherId,
+      at: "2026-10-20T14:00:00.000Z",
     });
     expect(outside.data ?? []).toEqual([]);
 
     const former = await leaver.rpc("recipient_quiet_status", {
       target: otherId,
+      at: "2026-10-20T14:00:00.000Z",
     });
     expect(former.data ?? []).toEqual([]);
 
@@ -4496,6 +4569,12 @@ describe("part 2 keeps reactions, replies, and pins with the people who can see 
       deliver_at: new Date().toISOString(),
     });
     expect(planted.error).toBeTruthy();
+
+    const restored = await other
+      .from("profiles")
+      .update({ timezone: "Europe/Paris" })
+      .eq("id", otherId);
+    expect(restored.error).toBeNull();
   });
 });
 

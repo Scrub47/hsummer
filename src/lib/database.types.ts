@@ -959,7 +959,7 @@ export type Database = {
         Returns: number;
       };
       recipient_quiet_status: {
-        Args: { target: string };
+        Args: { target: string; at?: string };
         Returns: {
           in_quiet: boolean;
           resume_label: string | null;
