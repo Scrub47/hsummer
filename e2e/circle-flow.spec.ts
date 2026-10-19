@@ -276,7 +276,7 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     const deliverTime = isaacLetters.getByLabel("Time");
     await scrollClearOfTabBar(deliverTime);
     await deliverTime.fill("08:00");
-    const letterBody = isaacLetters.getByLabel("Letter");
+    const letterBody = isaacLetters.getByRole("textbox", { name: "Letter" });
     await scrollClearOfTabBar(letterBody);
     await letterBody.fill("Open this in the morning.");
     const sendLetter = isaacLetters.getByRole("button", {
