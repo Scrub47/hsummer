@@ -264,7 +264,8 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
 
     await openFeature(page, "Letters");
     await isaacLetters.getByRole("button", { name: "Write a letter" }).click();
-    await isaacLetters.getByLabel("Later").check();
+    // The Later choice is a pill. Its radio is visually hidden, so click the pill.
+    await isaacLetters.getByTestId("letter-when-later").click();
     await isaacLetters.getByLabel("Date").fill("2027-06-01");
     await isaacLetters.getByLabel("Time").fill("08:00");
     await isaacLetters.getByLabel("Letter").fill("Open this in the morning.");

@@ -192,7 +192,7 @@ function WriteLetter({
             />
             Now
           </label>
-          <label>
+          <label data-testid="letter-when-later">
             <input
               type="radio"
               name="when"
