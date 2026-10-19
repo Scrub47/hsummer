@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { demoWriteMessage } from "@/lib/account/copy";
 import {
   JOIN_IP_LIMIT,
   JOIN_USER_LIMIT,
@@ -58,6 +59,9 @@ export async function redeemInvite(formData: FormData): Promise<void> {
 
   if (error || !data?.[0]) {
     console.error("redeem_invite failed.", error?.message);
+    if (demoWriteMessage(error?.message)) {
+      redirect(`${joinPath(token)}?error=demo`);
+    }
     redirect(`${joinPath(token)}?error=missing`);
   }
 

@@ -11,6 +11,7 @@
 
 import { z } from "zod";
 
+import { demoWriteMessage } from "@/lib/account/copy";
 import { isCircleId } from "@/lib/bucket/fields";
 import { MEMORY_CAPTION_MAX, MEMORY_MAX_BYTES } from "@/lib/memories/fields";
 
@@ -289,6 +290,8 @@ export function boothWriteFailure(
   code: string | undefined,
 ): string | null {
   if (!message && !code) return null;
+  const demo = demoWriteMessage(message);
+  if (demo) return demo;
   if (
     message?.includes("create_pass_booth") ||
     message?.includes("submit_pass_shots") ||

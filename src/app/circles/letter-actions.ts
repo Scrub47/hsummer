@@ -359,7 +359,12 @@ export async function rescheduleLetter(
     .eq("circle_id", circleId)
     .eq("from_user_id", session.userId)
     .maybeSingle();
-  if (current.error || !current.data || current.data.status !== "scheduled") {
+  if (
+    current.error ||
+    !current.data ||
+    current.data.status !== "scheduled" ||
+    !current.data.to_user_id
+  ) {
     return { error: "That letter can't be changed.", saved: false };
   }
 

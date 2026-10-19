@@ -77,6 +77,18 @@ export async function POST(request: Request) {
     );
   }
 
+  const aged = await admin
+    .from("account_private")
+    .update({ age_confirmed_at: new Date().toISOString() })
+    .eq("user_id", created.user.id);
+  if (aged.error) {
+    console.error("Test age confirmation was not saved.", aged.error.code);
+    return NextResponse.json(
+      { error: "Could not sign in the test user." },
+      { status: 500 },
+    );
+  }
+
   const { data: link, error: linkError } = await admin.auth.admin.generateLink({
     type: "magiclink",
     email: parsed.email,

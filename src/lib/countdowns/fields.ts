@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 
+import { demoWriteMessage } from "@/lib/account/copy";
 import { isCircleId } from "@/lib/bucket/fields";
 
 export const COUNTDOWN_LABEL_MAX = 80;
@@ -105,6 +106,8 @@ export function countdownWriteFailure(
   code: string | undefined,
 ): string | null {
   if (!message && !code) return null;
+  const demo = demoWriteMessage(message);
+  if (demo) return demo;
   if (
     code === "42P01" ||
     code === "PGRST205" ||

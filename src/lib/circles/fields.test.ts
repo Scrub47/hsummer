@@ -104,6 +104,9 @@ describe("invite copy", () => {
     expect(circleRpcFailure("hsummer_rate_limited")).toBe(
       INVITE_RATE_LIMIT_MESSAGE,
     );
+    expect(circleRpcFailure("hsummer_couple_closed")).toMatch(/new circle/i);
+    expect(circleRpcFailure("hsummer_demo_readonly")).toMatch(/demo/i);
+    expect(inviteStateMessage("demo")).toMatch(/demo/i);
     expect(INVITE_RATE_LIMIT_MESSAGE).toMatch(/wait/i);
     expect(inviteStateMessage("joined")).toBeNull();
     expect(inviteStateMessage("ready")).toBeNull();

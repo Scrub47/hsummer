@@ -3454,6 +3454,299 @@ describe("a pass booth stays between its two people until the strip is finished"
   });
 });
 
+describe("leaving, deletion, export storage, and the demo circle", () => {
+  it("keeps a note when someone leaves, and removes it when they ask", async () => {
+    const nonce = crypto.randomUUID();
+    const keeperEmail = `rls-keep-${nonce}@example.com`;
+    const removerEmail = `rls-remove-${nonce}@example.com`;
+    await createUser(admin, {
+      email: keeperEmail,
+      displayName: "Keep Person",
+      timezone: "UTC",
+    });
+    const removerId = await createUser(admin, {
+      email: removerEmail,
+      displayName: "Remove Person",
+      timezone: "UTC",
+    });
+    const keeper = (await signIn(apiUrl, anonKey, keeperEmail)).client;
+    const remover = (await signIn(apiUrl, anonKey, removerEmail)).client;
+
+    const kept = await rpc(keeper, "create_circle", {
+      circle_name: "Keep notes",
+      circle_type: "couple",
+    });
+    await rpc(remover, "redeem_invite", {
+      raw_token: kept.token,
+      ip_hash: freshIp(),
+    });
+    const note = await keeper
+      .from("memories")
+      .insert({
+        circle_id: kept.circle_id as string,
+        kind: "note",
+        body: "Stay after I leave",
+        occurred_on: utcDay(0),
+      })
+      .select("id")
+      .single();
+    expect(note.error).toBeNull();
+
+    const stayed = await keeper.rpc("leave_circle", {
+      target_circle: kept.circle_id as string,
+      remove_content: false,
+    });
+    expect(stayed.error).toBeNull();
+    const stillThere = await remover
+      .from("memories")
+      .select("body")
+      .eq("id", note.data?.id ?? "");
+    expect(stillThere.data).toEqual([{ body: "Stay after I leave" }]);
+
+    const removedCircle = await rpc(remover, "create_circle", {
+      circle_name: "Remove notes",
+      circle_type: "group",
+    });
+    const gone = await remover
+      .from("memories")
+      .insert({
+        circle_id: removedCircle.circle_id as string,
+        kind: "note",
+        body: "Delete me",
+        occurred_on: utcDay(0),
+      })
+      .select("id")
+      .single();
+    expect(gone.error).toBeNull();
+    const wiped = await remover.rpc("leave_circle", {
+      target_circle: removedCircle.circle_id as string,
+      remove_content: true,
+    });
+    expect(wiped.error).toBeNull();
+    const leftover = await admin
+      .from("memories")
+      .select("id")
+      .eq("id", gone.data?.id ?? "");
+    expect(leftover.data).toEqual([]);
+    expect(removerId).toBeTruthy();
+  });
+
+  it("cancels a scheduled letter when its sender leaves", async () => {
+    const nonce = crypto.randomUUID();
+    const senderEmail = `rls-letter-leave-${nonce}@example.com`;
+    const recipientEmail = `rls-letter-stay-${nonce}@example.com`;
+    const senderId = await createUser(admin, {
+      email: senderEmail,
+      displayName: "Letter Sender",
+      timezone: "UTC",
+    });
+    const recipientId = await createUser(admin, {
+      email: recipientEmail,
+      displayName: "Letter Stay",
+      timezone: "UTC",
+    });
+    const sender = (await signIn(apiUrl, anonKey, senderEmail)).client;
+    const recipient = (await signIn(apiUrl, anonKey, recipientEmail)).client;
+    const created = await rpc(sender, "create_circle", {
+      circle_name: "Scheduled goodbye",
+      circle_type: "couple",
+    });
+    await rpc(recipient, "redeem_invite", {
+      raw_token: created.token,
+      ip_hash: freshIp(),
+    });
+    const later = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const letter = await admin
+      .from("letters")
+      .insert({
+        circle_id: created.circle_id as string,
+        from_user_id: senderId,
+        to_user_id: recipientId,
+        category: "when-you-miss-me",
+        body: "Open this next week",
+        design: "minimal",
+        scheduled_for: later,
+      })
+      .select("id, status")
+      .single();
+    expect(letter.error).toBeNull();
+    expect(letter.data?.status).toBe("scheduled");
+
+    const left = await sender.rpc("leave_circle", {
+      target_circle: created.circle_id as string,
+      remove_content: false,
+    });
+    expect(left.error).toBeNull();
+    const after = await admin
+      .from("letters")
+      .select("status")
+      .eq("id", letter.data?.id ?? "")
+      .single();
+    expect(after.data?.status).toBe("cancelled");
+  });
+
+  it("refuses a new couple invite after one person has left", async () => {
+    const nonce = crypto.randomUUID();
+    const hostEmail = `rls-closed-host-${nonce}@example.com`;
+    const guestEmail = `rls-closed-guest-${nonce}@example.com`;
+    await createUser(admin, {
+      email: hostEmail,
+      displayName: "Closed Host",
+      timezone: "UTC",
+    });
+    await createUser(admin, {
+      email: guestEmail,
+      displayName: "Closed Guest",
+      timezone: "UTC",
+    });
+    const host = (await signIn(apiUrl, anonKey, hostEmail)).client;
+    const guest = (await signIn(apiUrl, anonKey, guestEmail)).client;
+    const created = await rpc(host, "create_circle", {
+      circle_name: "Closed couple",
+      circle_type: "couple",
+    });
+    await rpc(guest, "redeem_invite", {
+      raw_token: created.token,
+      ip_hash: freshIp(),
+    });
+    const left = await guest.rpc("leave_circle", {
+      target_circle: created.circle_id as string,
+      remove_content: false,
+    });
+    expect(left.error).toBeNull();
+    const again = await host.rpc("regenerate_invite", {
+      target_circle: created.circle_id as string,
+    });
+    expect(again.error?.message).toContain("hsummer_couple_closed");
+  });
+
+  it("deletes the login, push row, and avatar, and keeps a note as Former member", async () => {
+    const nonce = crypto.randomUUID();
+    const email = `rls-delete-${nonce}@example.com`;
+    const userId = await createUser(admin, {
+      email,
+      displayName: "Delete Me",
+      timezone: "UTC",
+    });
+    const client = (await signIn(apiUrl, anonKey, email)).client;
+    const created = await rpc(client, "create_circle", {
+      circle_name: "Leaving forever",
+      circle_type: "couple",
+    });
+    const note = await client
+      .from("memories")
+      .insert({
+        circle_id: created.circle_id as string,
+        kind: "note",
+        body: "Former member wrote this",
+        occurred_on: utcDay(0),
+      })
+      .select("id")
+      .single();
+    expect(note.error).toBeNull();
+
+    const endpoint = `https://push.example/delete/${nonce}`;
+    const device = await client.from("push_subscriptions").insert({
+      user_id: userId,
+      endpoint,
+      p256dh: "abc",
+      auth: "def",
+    });
+    expect(device.error).toBeNull();
+
+    const objectPath = `${userId}/${crypto.randomUUID()}.png`;
+    const upload = await client.storage
+      .from("avatars")
+      .upload(objectPath, png, {
+        contentType: "image/png",
+        upsert: false,
+      });
+    expect(upload.error).toBeNull();
+
+    const deleted = await client.rpc("delete_own_account", {
+      remove_content: false,
+    });
+    expect(deleted.error).toBeNull();
+
+    const memory = await admin
+      .from("memories")
+      .select("created_by, body")
+      .eq("id", note.data?.id ?? "")
+      .single();
+    expect(memory.data).toMatchObject({
+      created_by: null,
+      body: "Former member wrote this",
+    });
+
+    const pushes = await admin
+      .from("push_subscriptions")
+      .select("endpoint")
+      .eq("endpoint", endpoint);
+    expect(pushes.data).toEqual([]);
+
+    const file = await admin.storage.from("avatars").download(objectPath);
+    expect(file.data).toBeNull();
+
+    const account = await admin.auth.admin.getUserById(userId);
+    expect(account.data.user).toBeNull();
+  });
+
+  it("hides the demo circle from an outsider and refuses a demo write", async () => {
+    const alex = "a11ce000-0000-4000-8000-0000000000a1";
+    const jordan = "a11ce000-0000-4000-8000-0000000000b2";
+    const circleId = "a11ce000-0000-4000-8000-0000000000c3";
+    await admin.auth.admin.deleteUser(alex);
+    await admin.auth.admin.deleteUser(jordan);
+    const alexEmail = "alex.demo.rls@example.com";
+    const jordanEmail = "jordan.demo.rls@example.com";
+    const alexCreated = await admin.auth.admin.createUser({
+      id: alex,
+      email: alexEmail,
+      password,
+      email_confirm: true,
+      user_metadata: { display_name: "Alex", timezone: "America/Los_Angeles" },
+    });
+    const jordanCreated = await admin.auth.admin.createUser({
+      id: jordan,
+      email: jordanEmail,
+      password,
+      email_confirm: true,
+      user_metadata: { display_name: "Jordan", timezone: "America/New_York" },
+    });
+    expect(alexCreated.error).toBeNull();
+    expect(jordanCreated.error).toBeNull();
+    createdUserIds.push(alex, jordan);
+
+    const seeded = await admin.rpc("seed_demo_circle", { photo_bytes: 128 });
+    expect(seeded.error).toBeNull();
+    expect(seeded.data?.circleId).toBe(circleId);
+
+    const hidden = await owner.from("circles").select("id").eq("id", circleId);
+    expect(hidden.data).toEqual([]);
+
+    const alexClient = (await signIn(apiUrl, anonKey, alexEmail)).client;
+    const write = await alexClient.from("memories").insert({
+      circle_id: circleId,
+      kind: "note",
+      body: "A reviewer should not save this",
+      occurred_on: utcDay(0),
+    });
+    expect(write.error?.message).toContain("hsummer_demo_readonly");
+
+    const purge = await owner.rpc("purge_archived_circles");
+    expect(purge.error).not.toBeNull();
+    const seedAsUser = await owner.rpc("seed_demo_circle", { photo_bytes: 8 });
+    expect(seedAsUser.error).not.toBeNull();
+
+    const listed = await owner.storage.from("exports").list("pending");
+    expect(listed.data ?? []).toEqual([]);
+    const download = await fetch(
+      `${apiUrl}/storage/v1/object/public/exports/pending/nope.zip`,
+    );
+    expect(download.ok).toBe(false);
+  });
+});
+
 async function rpc(
   client: Client,
   fn:

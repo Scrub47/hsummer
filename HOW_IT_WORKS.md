@@ -1,6 +1,6 @@
 # How Hsummer works
 
-This is the map of the repository as it stands after Pass the Booth. It is written for reading the code, not as a changelog.
+This is the map of the repository as it stands after launch readiness (leave, account deletion, personal export, and the seeded demo). It is written for reading the code, not as a changelog.
 
 Hsummer is a private space shared by a Circle: a couple, a few friends, or a family. Profiles came first. Who may read one is a single function, and that function now includes people who share an active circle. Circles, memberships, invite links, pings, a shared bucket list, a current mood per person, and a memory wall are in the database. A 1:1 ping is readable only by the sender and the recipient. A bucket item is readable and editable by every active member of that circle. A mood is readable by active members and writable only by the person it belongs to. A memory is readable by every active member when its visibility is the whole circle, and only by the author plus the people they picked when visibility is selected. A letter is readable by the sender, and by the recipient only after it is delivered. Opening it adds one memory that only those two can see. A couple circle also has one Still Us countdown. Hitting a checkpoint adds one memory the whole circle can see. The photo booth draws a strip on the phone. Solo adds one memory the whole circle can see only when you save. Pass the Booth adds that memory only after both people have filled their frames.
 
@@ -27,6 +27,11 @@ Next.js (App Router) on Vercel
   src/app/api/push/*               save a device, send a test push
   src/app/api/pings                Thinking of You, then push the partner
   src/app/api/letters/deliver      QStash callback for a scheduled letter
+  src/app/circles/leave-actions.ts leave one circle
+  src/app/profile/delete-actions.ts delete the signed-in account
+  src/app/api/account/export       ZIP of what this person can see
+  src/app/api/demo/enter           sign in as the fictional demo couple
+  src/app/api/cron/daily           purge, sweep, demo reset, old exports
         │
         ▼
 Supabase
@@ -38,7 +43,7 @@ Supabase
             booth_sessions, booth_contributors, booth_shots
   Realtime: bucket_items, current_moods, memories, letters,
             countdowns, and checkpoints
-  Storage: private buckets "avatars", "memories", and "backups"
+  Storage: private buckets "avatars", "memories", "backups", and "exports"
   Row Level Security: circle rows for active members; a 1:1 ping
                       or letter only for its sender and recipient
 ```
@@ -440,3 +445,35 @@ Copying the `avatars` and `memories` buckets into the weekly backup is later. Ca
 | `supabase/migrations/`                   | SQL applied to the database                                                    |
 | `supabase/tests/rls.test.ts`             | Two-user RLS checks, including the backups bucket                              |
 | `supabase/config.toml`                   | Local Supabase CLI config                                                      |
+| `src/app/circles/leave-actions.ts`       | Leave one circle and cancel its QStash messages                                |
+| `src/app/profile/delete-actions.ts`      | Delete the signed-in account                                                   |
+| `src/components/leave-circle-form.tsx`   | Keep or remove contributions                                                   |
+| `src/components/delete-account-form.tsx` | Confirm account deletion                                                       |
+| `src/components/export-button.tsx`       | Download the personal ZIP                                                      |
+| `src/lib/export/build.ts`                | RLS-scoped JSON plus the image bytes                                           |
+| `src/lib/export/zip.ts`                  | Store-method ZIP, no extra dependency                                          |
+| `src/lib/demo/reset.ts`                  | Rebuild Alex and Jordan and upload the generated JPEG                          |
+| `src/app/api/demo/enter/route.ts`        | Reviewer session as Alex                                                       |
+| `src/app/api/cron/daily/route.ts`        | Daily purge, sweep, demo reset, export cleanup                                 |
+| `src/app/api/health/route.ts`            | Liveness check that does not read the database                                 |
+| `src/lib/monitor/sentry.ts`              | Optional server-only Sentry store API                                          |
+| `src/app/confirm-age/page.tsx`           | 13+ confirmation for a session that does not have one yet                      |
+| `vercel.json`                            | Daily cron at 11:00 UTC. No region override                                    |
+
+## Leave, delete, export, and the demo
+
+`public.leave_circle` is the only way the app ends a membership. It sets `left_at`, cancels undelivered letters to or from that person, cancels open booth sessions they are in, and returns any QStash message ids so `src/lib/account/cancel-messages.ts` can delete those deliveries. The default keeps photos, notes, sent letters, and booth frames. `remove_content` deletes those in this circle only. Shared plans (bucket list, countdown, checkpoints) stay. A strip that was only theirs is deleted. A shared strip keeps the other person's frames and shows an empty frame where theirs was. That is why `booth_shots.user_id` is now nullable and the contributor foreign key no longer cascades into the shot row.
+
+A couple that has dropped below two active members, and already has someone who left, cannot mint a new invite. `private.circle_invites_couple_closed` raises `hsummer_couple_closed`. The history stays. The person who remains starts a new circle for someone else. A brand-new pending couple can still invite.
+
+`public.delete_own_account` leaves every circle first, then deletes pings, moods, push subscriptions, and avatar objects under that user's folder. It then disables six author-lock triggers, deletes `auth.users`, and enables the triggers again. `ON DELETE SET NULL` clears `created_by`, `from_user_id`, and a kept `to_user_id` or booth `user_id`, which the app shows as Former member. The disable is required because those guards refuse to change the author columns. It is transactional: a failed delete rolls the disable back. Membership rows themselves cascade away with the login, so the circle's status is refreshed while the person is still a member, inside `depart_circle`.
+
+`refresh_circle_status` sets `archived_at` the first time a circle reaches zero members and clears it if someone rejoins. `purge_archived_circles` deletes non-demo circles whose `archived_at` is at least 30 days old. It refuses a call when `auth.uid()` is set, and only `service_role` can execute it.
+
+`POST /api/account/export` builds a ZIP with `src/lib/export/build.ts`. The queries use the signed-in session, so Row Level Security drops other people's members-only letters and selected memories. Image bytes are downloaded from the private memories bucket and stored in the ZIP under `files/`. Push keys, emails, and QStash ids are not included. An archive of 3.5 MB or less is returned directly. A larger one is uploaded to the private `exports` bucket at `pending/{timestamp}_{userId}_{uuid}.zip` and the response is a 10-minute signed URL. The daily cron deletes objects in that folder whose timestamp is older than an hour. Three exports per hour per person.
+
+The demo is one circle, id `a11ce000-0000-4000-8000-0000000000c3`, named Alex & Jordan. Alex (`alex.demo@hsummer.invalid`) is who Try demo signs in as. Jordan is the other member. `public.seed_demo_circle` rebuilds only that circle's fictional rows. Triggers refuse writes unless `hsummer.demo_seed` is `1`, which is set only inside the seed. A real account cannot join the demo circle. A demo account cannot join a real circle, leave, upload, or subscribe to push. The service-role upload of the generated JPEG is allowed because `auth.uid()` is null. The password is random and is not stored. The landing-page form posts to `POST /api/demo/enter`, which resets the circle, then signs the browser in as Alex.
+
+Sign-in asks for a 13+ confirmation after the "not configured" check, so the smoke test still sees that message when Supabase is missing. The server sets an httpOnly cookie `hsummer_age` for one hour. The auth callback writes `account_private.age_confirmed_at` when that cookie is present. The proxy sends a signed-in person with a null timestamp to `/confirm-age`. A query error, or a missing row, does not lock the app. Playwright's test sign-in sets the timestamp itself.
+
+`SENTRY_DSN` is optional and server-only. `src/lib/monitor/sentry.ts` posts to Sentry's store API. The browser posts a short message to `/api/client-error`. With the DSN empty, both paths do nothing. `GET /api/health` is the uptime check. `vercel.json` schedules the daily job at 11:00 UTC and does not set a Vercel region. Regions stay Supabase Oregon (`us-west-2`), Vercel `pdx1`, and Upstash Redis `us-west-2`.

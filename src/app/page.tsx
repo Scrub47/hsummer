@@ -4,11 +4,17 @@ import { redirect } from "next/navigation";
 import { InstallHint } from "@/components/install-hint";
 import { getUserId } from "@/lib/supabase/session";
 
-export default async function LandingPage() {
+export default async function LandingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ deleted?: string | string[] }>;
+}) {
   // The installed app opens here on some phones. A signed-in person should
   // land in the app, not on the sign-in pitch.
   const userId = await getUserId();
   if (userId) redirect("/home");
+  const params = await searchParams;
+  const deleted = params.deleted === "1";
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-6 py-10">
@@ -29,6 +35,11 @@ export default async function LandingPage() {
           A private shared space for a couple, a few friends, or a family. What
           you send stays between the people in that Circle.
         </p>
+        {deleted ? (
+          <p className="mt-6 max-w-xl text-sm leading-6" role="status">
+            Your account was deleted.
+          </p>
+        ) : null}
         <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-center">
           <Link
             href="/sign-in"
@@ -36,8 +47,17 @@ export default async function LandingPage() {
           >
             Sign in
           </Link>
+          <form action="/api/demo/enter" method="post">
+            <button
+              type="submit"
+              className="inline-flex h-12 items-center justify-center rounded-full border border-line bg-card px-6 text-sm font-medium"
+            >
+              Try demo
+            </button>
+          </form>
           <p className="text-sm text-foreground/70">
-            Google or an email link. No password.
+            Google or an email link. No password. The demo is a fictional
+            couple.
           </p>
         </div>
         <div className="mt-10 max-w-xl">

@@ -14,6 +14,8 @@ const SECRET_NAMES = [
   "QSTASH_TOKEN",
   "QSTASH_CURRENT_SIGNING_KEY",
   "QSTASH_NEXT_SIGNING_KEY",
+  "CRON_SECRET",
+  "SENTRY_DSN",
 ];
 
 function walk(dir: string): string[] {

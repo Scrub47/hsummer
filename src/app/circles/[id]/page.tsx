@@ -3,6 +3,8 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { DemoBanner } from "@/components/demo-banner";
+import { LeaveCircleForm } from "@/components/leave-circle-form";
 import { BucketList } from "@/components/bucket-list";
 import { CircleMoods } from "@/components/circle-moods";
 import { InvitePanel } from "@/components/invite-panel";
@@ -110,7 +112,17 @@ export default async function CirclePage({
           <h1 className="mt-3 font-serif text-5xl tracking-tight">
             {circle.title}
           </h1>
-          {circle.status === "pending" ? (
+          {circle.isDemo ? (
+            <div className="mt-4">
+              <DemoBanner />
+            </div>
+          ) : null}
+          {circle.isDemo ? (
+            <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
+              Look around Alex and Jordan&apos;s circle. Nothing you type is
+              saved.
+            </p>
+          ) : circle.status === "pending" ? (
             <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
               This circle is waiting for one more person. Share the invite link.
               You can set a mood, set the Still Us date, open the photo booth,
@@ -260,6 +272,8 @@ export default async function CirclePage({
           circleId={circle.id}
           status={circle.status}
           invite={circle.invite}
+          closed={circle.inviteClosed}
+          demo={circle.isDemo}
         />
 
         <section>
@@ -290,7 +304,10 @@ export default async function CirclePage({
           </ul>
         </section>
 
-        <RenameCircleForm circleId={circle.id} name={circle.name} />
+        {circle.isDemo ? null : (
+          <RenameCircleForm circleId={circle.id} name={circle.name} />
+        )}
+        {circle.isDemo ? null : <LeaveCircleForm circleId={circle.id} />}
       </main>
     </div>
   );

@@ -106,3 +106,24 @@ export function getQstashConfig(): {
   }
   return { token, currentSigningKey, nextSigningKey };
 }
+
+/**
+ * Vercel Cron sends this as Authorization: Bearer. Sensitive on Vercel
+ * (Production, and Preview if you want the preview cron). When it is missing,
+ * the daily route refuses every caller.
+ */
+export function getCronSecret(): string | null {
+  const secret = readSecret(process.env.CRON_SECRET);
+  if (!secret || secret.length < 16) return null;
+  return secret;
+}
+
+/**
+ * Sentry DSN. Server only, so it can be a Sensitive variable. Optional.
+ * The app runs the same when this is empty. Do not prefix it with NEXT_PUBLIC_.
+ */
+export function getSentryDsn(): string | null {
+  const dsn = readSecret(process.env.SENTRY_DSN);
+  if (!dsn || !dsn.startsWith("https://")) return null;
+  return dsn;
+}

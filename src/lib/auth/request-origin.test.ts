@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   actionOrigin,
+  isSameOriginPost,
   pushOrigin,
   redirectOrigin,
 } from "@/lib/auth/request-origin";
@@ -135,5 +136,37 @@ describe("actionOrigin", () => {
         },
       }),
     ).toBe("https://hsummer.vercel.app");
+  });
+});
+
+describe("isSameOriginPost", () => {
+  it("accepts this app and refuses a cross-site form", () => {
+    expect(
+      isSameOriginPost({
+        headers: {
+          get: (name) => {
+            if (name === "origin") return "https://hsummer.vercel.app";
+            if (name === "host") return "hsummer.vercel.app";
+            if (name === "x-forwarded-proto") return "https";
+            if (name === "sec-fetch-site") return "same-origin";
+            return null;
+          },
+        },
+      }),
+    ).toBe(true);
+
+    expect(
+      isSameOriginPost({
+        headers: {
+          get: (name) => {
+            if (name === "origin") return "https://evil.example";
+            if (name === "host") return "hsummer.vercel.app";
+            if (name === "x-forwarded-proto") return "https";
+            if (name === "sec-fetch-site") return "cross-site";
+            return null;
+          },
+        },
+      }),
+    ).toBe(false);
   });
 });
