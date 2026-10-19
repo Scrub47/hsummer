@@ -303,8 +303,7 @@ async function openFeature(page: Page, name: string) {
 
 async function scrollClearOfTabBar(locator: Locator) {
   await locator.evaluate((node) => {
-    const element = node instanceof Element ? node : node.parentElement;
-    element?.scrollIntoView({ block: "center", inline: "nearest" });
+    node.scrollIntoView({ block: "center", inline: "nearest" });
   });
 }
 
