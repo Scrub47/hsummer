@@ -7,15 +7,23 @@ const workflows = ["ci.yml", "db-backup.yml"].map((name) =>
   readFileSync(path.join(process.cwd(), ".github/workflows", name), "utf8"),
 );
 
-const sha = /uses: actions\/(?:checkout|setup-node)@[0-9a-f]{40} # v4\.4\.0/;
+const sha =
+  /uses: actions\/(?:checkout|setup-node)@[0-9a-f]{40} # v\d+\.\d+\.\d+/;
 
 describe("GitHub Actions", () => {
   it("pins checkout and setup-node and keeps the token read-only", () => {
     for (const workflow of workflows) {
       expect(workflow).toMatch(/permissions:\n {2}contents: read/);
       expect(workflow).toMatch(sha);
-      expect(workflow).not.toMatch(/uses: actions\/checkout@v4\b/);
-      expect(workflow).not.toMatch(/uses: actions\/setup-node@v4\b/);
+      expect(workflow).toContain(
+        "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
+      );
+      expect(workflow).toContain(
+        "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0",
+      );
+      expect(workflow).not.toMatch(
+        /uses: actions\/(?:checkout|setup-node)@v\d/,
+      );
     }
   });
 
