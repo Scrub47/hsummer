@@ -5,6 +5,7 @@ import { BucketList } from "@/components/bucket-list";
 import { CircleMoods } from "@/components/circle-moods";
 import { CircleTabs } from "@/components/circle-tabs";
 import { HomeHero } from "@/components/home-hero";
+import { HomeShortcuts } from "@/components/home-shortcuts";
 import { Letters } from "@/components/letters";
 import { MemoryWall } from "@/components/memory-wall";
 import { ProfileForm } from "@/components/profile-form";
@@ -60,41 +61,46 @@ export default async function PreviewPage({
 
 function HomePreview({ filled }: { filled: boolean }) {
   return (
-    <HomeHero
-      greeting="Hi, Isaac"
-      selfZone="America/Los_Angeles"
-      partner={
-        filled
-          ? {
-              name: "Summer",
-              timeZone: "America/New_York",
-              avatarUrl: null,
-              moodEmoji: "🥰",
-              moodLabel: "Loved",
-            }
-          : null
-      }
-      people={
-        filled
-          ? [
-              {
+    <>
+      <HomeHero
+        greeting="Hi, Isaac"
+        selfZone="America/Los_Angeles"
+        partner={
+          filled
+            ? {
                 name: "Summer",
                 timeZone: "America/New_York",
                 avatarUrl: null,
                 moodEmoji: "🥰",
                 moodLabel: "Loved",
-              },
-            ]
-          : []
-      }
-      countdown={filled ? { label: "next visit", daysText: "118 days" } : null}
-      circleHref="/circles"
-      circleId={filled ? circleId : null}
-      canPing={filled}
-      pingName="Summer"
-      pingPeople={[{ userId: "summer", displayName: "Summer" }]}
-      pending={false}
-    />
+              }
+            : null
+        }
+        people={
+          filled
+            ? [
+                {
+                  name: "Summer",
+                  timeZone: "America/New_York",
+                  avatarUrl: null,
+                  moodEmoji: "🥰",
+                  moodLabel: "Loved",
+                },
+              ]
+            : []
+        }
+        countdown={
+          filled ? { label: "next visit", daysText: "118 days" } : null
+        }
+        circleHref="/circles"
+        circleId={filled ? circleId : null}
+        canPing={filled}
+        pingName="Summer"
+        pingPeople={[{ userId: "summer", displayName: "Summer" }]}
+        pending={false}
+      />
+      <HomeShortcuts circleId={filled ? circleId : null} />
+    </>
   );
 }
 
@@ -137,7 +143,6 @@ function CirclePreview({ tab, empty }: { tab: string; empty: boolean }) {
     <>
       <p className="text-sm font-bold text-pine">Together</p>
       <h1 className="text-2xl font-bold">Me & Summer</h1>
-      <p className="text-sm text-muted">You&apos;re here with Summer.</p>
       <CircleTabs
         initial={tab}
         panels={{

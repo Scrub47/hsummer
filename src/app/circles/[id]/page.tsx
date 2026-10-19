@@ -131,15 +131,15 @@ export default async function CirclePage({
               <DemoBanner />
             </div>
           ) : null}
-          <p className="mt-2 text-sm text-muted">
-            {circle.isDemo
-              ? "Look around. Nothing you type is saved."
-              : others.length > 0
-                ? `You're here with ${others.map((member) => member.displayName).join(", ")}.`
+          {circle.isDemo || others.length === 0 ? (
+            <p className="mt-2 text-sm text-muted">
+              {circle.isDemo
+                ? "Look around. Nothing you type is saved."
                 : circle.status === "pending"
                   ? "Waiting for someone to join."
                   : "You're the only one here right now."}
-          </p>
+            </p>
+          ) : null}
         </div>
 
         <CircleTabs

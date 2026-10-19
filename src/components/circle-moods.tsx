@@ -14,6 +14,7 @@ import {
   setCurrentMood,
   type MoodActionState,
 } from "@/app/circles/mood-actions";
+import { LiveDot } from "@/components/live-dot";
 import { MemberChoice } from "@/components/member-choice";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { useCircleLive } from "@/components/use-circle-live";
@@ -123,13 +124,7 @@ export function CircleMoods({
               ? `${partnerName ?? "Your partner"} can see how you're feeling. A tap saves it here. Check the box to also send a notification.`
               : "Everyone here can see how you're feeling. A tap saves it here."}
         </p>
-        <p className="mt-2 text-sm text-foreground/70" role="status">
-          {live === "live"
-            ? "Live. A new mood shows up here for everyone in the circle."
-            : live === "connecting"
-              ? "Connecting live updates…"
-              : "Live updates aren't connected. Saves still stick. Reload to see someone else's mood."}
-        </p>
+        <LiveDot live={live} />
       </div>
 
       <ul aria-label="Circle moods" className="flex flex-col gap-3">

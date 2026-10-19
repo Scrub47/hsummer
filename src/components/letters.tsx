@@ -13,6 +13,7 @@ import {
   type LetterActionState,
 } from "@/app/circles/letter-actions";
 import { EmptyState } from "@/components/empty-state";
+import { LiveDot } from "@/components/live-dot";
 import { MemberChoice } from "@/components/member-choice";
 import { useCircleLive } from "@/components/use-circle-live";
 import {
@@ -59,6 +60,8 @@ export function Letters({
   const router = useRouter();
   const refresh = () => router.refresh();
   const live = useCircleLive(circleId, "letters", refresh);
+  const [composing, setComposing] = useState(false);
+  const canCompose = canWrite && (partnerName || people.length > 1);
 
   return (
     <section aria-labelledby="letters-heading" className="flex flex-col gap-6">
@@ -66,35 +69,13 @@ export function Letters({
         <h2 id="letters-heading" className="font-serif text-3xl tracking-tight">
           Letters
         </h2>
-        <p className="mt-1 text-sm text-muted">
-          {pending
-            ? "Letters open once you're both here."
-            : canWrite && partnerName
-              ? `For ${partnerName}.`
-              : "For one person."}
-        </p>
-        <p className="mt-2 text-sm text-foreground/70" role="status">
-          {live === "live"
-            ? "Live. A new letter shows up here."
-            : live === "connecting"
-              ? "Connecting live updates…"
-              : "Live updates aren't connected. A letter you send still sticks. Reload to see one written to you."}
-        </p>
+        {pending ? (
+          <p className="mt-1 text-sm text-muted">
+            Letters open once you&apos;re both here.
+          </p>
+        ) : null}
+        <LiveDot live={live} />
       </div>
-
-      {canWrite && (partnerName || people.length > 1) ? (
-        <WriteLetter
-          circleId={circleId}
-          partnerName={partnerName ?? "them"}
-          partnerTimeZone={partnerTimeZone}
-          categories={categories}
-          people={people}
-        />
-      ) : null}
-
-      {canWrite ? (
-        <CategoryList circleId={circleId} categories={categories} />
-      ) : null}
 
       {letters.length === 0 ? (
         <EmptyState
@@ -130,6 +111,28 @@ export function Letters({
           ))}
         </ul>
       )}
+
+      {canCompose && composing ? (
+        <WriteLetter
+          circleId={circleId}
+          partnerName={partnerName ?? "them"}
+          partnerTimeZone={partnerTimeZone}
+          categories={categories}
+          people={people}
+        />
+      ) : null}
+      {canCompose && !composing ? (
+        <button
+          type="button"
+          className="btn w-fit"
+          onClick={() => setComposing(true)}
+        >
+          Write a letter
+        </button>
+      ) : null}
+      {canWrite && composing ? (
+        <CategoryList circleId={circleId} categories={categories} />
+      ) : null}
     </section>
   );
 }
@@ -173,24 +176,26 @@ function WriteLetter({
       />
       <fieldset className="flex flex-col gap-3">
         <legend className="text-sm font-medium">When it arrives</legend>
-        <div className="flex flex-wrap gap-2">
-          <label className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-line bg-card px-4 text-sm">
+        <div className="segment" role="group" aria-label="When it arrives">
+          <label>
             <input
               type="radio"
               name="when"
               value="now"
               checked={when === "now"}
               onChange={() => setWhen("now")}
+              className="sr-only"
             />
             Now
           </label>
-          <label className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-line bg-card px-4 text-sm">
+          <label>
             <input
               type="radio"
               name="when"
               value="later"
               checked={when === "later"}
               onChange={() => setWhen("later")}
+              className="sr-only"
             />
             Later
           </label>

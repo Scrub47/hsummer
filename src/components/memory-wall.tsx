@@ -15,6 +15,7 @@ import {
   deleteMemory,
   type MemoryActionState,
 } from "@/app/circles/memory-actions";
+import { LiveDot } from "@/components/live-dot";
 import { PhotoStrip } from "@/components/photo-strip";
 import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
 import { useCircleLive } from "@/components/use-circle-live";
@@ -90,13 +91,7 @@ export function MemoryWall({
         <p className="mt-2 text-sm text-foreground/70">
           {formatMemoryUsage(usedBytes, MEMORY_QUOTA_BYTES)}
         </p>
-        <p className="mt-2 text-sm text-foreground/70" role="status">
-          {live === "live"
-            ? "Live. New memories show up here for people who can see them."
-            : live === "connecting"
-              ? "Connecting live updates…"
-              : "Live updates aren't connected. Saves still stick. Reload to see someone else's."}
-        </p>
+        <LiveDot live={live} />
       </div>
 
       <AddMemoryForm circleId={circleId} people={people} today={today} />

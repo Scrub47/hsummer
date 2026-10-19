@@ -166,8 +166,7 @@ export function ThinkingOfYou({
         onPointerUp={clearTimer}
         onPointerCancel={clearTimer}
         onContextMenu={(event) => event.preventDefault()}
-        className="btn h-14 w-full touch-manipulation text-lg select-none"
-        style={{ WebkitTouchCallout: "none" }}
+        className="btn no-callout h-14 w-full touch-manipulation text-lg select-none"
       >
         <span
           className={pulse ? "heart-pulse" : "inline-flex"}
@@ -177,11 +176,10 @@ export function ThinkingOfYou({
         </span>
         {pending ? "Sending…" : "Thinking of You"}
       </button>
-      {hero ? null : (
+      {hero || !many ? null : (
         <p className="text-sm leading-6 text-foreground/80">
-          {many
-            ? "Choose one person, or everyone. A long press sends Missing you to one person, not to everyone."
-            : `For ${partnerName}. One tap.`}
+          Choose one person, or everyone. A long press sends Missing you to one
+          person, not to everyone.
         </p>
       )}
       {status ? (

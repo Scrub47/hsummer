@@ -14,6 +14,7 @@ import {
   type BucketActionState,
 } from "@/app/circles/bucket-actions";
 import { BucketItem } from "@/components/bucket-item";
+import { LiveDot } from "@/components/live-dot";
 import { useCircleLive } from "@/components/use-circle-live";
 import {
   BUCKET_CATEGORIES,
@@ -77,13 +78,7 @@ export function BucketList({
             ? "Start the list now. Your partner sees it, and can edit it, once they join."
             : "Restaurants, movies, things to do, and plans for when you're in the same place. You can both edit it."}
         </p>
-        <p className="mt-2 text-sm text-foreground/70" role="status">
-          {live === "live"
-            ? "Live. Changes show up here for everyone in the circle."
-            : live === "connecting"
-              ? "Connecting live updates…"
-              : "Live updates aren't connected. Saves still stick. Reload to see someone else's edits."}
-        </p>
+        <LiveDot live={live} />
         <p className="sr-only" aria-live="polite">
           {announcement}
         </p>

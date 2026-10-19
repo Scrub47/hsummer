@@ -67,7 +67,7 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     ).toBeVisible();
 
     await page.reload();
-    await expect(page.getByText(/You're here with Summer/)).toBeVisible();
+    await expect(page.getByText("Together", { exact: true })).toBeVisible();
     await page
       .getByRole("button", { name: "Thinking of You", exact: true })
       .click();
@@ -192,6 +192,7 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
 
     await openFeature(page, "Letters");
     const isaacLetters = letters(page);
+    await isaacLetters.getByRole("button", { name: "Write a letter" }).click();
     await isaacLetters.getByLabel("Open when").selectOption("need-motivation");
     await isaacLetters.getByLabel("Title").fill("For the ferry");
     await isaacLetters.getByLabel("Letter").fill("The ferry is still ours.");
@@ -259,6 +260,7 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     await expect(wall(partnerPage).getByText("Flight booked")).toBeVisible();
 
     await openFeature(page, "Letters");
+    await isaacLetters.getByRole("button", { name: "Write a letter" }).click();
     await isaacLetters.getByLabel("Later").check();
     await isaacLetters.getByLabel("Date").fill("2027-06-01");
     await isaacLetters.getByLabel("Time").fill("08:00");
