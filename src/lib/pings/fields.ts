@@ -28,6 +28,41 @@ export const BROADCAST_PINGS_ENABLED = true;
 export const PING_LIMIT = 10;
 export const PING_WINDOW_MINUTES = 10;
 
+/**
+ * Thinking of You gestures older than this are hidden and then deleted.
+ * This is the only copy of the window. The daily cron passes a cutoff
+ * computed from it, and the list query uses the same cutoff, so a late
+ * cron does not leave the gesture on screen. Mood shares are a different
+ * ping type and are not part of this window.
+ */
+export const PING_RETENTION_DAYS = 3;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function thinkingOfYouCutoff(now = Date.now()): string {
+  return new Date(now - PING_RETENTION_DAYS * DAY_MS).toISOString();
+}
+
+/** A mood share stays. A Thinking of You stays until the cutoff. */
+export function thinkingOfYouStillVisible(
+  pingType: string,
+  sentAt: string,
+  now = Date.now(),
+): boolean {
+  if (pingType !== "thinking-of-you") return true;
+  const sent = Date.parse(sentAt);
+  if (Number.isNaN(sent)) return true;
+  return sent >= now - PING_RETENTION_DAYS * DAY_MS;
+}
+
+/**
+ * PostgREST `or` filter. The timestamp is quoted because `:` would otherwise
+ * end the value. Mood shares stay; Thinking of You rows must be new enough.
+ */
+export function visiblePingsOr(cutoffIso: string): string {
+  return `ping_type.neq.thinking-of-you,sent_at.gte."${cutoffIso}"`;
+}
+
 export const PING_RATE_LIMIT_MESSAGE =
   "You've sent a few of these just now. Wait a little and try again.";
 

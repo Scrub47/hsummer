@@ -5,6 +5,10 @@ import {
   PING_BROADCAST_ERROR,
   PING_LIMIT,
   PING_RATE_LIMIT_MESSAGE,
+  PING_RETENTION_DAYS,
+  thinkingOfYouCutoff,
+  thinkingOfYouStillVisible,
+  visiblePingsOr,
   circlePingInsert,
   missingName,
   parsePingRequest,
@@ -18,6 +22,34 @@ import {
 } from "@/lib/pings/fields";
 
 const circleId = "11111111-1111-4111-8111-111111111111";
+
+describe("Thinking of You retention", () => {
+  it("keeps one three-day window for the query and the cleanup", () => {
+    expect(PING_RETENTION_DAYS).toBe(3);
+    const now = Date.parse("2026-10-19T19:00:00.000Z");
+    const cutoff = thinkingOfYouCutoff(now);
+    expect(cutoff).toBe("2026-10-16T19:00:00.000Z");
+    expect(visiblePingsOr(cutoff)).toBe(
+      'ping_type.neq.thinking-of-you,sent_at.gte."2026-10-16T19:00:00.000Z"',
+    );
+    expect(thinkingOfYouStillVisible("thinking-of-you", cutoff, now)).toBe(
+      true,
+    );
+    expect(
+      thinkingOfYouStillVisible(
+        "thinking-of-you",
+        "2026-10-16T18:59:59.000Z",
+        now,
+      ),
+    ).toBe(false);
+    expect(
+      thinkingOfYouStillVisible("mood-share", "2020-01-01T00:00:00.000Z", now),
+    ).toBe(true);
+    expect(
+      thinkingOfYouStillVisible("thinking-of-you", "not-a-date", now),
+    ).toBe(true);
+  });
+});
 
 describe("Thinking of You requests", () => {
   it("accepts one person or everyone, and still refuses a mood on this route", () => {

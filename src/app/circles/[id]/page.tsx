@@ -4,25 +4,21 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { DemoBanner } from "@/components/demo-banner";
-import { LeaveCircleForm } from "@/components/leave-circle-form";
 import { BucketList } from "@/components/bucket-list";
+import { CircleManage } from "@/components/circle-manage";
 import { CircleMoods } from "@/components/circle-moods";
 import { CircleTabs } from "@/components/circle-tabs";
 import { EmptyState } from "@/components/empty-state";
 import { InfoTip } from "@/components/info-tip";
-import { InvitePanel } from "@/components/invite-panel";
 import { Letters } from "@/components/letters";
 import { MemoryWall } from "@/components/memory-wall";
-import { ProfileAvatar } from "@/components/profile-avatar";
 import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
 import { RecentPings } from "@/components/recent-pings";
-import { RenameCircleForm } from "@/components/rename-circle-form";
 import { SignedInHeader } from "@/components/signed-in-header";
 import { StillUs } from "@/components/still-us";
 import { CircleMute } from "@/components/circle-mute";
 import { ThinkingOfYou } from "@/components/thinking-of-you";
 import { circleStatusLabel } from "@/lib/circles/status";
-import { friendlyZoneLabel } from "@/lib/time/zones";
 import { circleNeedsPicker } from "@/lib/circles/fields";
 import { loadPassBooth } from "@/lib/booth/load";
 import { loadBucketItems } from "@/lib/bucket/load";
@@ -110,7 +106,7 @@ export default async function CirclePage({
           seconds={AVATAR_SIGNED_URL_SECONDS}
         />
       )}
-      <SignedInHeader current="circles" />
+      <SignedInHeader current="circles" backFallback="/circles" gear />
       <main className="flex flex-1 flex-col gap-6 py-16">
         <div>
           <p className="text-sm font-bold text-pine">
@@ -143,7 +139,28 @@ export default async function CirclePage({
         </div>
 
         <CircleTabs
-          initial={gestures ? "ping" : "moods"}
+          initial="home"
+          home={
+            <>
+              {circle.circleType !== "couple" && !circle.isDemo ? (
+                <CircleMute
+                  circleId={circle.id}
+                  mutedUntil={circle.mutedUntil}
+                />
+              ) : null}
+              <CircleManage
+                circleId={circle.id}
+                circleType={circle.circleType}
+                status={circle.status}
+                invite={circle.invite}
+                inviteClosed={circle.inviteClosed}
+                demo={circle.isDemo}
+                name={circle.name}
+                selfId={session.userId}
+                members={circle.members}
+              />
+            </>
+          }
           panels={{
             ping: gestures ? (
               <>
@@ -271,52 +288,6 @@ export default async function CirclePage({
             ),
           }}
         />
-
-        {circle.circleType !== "couple" && !circle.isDemo ? (
-          <CircleMute circleId={circle.id} mutedUntil={circle.mutedUntil} />
-        ) : null}
-
-        <InvitePanel
-          circleId={circle.id}
-          circleType={circle.circleType}
-          status={circle.status}
-          invite={circle.invite}
-          closed={circle.inviteClosed}
-          demo={circle.isDemo}
-        />
-
-        <section>
-          <h2 className="font-serif text-2xl tracking-tight">People</h2>
-          <ul className="mt-4 flex flex-col gap-3">
-            {circle.members.map((member) => (
-              <li
-                key={member.userId}
-                className="flex items-center gap-4 rounded-3xl border border-line bg-card px-4 py-3"
-              >
-                <ProfileAvatar
-                  name={member.displayName}
-                  url={member.avatarUrl}
-                  alt=""
-                  className="h-12 w-12 text-lg"
-                />
-                <span>
-                  <span className="block font-medium">
-                    {member.displayName}
-                    {member.userId === session.userId ? " (you)" : ""}
-                  </span>
-                  <span className="mt-1 block text-sm text-muted">
-                    {friendlyZoneLabel(member.timezone)}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        {circle.isDemo ? null : (
-          <RenameCircleForm circleId={circle.id} name={circle.name} />
-        )}
-        {circle.isDemo ? null : <LeaveCircleForm circleId={circle.id} />}
       </main>
     </div>
   );

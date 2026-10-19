@@ -11,6 +11,13 @@ import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import { SiteFooter } from "@/components/site-footer";
 import { ToastHost } from "@/components/toast-host";
 import { loadAnalyticsBootstrap } from "@/lib/analytics/bootstrap";
+import {
+  appleStartupImages,
+  appleTouchIcon,
+  favicon32,
+  faviconIco,
+  icon192,
+} from "@/lib/brand/icons";
 import { getSiteUrl } from "@/lib/env";
 
 import "./globals.css";
@@ -45,10 +52,19 @@ export const metadata: Metadata = {
     "A private shared space for couples, friends, and families who are far apart.",
   applicationName: "Hsummer",
   metadataBase: siteUrl ? new URL(siteUrl) : undefined,
+  icons: {
+    icon: [
+      { url: favicon32, sizes: "32x32", type: "image/png" },
+      { url: faviconIco },
+      { url: icon192, sizes: "192x192", type: "image/png" },
+    ],
+    apple: [{ url: appleTouchIcon, sizes: "180x180", type: "image/png" }],
+  },
   appleWebApp: {
     capable: true,
     title: "Hsummer",
     statusBarStyle: "black-translucent",
+    startupImage: [...appleStartupImages],
   },
 };
 
@@ -91,6 +107,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <div id="content">{children}</div>
         <SiteFooter />
         <ToastHost />
+        <div id="tab-bar-root" />
+        <div id="letter-stage-root" />
       </body>
     </html>
   );

@@ -19,6 +19,19 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
   const partnerEmail = `e2e-partner-${nonce}@example.com`;
 
   await signIn(page, { email: ownerEmail, displayName: "Isaac" });
+  await expect(
+    page.getByRole("button", { name: "Send test notification" }),
+  ).toHaveCount(0);
+  await page.getByRole("link", { name: "Settings" }).click();
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Notifications" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Send test notification" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page.getByRole("heading", { name: "Hi, Isaac" })).toBeVisible();
 
   await page.goto("/circles");
   await expect(page.getByRole("heading", { name: "Circles" })).toBeVisible();
@@ -32,6 +45,22 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     page.getByRole("heading", { name: "Me & Summer" }),
   ).toBeVisible();
   await expect(page.getByText("Waiting", { exact: true })).toBeVisible();
+
+  const manage = page.getByTestId("circle-manage");
+  await expect(manage).toBeVisible();
+  const manageText = await manage.innerText();
+  expect(manageText.indexOf("People")).toBeGreaterThanOrEqual(0);
+  expect(manageText.indexOf("People")).toBeLessThan(
+    manageText.indexOf("Circle name"),
+  );
+  expect(manageText.indexOf("Circle name")).toBeLessThan(
+    manageText.indexOf("Invite link"),
+  );
+  expect(manageText.indexOf("Invite link")).toBeLessThan(
+    manageText.indexOf("Leave this circle"),
+  );
+  await expect(page.getByRole("button", { name: "Back" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
 
   const invite = page.locator('a[href*="/join/"]');
   await expect(invite).toBeVisible();
@@ -62,12 +91,14 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     await expect(
       partnerPage.getByText("Together", { exact: true }),
     ).toBeVisible();
+    await openFeature(partnerPage, "Thinking of You");
     await expect(
       partnerPage.getByRole("button", { name: "Thinking of You", exact: true }),
     ).toBeVisible();
 
     await page.reload();
     await expect(page.getByText("Together", { exact: true })).toBeVisible();
+    await openFeature(page, "Thinking of You");
     await page
       .getByRole("button", { name: "Thinking of You", exact: true })
       .click();
@@ -119,6 +150,13 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     await expect(recent(partnerPage)).toContainText("Feeling");
 
     await openFeature(page, "Memory wall");
+    await expect(page.getByTestId("circle-manage")).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: "Leave this circle" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: "Invite link" }),
+    ).toHaveCount(0);
     const recentDay = utcDay(0);
     const olderDay = utcDay(40);
     await wall(page).getByLabel("Note").fill("Ferry to Bainbridge");
@@ -201,6 +239,9 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     await isaacLetters.getByLabel("Letter").fill("The ferry is still ours.");
     await isaacLetters.getByText("Kawaii", { exact: true }).click();
     await isaacLetters.getByRole("button", { name: "Send the letter" }).click();
+    const sentEnvelope = page.getByTestId("letter-envelope");
+    await expect(sentEnvelope).toBeVisible();
+    await expect(sentEnvelope).toHaveAttribute("data-scene", "send");
     await expect(
       isaacLetters.getByRole("status").filter({ hasText: "Sent to Summer" }),
     ).toBeVisible();
@@ -218,6 +259,9 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
       summerLetters.getByText("The ferry is still ours."),
     ).toHaveCount(0);
     await summerLetters.getByRole("button", { name: "Open letter" }).click();
+    const openedEnvelope = partnerPage.getByTestId("letter-envelope");
+    await expect(openedEnvelope).toBeVisible();
+    await expect(openedEnvelope).toHaveAttribute("data-scene", "open");
     await expect(
       summerLetters.getByText("The ferry is still ours."),
     ).toBeVisible();

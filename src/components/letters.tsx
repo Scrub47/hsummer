@@ -1,6 +1,12 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import {
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -13,6 +19,10 @@ import {
   type LetterActionState,
 } from "@/app/circles/letter-actions";
 import { EmptyState } from "@/components/empty-state";
+import {
+  LetterEnvelope,
+  useEnvelopeMotion,
+} from "@/components/letter-envelope";
 import { trackProductEvent } from "@/lib/analytics/client";
 import { LiveDot } from "@/components/live-dot";
 import { MemberChoice } from "@/components/member-choice";
@@ -36,8 +46,9 @@ const initialState: LetterActionState = {
 
 /**
  * Dear <name>. In a couple the other person is the recipient. A letter
- * they have not opened yet is a seal. Opening plays a short animation,
- * then the words, and the wall gains a memory only the two of them see.
+ * they have not opened yet is a seal. Sending plays fold, seal, and
+ * fly. Opening plays arrive, unseal, and slide. Then the words, and the
+ * wall gains a memory only the two of them see.
  */
 export function Letters({
   circleId,
@@ -159,7 +170,12 @@ function WriteLetter({
   const [design, setDesign] = useState<LetterDesign>("minimal");
   const [when, setWhen] = useState<"now" | "later">("now");
   const [seenSaved, setSeenSaved] = useState(state.saved);
+  const [flying, setFlying] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const skipAnimation = useRef(false);
+  const flyingRef = useRef(false);
+  const flightTimer = useRef<number | null>(null);
+  const { ms } = useEnvelopeMotion();
 
   if (state.saved !== seenSaved) {
     setSeenSaved(state.saved);
@@ -172,8 +188,38 @@ function WriteLetter({
     formRef.current?.reset();
   }, [state]);
 
+  useEffect(() => {
+    return () => {
+      if (flightTimer.current !== null)
+        window.clearTimeout(flightTimer.current);
+    };
+  }, []);
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    if (skipAnimation.current) {
+      skipAnimation.current = false;
+      flyingRef.current = false;
+      setFlying(false);
+      return;
+    }
+    event.preventDefault();
+    if (flyingRef.current) return;
+    flyingRef.current = true;
+    setFlying(true);
+    if (flightTimer.current !== null) window.clearTimeout(flightTimer.current);
+    flightTimer.current = window.setTimeout(() => {
+      skipAnimation.current = true;
+      formRef.current?.requestSubmit();
+    }, ms);
+  }
+
   return (
-    <form ref={formRef} action={formAction} className="flex flex-col gap-4">
+    <form
+      ref={formRef}
+      action={formAction}
+      onSubmit={onSubmit}
+      className="flex flex-col gap-4"
+    >
       <input type="hidden" name="circleId" value={circleId} />
       <input type="hidden" name="design" value={design} />
       <MemberChoice
@@ -339,8 +385,9 @@ function WriteLetter({
         disabled={pending}
         className="h-12 rounded-full bg-accent px-5 text-base font-medium text-accent-ink disabled:opacity-60"
       >
-        {pending ? "Sending…" : "Send the letter"}
+        {pending || flying ? "Sending…" : "Send the letter"}
       </button>
+      {flying ? <LetterEnvelope scene="send" /> : null}
     </form>
   );
 }
@@ -579,6 +626,7 @@ function SealedLetter({
   letter: LetterCard;
 }) {
   const router = useRouter();
+  const { ms } = useEnvelopeMotion();
   const [phase, setPhase] = useState<"sealed" | "opening" | "open">("sealed");
   const [body, setBody] = useState<string | null>(null);
   const [title, setTitle] = useState<string | null>(letter.title);
@@ -595,26 +643,20 @@ function SealedLetter({
     if (phase !== "sealed") return;
     setError(null);
     setPhase("opening");
-    const reduced = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    timer.current = window.setTimeout(
-      () => {
-        void openLetter(circleId, letter.id).then((result) => {
-          if (result.error || result.body == null) {
-            setError(result.error ?? "That letter couldn't be opened.");
-            setPhase("sealed");
-            return;
-          }
-          setBody(result.body);
-          setTitle(result.title);
-          setPhase("open");
-          trackProductEvent("letter_opened");
-          router.refresh();
-        });
-      },
-      reduced ? 0 : 700,
-    );
+    timer.current = window.setTimeout(() => {
+      void openLetter(circleId, letter.id).then((result) => {
+        if (result.error || result.body == null) {
+          setError(result.error ?? "That letter couldn't be opened.");
+          setPhase("sealed");
+          return;
+        }
+        setBody(result.body);
+        setTitle(result.title);
+        setPhase("open");
+        trackProductEvent("letter_opened");
+        router.refresh();
+      });
+    }, ms);
   }
 
   if (phase === "open" && body) {
@@ -644,13 +686,13 @@ function SealedLetter({
       <p className="mt-3 max-w-md text-sm leading-6 text-foreground/70">
         From {letter.fromName}. The words are inside.
       </p>
+      {phase === "opening" ? <LetterEnvelope scene="open" /> : null}
       <div className="mt-6 flex flex-col items-start gap-3">
         <button
           type="button"
-          className={`letter-seal ${phase === "opening" ? "is-opening" : ""}`}
+          className="letter-seal"
           aria-label="Open letter"
           aria-busy={phase === "opening"}
-          disabled={phase !== "sealed"}
           onClick={onOpen}
         >
           <span aria-hidden>{phase === "opening" ? "…" : "Open"}</span>

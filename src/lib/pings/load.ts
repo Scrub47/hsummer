@@ -1,6 +1,11 @@
 import "server-only";
 
-import { pingPhrase } from "@/lib/pings/fields";
+import {
+  pingPhrase,
+  thinkingOfYouStillVisible,
+  visiblePingsOr,
+  thinkingOfYouCutoff,
+} from "@/lib/pings/fields";
 import type { Session } from "@/lib/supabase/session";
 
 export type PingListItem = {
@@ -22,28 +27,46 @@ export async function loadRecentPings(
   names: ReadonlyMap<string, string>,
   timeZone: string,
 ): Promise<PingListItem[]> {
-  const { data, error } = await session.supabase
+  const cutoff = thinkingOfYouCutoff();
+  const columns =
+    "id, from_user_id, to_user_id, ping_type, mood_emoji, secret_variant, sent_at";
+  let { data, error } = await session.supabase
     .from("pings")
-    .select(
-      "id, from_user_id, to_user_id, ping_type, mood_emoji, secret_variant, sent_at",
-    )
+    .select(columns)
     .eq("circle_id", circleId)
+    .or(visiblePingsOr(cutoff))
     .order("sent_at", { ascending: false })
     .limit(20);
+
+  // A filter the database rejects should not blank the list. The same
+  // cutoff is applied again below, so an old Thinking of You still drops.
+  if (error) {
+    console.error("Ping list failed.", error.code);
+    const again = await session.supabase
+      .from("pings")
+      .select(columns)
+      .eq("circle_id", circleId)
+      .order("sent_at", { ascending: false })
+      .limit(20);
+    data = again.data;
+    error = again.error;
+  }
 
   if (error) {
     console.error("Ping list failed.", error.code);
     return [];
   }
 
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    fromUserId: row.from_user_id,
-    fromName: senderName(row.from_user_id, names),
-    phrase: phraseFor(row, names),
-    sentAt: row.sent_at,
-    when: formatWhen(row.sent_at, timeZone),
-  }));
+  return (data ?? [])
+    .filter((row) => thinkingOfYouStillVisible(row.ping_type, row.sent_at))
+    .map((row) => ({
+      id: row.id,
+      fromUserId: row.from_user_id,
+      fromName: senderName(row.from_user_id, names),
+      phrase: phraseFor(row, names),
+      sentAt: row.sent_at,
+      when: formatWhen(row.sent_at, timeZone),
+    }));
 }
 
 function senderName(

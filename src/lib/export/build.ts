@@ -1,6 +1,7 @@
 import "server-only";
 
 import { isBoothShotPath } from "@/lib/booth/fields";
+import { thinkingOfYouStillVisible } from "@/lib/pings/fields";
 import { isMemoryPhotoPath, MEMORIES_BUCKET } from "@/lib/memories/fields";
 import type { Session } from "@/lib/supabase/session";
 
@@ -180,7 +181,9 @@ export async function buildExportZip(session: Session): Promise<Uint8Array> {
     countdowns: countdowns.data ?? [],
     checkpoints: checkpoints.data ?? [],
     moods: moods.data ?? [],
-    pings: pings.data ?? [],
+    pings: (pings.data ?? []).filter((row) =>
+      thinkingOfYouStillVisible(row.ping_type, row.sent_at),
+    ),
     boothSessions: sessions.data ?? [],
     boothShots: visibleShots,
   };

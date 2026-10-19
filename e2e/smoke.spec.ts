@@ -48,6 +48,14 @@ test("the profile page redirects to sign-in when there is no session", async ({
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 });
 
+test("settings redirects to sign-in when there is no session", async ({
+  page,
+}) => {
+  await page.goto("/profile/settings");
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Fprofile%2Fsettings$/);
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+});
+
 test("circles redirect to sign-in when there is no session", async ({
   page,
 }) => {

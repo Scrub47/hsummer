@@ -34,7 +34,7 @@ export default async function ProfilePage() {
         enabled={Boolean(profile?.avatarUrl)}
         seconds={AVATAR_SIGNED_URL_SECONDS}
       />
-      <SignedInHeader current="profile" />
+      <SignedInHeader current="profile" gear />
       <main className="flex flex-1 flex-col gap-8 py-16">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Profile</h1>

@@ -22,7 +22,7 @@ export default async function CirclesPage() {
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-6 py-10">
-      <SignedInHeader current="circles" />
+      <SignedInHeader current="circles" gear />
       <main className="flex flex-1 flex-col gap-10 py-16">
         <div className="flex items-center gap-1">
           <h1 className="text-2xl font-bold tracking-tight">Circles</h1>
