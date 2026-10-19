@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 /**
  * Sign in, create a couple circle, invite, join, and send Thinking of You.
@@ -264,11 +264,26 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
 
     await openFeature(page, "Letters");
     await isaacLetters.getByRole("button", { name: "Write a letter" }).click();
-    await isaacLetters.getByLabel("Later").check();
-    await isaacLetters.getByLabel("Date").fill("2027-06-01");
-    await isaacLetters.getByLabel("Time").fill("08:00");
-    await isaacLetters.getByLabel("Letter").fill("Open this in the morning.");
-    await isaacLetters.getByRole("button", { name: "Send the letter" }).click();
+    // "Later" is a visible segment label around a 1px radio. Checking the
+    // radio itself hits the label, then the fixed tab bar. Click the label
+    // after it sits in the middle of the viewport.
+    const later = isaacLetters.getByText("Later", { exact: true });
+    await scrollClearOfTabBar(later);
+    await later.click();
+    const deliverDate = isaacLetters.getByLabel("Date");
+    await scrollClearOfTabBar(deliverDate);
+    await deliverDate.fill("2027-06-01");
+    const deliverTime = isaacLetters.getByLabel("Time");
+    await scrollClearOfTabBar(deliverTime);
+    await deliverTime.fill("08:00");
+    const letterBody = isaacLetters.getByLabel("Letter");
+    await scrollClearOfTabBar(letterBody);
+    await letterBody.fill("Open this in the morning.");
+    const sendLetter = isaacLetters.getByRole("button", {
+      name: "Send the letter",
+    });
+    await scrollClearOfTabBar(sendLetter);
+    await sendLetter.click();
     await expect(
       isaacLetters.getByRole("status").filter({ hasText: /It will arrive/ }),
     ).toBeVisible();
@@ -284,6 +299,13 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
 
 async function openFeature(page: Page, name: string) {
   await page.getByRole("tab", { name }).click();
+}
+
+async function scrollClearOfTabBar(locator: Locator) {
+  await locator.evaluate((node) => {
+    const element = node instanceof Element ? node : node.parentElement;
+    element?.scrollIntoView({ block: "center", inline: "nearest" });
+  });
 }
 
 function moods(page: Page) {
