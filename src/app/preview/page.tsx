@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { BucketList } from "@/components/bucket-list";
+import { CircleManage } from "@/components/circle-manage";
 import { CircleMoods } from "@/components/circle-moods";
 import { CircleTabs } from "@/components/circle-tabs";
 import { HomeHero } from "@/components/home-hero";
@@ -9,6 +10,7 @@ import { HomeShortcuts } from "@/components/home-shortcuts";
 import { Letters } from "@/components/letters";
 import { MemoryWall } from "@/components/memory-wall";
 import { ProfileForm } from "@/components/profile-form";
+import { PushPanel } from "@/components/push-panel";
 import { RecentPings } from "@/components/recent-pings";
 import { SignedInHeader } from "@/components/signed-in-header";
 import { StillUs } from "@/components/still-us";
@@ -34,28 +36,43 @@ export default async function PreviewPage({
   if (process.env.NODE_ENV === "production") notFound();
   const params = await searchParams;
   const screen = params.screen ?? "home";
+  const nested = screen === "circle" || screen === "empty";
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-6 py-10">
       <SignedInHeader
         current={
-          screen === "profile"
+          screen === "profile" || screen === "settings"
             ? "profile"
-            : screen === "circle" || screen === "empty"
+            : nested
               ? "circles"
               : "home"
+        }
+        gear={screen !== "settings"}
+        backFallback={
+          screen === "settings" ? "/profile" : nested ? "/circles" : undefined
         }
       />
       <main className="flex flex-1 flex-col gap-5 py-6">
         {screen === "profile" ? <ProfilePreview /> : null}
         {screen === "home" ? <HomePreview filled={false} /> : null}
         {screen === "filled" ? <HomePreview filled /> : null}
+        {screen === "settings" ? <SettingsPreview /> : null}
         {screen === "circle" ? (
           <CirclePreview tab={params.tab ?? "ping"} empty={false} />
         ) : null}
         {screen === "empty" ? <CirclePreview tab="letters" empty /> : null}
       </main>
     </div>
+  );
+}
+
+function SettingsPreview() {
+  return (
+    <>
+      <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+      <PushPanel />
+    </>
   );
 }
 
@@ -144,7 +161,41 @@ function CirclePreview({ tab, empty }: { tab: string; empty: boolean }) {
       <p className="text-sm font-bold text-pine">Together</p>
       <h1 className="text-2xl font-bold">Me & Summer</h1>
       <CircleTabs
-        initial={tab}
+        initial={tab === "home" ? "home" : tab}
+        home={
+          tab === "home" ? (
+            <CircleManage
+              circleId={circleId}
+              circleType="couple"
+              status="active"
+              invite={{
+                id: "22222222-2222-4222-8222-222222222222",
+                expiresAt: "2026-10-26T19:00:00.000Z",
+                maxUses: 1,
+                useCount: 0,
+                revokedAt: null,
+              }}
+              inviteClosed={false}
+              demo={false}
+              name="Me & Summer"
+              selfId="isaac"
+              members={[
+                {
+                  userId: "isaac",
+                  displayName: "Isaac",
+                  timezone: "America/Los_Angeles",
+                  avatarUrl: null,
+                },
+                {
+                  userId: "summer",
+                  displayName: "Summer",
+                  timezone: "America/New_York",
+                  avatarUrl: null,
+                },
+              ]}
+            />
+          ) : null
+        }
         panels={{
           ping: (
             <>
@@ -278,6 +329,22 @@ function CirclePreview({ tab, empty }: { tab: string; empty: boolean }) {
                         createdAt: "2026-10-01T00:00:00.000Z",
                         author: "Isaac",
                         mine: true,
+                        letterId: null,
+                        booth: null,
+                      },
+                      {
+                        id: "memory-2",
+                        kind: "photo",
+                        body: "Kitchen light",
+                        photoUrl: "/brand/bear-512.png",
+                        photoPath: null,
+                        tags: [],
+                        visibility: "circle",
+                        viewerNames: [],
+                        occurredOn: "2026-10-02",
+                        createdAt: "2026-10-02T00:00:00.000Z",
+                        author: "Summer",
+                        mine: false,
                         letterId: null,
                         booth: null,
                       },

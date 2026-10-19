@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { featureFromHash, featureHash } from "@/lib/circles/feature-tabs";
+
 const TABS = [
   { id: "ping", label: "Thinking of You", icon: Heart },
   { id: "moods", label: "Moods", icon: Smile },
@@ -21,37 +23,45 @@ const TABS = [
   { id: "memory", label: "Memory wall", icon: Images },
 ] as const;
 
-const HASH_TO_TAB: Record<string, string> = {
-  "memory-heading": "memory",
-  memory: "memory",
-  "letters-heading": "letters",
-  "mood-heading": "moods",
-  "still-us-heading": "still",
-  "bucket-heading": "bucket",
-  booth: "booth",
-  ping: "ping",
-};
-
 export function CircleTabs({
   initial,
   panels,
+  home = null,
 }: {
   initial: string;
   panels: Record<string, React.ReactNode>;
+  /** Circle home. Feature hashes hide it. */
+  home?: React.ReactNode;
 }) {
   const [tab, setTab] = useState(initial);
   const rowRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function applyHash() {
-      const id = window.location.hash.replace("#", "");
-      const next = HASH_TO_TAB[id];
-      if (next && panels[next]) setTab(next);
+      const feature = featureFromHash(window.location.hash);
+      if (feature && panels[feature]) {
+        setTab(feature);
+        return;
+      }
+      if (home != null && window.location.hash.length <= 1) setTab("home");
     }
     applyHash();
     window.addEventListener("hashchange", applyHash);
-    return () => window.removeEventListener("hashchange", applyHash);
-  }, [panels]);
+    window.addEventListener("popstate", applyHash);
+    return () => {
+      window.removeEventListener("hashchange", applyHash);
+      window.removeEventListener("popstate", applyHash);
+    };
+  }, [panels, home]);
+
+  function select(id: string) {
+    setTab(id);
+    const hash = featureHash(id);
+    if (!hash) return;
+    const next = `#${hash}`;
+    if (window.location.hash === next) return;
+    window.history.pushState(null, "", next);
+  }
 
   useEffect(() => {
     const row = rowRef.current;
@@ -113,7 +123,7 @@ export function CircleTabs({
                 aria-selected={selected}
                 aria-controls={`panel-${item.id}`}
                 tabIndex={selected ? 0 : -1}
-                onClick={() => setTab(item.id)}
+                onClick={() => select(item.id)}
               >
                 <Icon aria-hidden="true" size={16} />
                 {item.label}
@@ -122,6 +132,7 @@ export function CircleTabs({
           })}
         </div>
       </div>
+      {tab === "home" && home != null ? home : null}
       {visible.map((item) => (
         <div
           key={item.id}

@@ -1,7 +1,21 @@
 import { describe, expect, it } from "vitest";
 
+import { PING_RETENTION_DAYS } from "@/lib/pings/fields";
 import { loadRecentPings } from "@/lib/pings/load";
 import { fakeSession, queryResult } from "@/test/fake-supabase";
+
+const sentAt = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+
+function formatIn(iso: string, timeZone: string, withZone = false): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    ...(withZone ? { timeZoneName: "short" as const } : {}),
+  }).format(new Date(iso));
+}
 
 const selfId = "22222222-2222-4222-8222-222222222222";
 const partnerId = "33333333-3333-4333-8333-333333333333";
@@ -19,7 +33,7 @@ function ping(overrides: Record<string, unknown>) {
     ping_type: "thinking-of-you",
     mood_emoji: null,
     secret_variant: false,
-    sent_at: "2026-11-16T19:00:00.000Z",
+    sent_at: sentAt,
     ...overrides,
   };
 }
@@ -61,7 +75,29 @@ describe("loadRecentPings", () => {
       "Missing Summer",
       "Feeling 🌤️",
     ]);
-    expect(rows[0]?.when).toBe("Nov 16, 11:00 AM");
+    expect(rows[0]?.when).toBe(formatIn(sentAt, "America/Los_Angeles"));
+  });
+
+  it("drops a Thinking of You older than three days and keeps an old mood share", async () => {
+    const stale = new Date(
+      Date.now() - (PING_RETENTION_DAYS + 1) * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const session = fakeSession({
+      userId: selfId,
+      tables: {
+        pings: queryResult([
+          ping({ sent_at: stale }),
+          ping({
+            id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            sent_at: stale,
+            ping_type: "mood-share",
+            mood_emoji: "😌",
+          }),
+        ]),
+      },
+    });
+    const rows = await loadRecentPings(session, circleId, names, "UTC");
+    expect(rows.map((row) => row.phrase)).toEqual(["Feeling 😌"]);
   });
 
   it("falls back to UTC when the timezone is not real", async () => {
@@ -82,8 +118,7 @@ describe("loadRecentPings", () => {
       names,
       "Not/AZone",
     );
-    expect(fallback[0]?.when).toMatch(/Nov 16/);
-    expect(fallback[0]?.when).toMatch(/UTC/);
+    expect(fallback[0]?.when).toBe(formatIn(sentAt, "UTC", true));
   });
 
   it("returns an empty list when the read fails", async () => {

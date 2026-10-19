@@ -27,9 +27,9 @@ export function RenameCircleForm({
   return (
     <form action={formAction} className="flex flex-col gap-3">
       <input type="hidden" name="circleId" value={circleId} />
-      <label htmlFor="rename-circle" className="text-sm font-medium">
-        Circle name
-      </label>
+      <h2 className="font-serif text-2xl tracking-tight">
+        <label htmlFor="rename-circle">Circle name</label>
+      </h2>
       <div className="flex flex-col gap-3 sm:flex-row">
         <input
           id="rename-circle"

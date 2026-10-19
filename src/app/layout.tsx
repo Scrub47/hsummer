@@ -76,6 +76,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <div id="content">{children}</div>
         <SiteFooter />
         <ToastHost />
+        <div id="tab-bar-root" />
       </body>
     </html>
   );

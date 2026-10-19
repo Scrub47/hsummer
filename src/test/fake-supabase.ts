@@ -15,7 +15,21 @@ export function queryResult(
 function chain(result: QueryResult) {
   const builder: Record<string, unknown> = {};
   const self = () => builder;
-  for (const method of ["select", "eq", "is", "in", "order", "limit"]) {
+  for (const method of [
+    "select",
+    "eq",
+    "is",
+    "in",
+    "or",
+    "gte",
+    "gt",
+    "lt",
+    "neq",
+    "not",
+    "filter",
+    "order",
+    "limit",
+  ]) {
     builder[method] = self;
   }
   builder.maybeSingle = () => Promise.resolve(result);

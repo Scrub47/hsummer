@@ -6,7 +6,6 @@ import { DemoBanner } from "@/components/demo-banner";
 import { HomeHero, type HeroPerson } from "@/components/home-hero";
 import { HomeShortcuts } from "@/components/home-shortcuts";
 import { Onboarding } from "@/components/onboarding";
-import { PushPanel } from "@/components/push-panel";
 import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
 import { SignedInHeader } from "@/components/signed-in-header";
 import { prepareCircle } from "@/lib/circles/prepare";
@@ -102,7 +101,7 @@ export default async function HomePage() {
         enabled={avatarLinks}
         seconds={AVATAR_SIGNED_URL_SECONDS}
       />
-      <SignedInHeader current="home" />
+      <SignedInHeader current="home" gear />
       <main className="flex flex-1 flex-col gap-5 py-16">
         {account.isDemo ? <DemoBanner /> : null}
         <Onboarding />
@@ -127,7 +126,6 @@ export default async function HomePage() {
           pending={pending.length > 0 && !canPing}
         />
         <HomeShortcuts circleId={focusDetail?.id ?? null} />
-        {account.isDemo ? null : <PushPanel />}
       </main>
     </div>
   );

@@ -849,6 +849,10 @@ export type Database = {
         Args: Record<string, never>;
         Returns: number;
       };
+      purge_expired_pings: {
+        Args: { cutoff: string };
+        Returns: number;
+      };
       sweep_quiet_circles: {
         Args: Record<string, never>;
         Returns: number;
