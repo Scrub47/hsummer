@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { Heart } from "lucide-react";
+
+import { pushToast } from "@/components/toast-host";
 import { missingName } from "@/lib/pings/fields";
 
 const LONG_PRESS_MS = 700;
@@ -20,13 +23,16 @@ export function ThinkingOfYou({
   circleId,
   partnerName,
   people = [],
+  hero = false,
 }: {
   circleId: string;
   partnerName: string;
   people?: { userId: string; displayName: string }[];
+  hero?: boolean;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const [pulse, setPulse] = useState(false);
   const [status, setStatus] = useState<Status>(null);
   const [recipient, setRecipient] = useState(
     people.length > 1 ? (people[0]?.userId ?? "everyone") : "",
@@ -53,6 +59,7 @@ export function ThinkingOfYou({
     if (inflight.current) return;
     inflight.current = true;
     setPending(true);
+    setPulse(true);
     setStatus(null);
     try {
       const chosen =
@@ -99,6 +106,7 @@ export function ThinkingOfYou({
                 ?.displayName ?? partnerName)
           : partnerName;
       setStatus({ tone: "ok", text: successText(body, label) });
+      pushToast("Ping sent");
       router.refresh();
     } catch {
       setStatus({ tone: "error", text: "That ping couldn't be sent." });
@@ -158,16 +166,22 @@ export function ThinkingOfYou({
         onPointerUp={clearTimer}
         onPointerCancel={clearTimer}
         onContextMenu={(event) => event.preventDefault()}
-        className="inline-flex h-16 w-full touch-manipulation items-center justify-center rounded-full bg-accent px-6 font-serif text-2xl text-accent-ink select-none disabled:opacity-60"
-        style={{ WebkitTouchCallout: "none" }}
+        className="btn no-callout h-14 w-full touch-manipulation text-lg select-none"
       >
+        <span
+          className={pulse ? "heart-pulse" : "inline-flex"}
+          aria-hidden="true"
+        >
+          <Heart size={22} fill="currentColor" />
+        </span>
         {pending ? "Sending…" : "Thinking of You"}
       </button>
-      <p className="text-sm leading-6 text-foreground/80">
-        {many
-          ? "Choose one person, or everyone. A long press sends Missing you to one person, not to everyone."
-          : `For ${partnerName}. One tap. On an iPhone, the notification arrives after Hsummer is on the Home Screen and notifications are on.`}
-      </p>
+      {hero || !many ? null : (
+        <p className="text-sm leading-6 text-foreground/80">
+          Choose one person, or everyone. A long press sends Missing you to one
+          person, not to everyone.
+        </p>
+      )}
       {status ? (
         <p
           className="text-sm leading-6"
@@ -175,6 +189,15 @@ export function ThinkingOfYou({
         >
           {status.text}
         </p>
+      ) : null}
+      {status?.tone === "error" ? (
+        <button
+          type="button"
+          className="btn-quiet"
+          onClick={() => void send(false)}
+        >
+          Try again
+        </button>
       ) : null}
     </section>
   );

@@ -2,6 +2,8 @@
 
 import { useEffect } from "react";
 
+import { BearMark } from "@/components/bear-mark";
+
 export default function AppError({
   error,
   reset,
@@ -24,17 +26,12 @@ export default function AppError({
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-md flex-col px-6 py-16">
-      <h1 className="font-serif text-4xl tracking-tight">
-        Something went wrong
-      </h1>
-      <p className="mt-4 text-base leading-7 text-foreground/80">
+      <BearMark size={96} alt="" />
+      <h1 className="mt-4 text-2xl font-bold">Something went wrong</h1>
+      <p className="mt-2 text-sm leading-6 text-muted">
         This page didn&apos;t finish loading. Try it again.
       </p>
-      <button
-        type="button"
-        onClick={reset}
-        className="mt-8 inline-flex h-12 w-fit items-center justify-center rounded-full bg-accent px-5 text-sm font-medium text-accent-ink"
-      >
+      <button type="button" onClick={reset} className="btn mt-6">
         Try again
       </button>
     </div>

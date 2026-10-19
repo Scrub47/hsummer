@@ -12,6 +12,8 @@ import {
   sendLetter,
   type LetterActionState,
 } from "@/app/circles/letter-actions";
+import { EmptyState } from "@/components/empty-state";
+import { LiveDot } from "@/components/live-dot";
 import { MemberChoice } from "@/components/member-choice";
 import { useCircleLive } from "@/components/use-circle-live";
 import {
@@ -58,32 +60,63 @@ export function Letters({
   const router = useRouter();
   const refresh = () => router.refresh();
   const live = useCircleLive(circleId, "letters", refresh);
+  const [composing, setComposing] = useState(false);
+  const canCompose = canWrite && (partnerName || people.length > 1);
 
   return (
-    <section aria-labelledby="letters-heading" className="flex flex-col gap-6">
+    <section
+      data-testid="letters"
+      aria-labelledby="letters-heading"
+      className="flex flex-col gap-6"
+    >
       <div>
         <h2 id="letters-heading" className="font-serif text-3xl tracking-tight">
           Letters
         </h2>
-        <p className="mt-3 max-w-xl text-sm leading-6 text-foreground/80">
-          {pending
-            ? "Letters open once you're both here. Share the invite link."
-            : canWrite && people.length > 1
-              ? "Write to one person. A letter is never sent to everyone. Until they break the seal, the words stay off this page."
-              : canWrite && partnerName
-                ? `Write to ${partnerName}. It opens with their name. Until they break the seal, the words stay off this page.`
-                : "Letters go to one person."}
-        </p>
-        <p className="mt-2 text-sm text-foreground/70" role="status">
-          {live === "live"
-            ? "Live. A new letter shows up here."
-            : live === "connecting"
-              ? "Connecting live updates…"
-              : "Live updates aren't connected. A letter you send still sticks. Reload to see one written to you."}
-        </p>
+        {pending ? (
+          <p className="mt-1 text-sm text-muted">
+            Letters open once you&apos;re both here.
+          </p>
+        ) : null}
+        <LiveDot live={live} />
       </div>
 
-      {canWrite && (partnerName || people.length > 1) ? (
+      {letters.length === 0 ? (
+        <EmptyState
+          title="No letters yet"
+          detail={
+            canWrite && partnerName
+              ? `The first one starts Dear ${partnerName}.`
+              : undefined
+          }
+        />
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {letters.map((letter, index) => (
+            <li key={letter.id} className="letter-fold">
+              <details className="fold" open={letter.sealed || index === 0}>
+                <summary>
+                  <span>{letter.dearName}</span>
+                  <span className="text-sm font-medium text-muted">
+                    {letter.categoryLabel}
+                  </span>
+                </summary>
+                {letter.sealed ? (
+                  <SealedLetter circleId={circleId} letter={letter} />
+                ) : (
+                  <OpenedLetter
+                    circleId={circleId}
+                    letter={letter}
+                    partnerTimeZone={partnerTimeZone}
+                  />
+                )}
+              </details>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {canCompose && composing ? (
         <WriteLetter
           circleId={circleId}
           partnerName={partnerName ?? "them"}
@@ -92,34 +125,18 @@ export function Letters({
           people={people}
         />
       ) : null}
-
-      {canWrite ? (
+      {canCompose && !composing ? (
+        <button
+          type="button"
+          className="btn w-fit"
+          onClick={() => setComposing(true)}
+        >
+          Write a letter
+        </button>
+      ) : null}
+      {canWrite && composing ? (
         <CategoryList circleId={circleId} categories={categories} />
       ) : null}
-
-      {letters.length === 0 ? (
-        <p className="text-sm leading-6 text-foreground/70">
-          {canWrite && partnerName
-            ? `No letters yet. The first one starts Dear ${partnerName}.`
-            : "No letters yet."}
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-4">
-          {letters.map((letter) => (
-            <li key={letter.id}>
-              {letter.sealed ? (
-                <SealedLetter circleId={circleId} letter={letter} />
-              ) : (
-                <OpenedLetter
-                  circleId={circleId}
-                  letter={letter}
-                  partnerTimeZone={partnerTimeZone}
-                />
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
     </section>
   );
 }
@@ -163,24 +180,26 @@ function WriteLetter({
       />
       <fieldset className="flex flex-col gap-3">
         <legend className="text-sm font-medium">When it arrives</legend>
-        <div className="flex flex-wrap gap-2">
-          <label className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-line bg-card px-4 text-sm">
+        <div className="segment" role="group" aria-label="When it arrives">
+          <label>
             <input
               type="radio"
               name="when"
               value="now"
               checked={when === "now"}
               onChange={() => setWhen("now")}
+              className="sr-only"
             />
             Now
           </label>
-          <label className="flex h-10 cursor-pointer items-center gap-2 rounded-full border border-line bg-card px-4 text-sm">
+          <label data-testid="letter-when-later">
             <input
               type="radio"
               name="when"
               value="later"
               checked={when === "later"}
               onChange={() => setWhen("later")}
+              className="sr-only"
             />
             Later
           </label>
@@ -299,7 +318,7 @@ function WriteLetter({
           rows={8}
           maxLength={LETTER_BODY_MAX}
           placeholder={`Dear ${partnerName},`}
-          className="rounded-2xl border border-line bg-background px-4 py-3 text-base leading-7"
+          className="letter-body rounded-2xl border border-line bg-background px-4 py-3"
         />
       </div>
       {state.error ? (
@@ -430,16 +449,12 @@ function OpenedLetter({
       data-design={letter.design}
     >
       <p className="text-sm font-medium text-pine">{letter.categoryLabel}</p>
-      <h3 className="mt-3 font-serif text-4xl tracking-tight">
-        {letter.dearName}
-      </h3>
+      <h3 className="font-hand mt-2 text-4xl">{letter.dearName}</h3>
       {letter.title ? (
         <p className="mt-3 text-base font-medium">{letter.title}</p>
       ) : null}
       {letter.body ? (
-        <p className="mt-4 text-base leading-7 whitespace-pre-wrap">
-          {letter.body}
-        </p>
+        <p className="letter-body mt-3 whitespace-pre-wrap">{letter.body}</p>
       ) : null}
       <p className="mt-4 text-sm text-foreground/70">
         {letter.status === "cancelled"
@@ -621,9 +636,7 @@ function SealedLetter({
       data-design={letter.design}
     >
       <p className="text-sm font-medium text-pine">{letter.categoryLabel}</p>
-      <h3 className="mt-3 font-serif text-4xl tracking-tight">
-        {letter.dearName}
-      </h3>
+      <h3 className="font-hand mt-2 text-4xl">{letter.dearName}</h3>
       <p className="mt-3 max-w-md text-sm leading-6 text-foreground/70">
         From {letter.fromName}. The words are inside.
       </p>

@@ -25,7 +25,9 @@ export function useCircleLive(
 ): "connecting" | "live" | "off" {
   const configured =
     isCircleId(circleId) && getSupabaseBrowserConfig() !== null;
-  const [live, setLive] = useState<"connecting" | "live" | "off">("connecting");
+  const [live, setLive] = useState<"connecting" | "live" | "off">(
+    configured ? "connecting" : "off",
+  );
 
   useEffect(() => {
     if (!configured) return;

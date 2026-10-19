@@ -4,6 +4,22 @@ This is the map of the repository as it stands after launch readiness (leave, ac
 
 Hsummer is a private space shared by a Circle: a couple, a few friends, or a family. Profiles came first. Who may read one is a single function, and that function now includes people who share an active circle. Circles, memberships, invite links, pings, a shared bucket list, a current mood per person, and a memory wall are in the database. A 1:1 ping is readable only by the sender and the recipient. A bucket item is readable and editable by every active member of that circle. A mood is readable by active members and writable only by the person it belongs to. A memory is readable by every active member when its visibility is the whole circle, and only by the author plus the people they picked when visibility is selected. A letter is readable by the sender, and by the recipient only after it is delivered. Opening it adds one memory that only those two can see. A couple circle also has one Still Us countdown. Hitting a checkpoint adds one memory the whole circle can see. The photo booth draws a strip on the phone. Solo adds one memory the whole circle can see only when you save. Pass the Booth adds that memory only after both people have filled their frames.
 
+## The interface
+
+The signed-in app is a phone screen. Cream (`#f7f0e8`) is the only background. Burgundy, caramel, blush, and heart-red come from the bear logo and live as CSS variables in `src/app/globals.css`. Dark mode swaps those variables for a warm burgundy field when the system asks, or when `<html data-theme="dark">` is set later. Nunito is the UI font. Caveat is the handwritten face on letters and the wordmark. Both are files in `src/fonts`, loaded with `next/font/local`, so the CSP `font-src 'self'` does not change.
+
+`SignedInHeader` is a small bear wordmark plus a fixed bottom tab bar: Home, Circle, Profile. Sign out is a form on Profile. Every page keeps `env(safe-area-inset-*)` padding, and the viewport uses `viewport-fit=cover`, so a title does not sit under the status-bar clock.
+
+Home (`src/app/home/page.tsx` and `src/components/home-hero.tsx`) is one card: the other person's photo and mood, both local times (`src/lib/time/zones.ts` turns `America/Los_Angeles` into `Los Angeles (PT)`), the Still Us countdown, and the Thinking of You button. The greeting is the first name.
+
+A circle page keeps every feature, behind chips in `src/components/circle-tabs.tsx`: Thinking of You, Moods, Letters, Bucket list, Still Us, Photo booth, Memory wall. Letters fold. Bucket items fold. The memory list scrolls inside its own box. A hash such as `#memory-heading` opens that tab, which is how "See it on the wall" still lands on the strip.
+
+Create circle is a button that opens a bottom sheet. Circle type is a set of cards. The profile photo is the avatar itself, with a camera badge. Taps use a pressed scale, a toast (`pushToast`), and a pulsing heart on a ping. `src/components/offline-banner.tsx` listens for the browser offline event. `loading.tsx` files are the skeletons and the bear splash. The first-run card is `src/components/onboarding.tsx` and remembers itself in `localStorage`. Notification permission is explained in `PushPanel` before `Notification.requestPermission()`.
+
+`src/lib/part-two.ts` names the next pass: settings (the route `/profile/settings`, quiet hours, theme via `data-theme`), pinned letters, reactions, a memory book, haptics, and the envelope animation. The seal animation already in `globals.css` is the start of that last one.
+
+`src/app/preview/page.tsx` renders fixture screens for design checks. It calls `notFound()` when `NODE_ENV` is production, so a deployed build does not serve it.
+
 ## Shape of the app
 
 ```

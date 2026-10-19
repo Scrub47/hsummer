@@ -1,17 +1,20 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { DemoBanner } from "@/components/demo-banner";
-import { ProfileAvatar } from "@/components/profile-avatar";
+import { HomeHero, type HeroPerson } from "@/components/home-hero";
+import { HomeShortcuts } from "@/components/home-shortcuts";
+import { Onboarding } from "@/components/onboarding";
 import { PushPanel } from "@/components/push-panel";
 import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
 import { SignedInHeader } from "@/components/signed-in-header";
 import { prepareCircle } from "@/lib/circles/prepare";
 import { loadCircle, loadCircles } from "@/lib/circles/load";
+import { loadStillUs } from "@/lib/countdowns/load";
 import { pushOrigin } from "@/lib/auth/request-origin";
 import { loadCurrentMoods } from "@/lib/moods/load";
+import { firstName } from "@/lib/profile/first-name";
 import { AVATAR_SIGNED_URL_SECONDS } from "@/lib/profile/fields";
 import { loadAccountFlags } from "@/lib/account/load";
 import { loadOwnProfile } from "@/lib/profile/load";
@@ -45,18 +48,53 @@ export default async function HomePage() {
   const activeCircle = circles.circles.find(
     (circle) => circle.status === "active",
   );
-  const homeMoods = activeCouple
+  const focus = activeCouple ?? activeCircle ?? pending[0] ?? null;
+  const focusDetail = focus ? await loadCircle(session, focus.id) : null;
+  const zone = profile?.timezone ?? "UTC";
+  const [moodResult, still] = focusDetail
     ? await Promise.all([
-        loadCircle(session, activeCouple.id),
-        loadCurrentMoods(session, activeCouple.id, profile?.timezone ?? "UTC"),
+        loadCurrentMoods(session, focusDetail.id, zone),
+        loadStillUs(session, focusDetail.id, zone),
       ])
+    : [null, null];
+
+  const others = focusDetail
+    ? focusDetail.members.filter((member) => member.userId !== session.userId)
+    : [];
+  const partner = others.length === 1 ? others[0] : null;
+  const canPing = Boolean(
+    focusDetail && focusDetail.status === "active" && others.length >= 1,
+  );
+
+  function person(member: {
+    displayName: string;
+    timezone: string;
+    avatarUrl: string | null;
+    userId: string;
+  }): HeroPerson {
+    const mood = moodResult?.ok
+      ? moodResult.moods.find((row) => row.userId === member.userId)
+      : undefined;
+    return {
+      name: member.displayName,
+      timeZone: member.timezone,
+      avatarUrl: member.avatarUrl,
+      moodEmoji: mood?.emoji ?? null,
+      moodLabel: mood?.label ?? null,
+    };
+  }
+
+  const people = others.map(person);
+  const countdown = still?.ok
+    ? (still.countdowns.find((item) => item.daysText && item.label) ?? null)
     : null;
-  const moodCircle = homeMoods?.[0] ?? null;
-  const moodRows = homeMoods?.[1].ok ? homeMoods[1].moods : null;
+  const circleHref = focusDetail ? `/circles/${focusDetail.id}` : "/circles";
+  const greeting = profile?.displayName
+    ? `Hi, ${firstName(profile.displayName)}`
+    : "Hi";
 
   const avatarLinks =
-    Boolean(profile?.avatarUrl) ||
-    Boolean(moodCircle?.members.some((member) => member.avatarUrl));
+    Boolean(profile?.avatarUrl) || people.some((person) => person.avatarUrl);
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-6 py-10">
@@ -65,113 +103,30 @@ export default async function HomePage() {
         seconds={AVATAR_SIGNED_URL_SECONDS}
       />
       <SignedInHeader current="home" />
-      <main className="flex flex-1 flex-col gap-10 py-16">
+      <main className="flex flex-1 flex-col gap-5 py-16">
         {account.isDemo ? <DemoBanner /> : null}
-        <div>
-          <div className="flex items-center gap-5">
-            {profile ? (
-              <ProfileAvatar
-                name={profile.displayName}
-                url={profile.avatarUrl}
-                alt=""
-                className="h-16 w-16 text-xl"
-              />
-            ) : null}
-            <h1 className="font-serif text-5xl tracking-tight">
-              {profile?.displayName
-                ? `Hello, ${profile.displayName}`
-                : "You're in"}
-            </h1>
-          </div>
-          <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
-            {pending.length > 0
-              ? "A circle is waiting for one more person. Share the invite link. Thinking of You stays closed until you both are here."
-              : activeCouple
-                ? "Your circle is active. Open it for a letter, moods, the memory wall, the bucket list, or Thinking of You."
-                : activeCircle
-                  ? "Your circle is open. Letters, Thinking of You, and the photo booth are in there."
-                  : "Create a circle and send one invite link. Thinking of You starts once you're both here."}
-          </p>
-          <p className="mt-4">
-            <Link
-              href={
-                pending[0]
-                  ? `/circles/${pending[0].id}`
-                  : activeCouple
-                    ? `/circles/${activeCouple.id}`
-                    : circles.circles[0]
-                      ? `/circles/${circles.circles[0].id}`
-                      : "/circles"
-              }
-              className="text-sm font-medium text-pine underline decoration-pine/40"
-            >
-              {pending.length > 0
-                ? "Share the invite"
-                : activeCouple
-                  ? "Open your circle"
-                  : "Circles"}
-            </Link>
-          </p>
-          {profile ? (
-            <p className="mt-4 text-sm text-foreground/70">
-              Timezone: {profile.timezone}
-            </p>
-          ) : (
-            <p className="mt-4 text-sm leading-6 text-foreground/70">
-              You&apos;re signed in, but there is no profile row yet. Apply the
-              migrations in <code>supabase/migrations</code> so signup creates
-              one. Your email stays in Supabase Auth — it is not stored on the
-              profile.
-            </p>
-          )}
-        </div>
-        {moodCircle && moodRows ? (
-          <section aria-labelledby="home-mood-heading">
-            <h2
-              id="home-mood-heading"
-              className="font-serif text-3xl tracking-tight"
-            >
-              Moods
-            </h2>
-            <ul className="mt-4 flex flex-col gap-3">
-              {moodCircle.members.map((member) => {
-                const mood = moodRows.find(
-                  (row) => row.userId === member.userId,
-                );
-                const you = member.userId === session.userId;
-                return (
-                  <li
-                    key={member.userId}
-                    className="flex items-center gap-4 rounded-3xl border border-line bg-card px-4 py-3"
-                  >
-                    <ProfileAvatar
-                      name={member.displayName}
-                      url={member.avatarUrl}
-                      alt=""
-                      className="h-12 w-12 text-lg"
-                    />
-                    <span>
-                      <span className="block font-medium">
-                        {member.displayName}
-                        {you ? " (you)" : ""}
-                      </span>
-                      <span className="mt-1 block text-sm text-foreground/80">
-                        {mood ? (
-                          <>
-                            <span aria-hidden="true">{mood.emoji} </span>
-                            {mood.label}
-                          </>
-                        ) : (
-                          "No mood yet"
-                        )}
-                      </span>
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ) : null}
+        <Onboarding />
+        <HomeHero
+          greeting={greeting}
+          selfZone={profile?.timezone ?? null}
+          partner={partner ? person(partner) : null}
+          people={people}
+          countdown={
+            countdown?.daysText
+              ? { label: countdown.label, daysText: countdown.daysText }
+              : null
+          }
+          circleHref={circleHref}
+          circleId={focusDetail?.id ?? null}
+          canPing={canPing}
+          pingName={partner?.displayName ?? "your person"}
+          pingPeople={others.map((member) => ({
+            userId: member.userId,
+            displayName: member.displayName,
+          }))}
+          pending={pending.length > 0 && !canPing}
+        />
+        <HomeShortcuts circleId={focusDetail?.id ?? null} />
         {account.isDemo ? null : <PushPanel />}
       </main>
     </div>

@@ -19,6 +19,7 @@ test("pass a 4-cut: one person shoots, the other finishes the strip", async ({
   });
 
   await page.goto("/circles");
+  await page.getByRole("button", { name: "Create a circle" }).click();
   await page.getByLabel("Name").fill("Pass circle");
   await page.getByRole("button", { name: "Create a circle" }).click();
   await expect(page).toHaveURL(/\/circles\/[0-9a-f-]{36}$/i, {
@@ -39,11 +40,14 @@ test("pass a 4-cut: one person shoots, the other finishes the strip", async ({
     });
     await partnerPage.goto(href!);
     await partnerPage.getByRole("button", { name: "Join circle" }).click();
-    await expect(partnerPage.getByText("Active", { exact: true })).toBeVisible({
+    await expect(
+      partnerPage.getByText("Together", { exact: true }),
+    ).toBeVisible({
       timeout: 20_000,
     });
 
     await page.reload();
+    await page.getByRole("tab", { name: "Photo booth" }).click();
     await page.getByRole("link", { name: "Open the photo booth" }).click();
     await page.getByRole("button", { name: "Pass it on" }).click();
     const jpeg = await jpegFile(page);
@@ -52,6 +56,7 @@ test("pass a 4-cut: one person shoots, the other finishes the strip", async ({
     await expectNotice(page, /Passed on/);
 
     await partnerPage.reload();
+    await partnerPage.getByRole("tab", { name: "Photo booth" }).click();
     await expect(
       partnerPage.getByText("It's your turn in the photo booth."),
     ).toBeVisible();
@@ -67,6 +72,7 @@ test("pass a 4-cut: one person shoots, the other finishes the strip", async ({
     await expectNotice(partnerPage, /memory wall/);
 
     await page.goto(page.url().replace(/\/booth$/, ""));
+    await page.getByRole("tab", { name: "Memory wall" }).click();
     await expect(page.getByText("you and Summer")).toBeVisible({
       timeout: 20_000,
     });
@@ -91,12 +97,14 @@ test("download a kawaii strip, then save it on the memory wall", async ({
   const jpeg = await jpegFile(page);
 
   await page.goto("/circles");
+  await page.getByRole("button", { name: "Create a circle" }).click();
   await page.getByLabel("Name").fill("Booth circle");
   await page.getByRole("button", { name: "Create a circle" }).click();
   await expect(page).toHaveURL(/\/circles\/[0-9a-f-]{36}$/i, {
     timeout: 20_000,
   });
 
+  await page.getByRole("tab", { name: "Photo booth" }).click();
   await page.getByRole("link", { name: "Open the photo booth" }).click();
   await expect(
     page.getByRole("heading", { name: "Photo booth" }),
@@ -122,6 +130,7 @@ test("download a kawaii strip, then save it on the memory wall", async ({
     page.getByRole("img", { name: /photo booth strip/i }),
   ).toHaveCount(0);
 
+  await page.getByRole("tab", { name: "Photo booth" }).click();
   await page.getByRole("link", { name: "Open the photo booth" }).click();
   await page
     .getByLabel("Photos from your library")
@@ -190,6 +199,6 @@ async function signIn(
   expect(new URL(location!).origin).toBe(new URL(page.url()).origin);
   await page.goto(location!);
   await expect(
-    page.getByRole("heading", { name: `Hello, ${input.displayName}` }),
+    page.getByRole("heading", { name: `Hi, ${input.displayName}` }),
   ).toBeVisible();
 }

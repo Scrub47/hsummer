@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { BearMark } from "@/components/bear-mark";
 import { InstallHint } from "@/components/install-hint";
 import { getUserId } from "@/lib/supabase/session";
 
@@ -18,16 +19,13 @@ export default async function LandingPage({
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-6 py-10">
-      <header>
-        <p className="font-serif text-xl tracking-tight">Hsummer</p>
+      <header className="flex items-center gap-2">
+        <BearMark size={40} alt="" />
+        <p className="font-hand text-2xl leading-none">Hsummer</p>
       </header>
-      <main className="flex flex-1 flex-col justify-center py-16">
-        <p className="text-sm font-medium tracking-wide text-pine uppercase">
-          For people far apart
-        </p>
-        <h1 className="mt-4 font-serif text-6xl tracking-tight sm:text-7xl">
-          Hsummer
-        </h1>
+      <main className="flex flex-1 flex-col justify-center py-8">
+        <BearMark size={160} priority alt="" />
+        <h1 className="mt-4 font-hand text-5xl">Hsummer</h1>
         <p className="mt-4 max-w-xl text-xl leading-8">
           Made for couples, built for groups, friends, and families.
         </p>

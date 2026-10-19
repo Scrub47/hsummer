@@ -10,6 +10,7 @@ import {
   saveCountdown,
   type CountdownActionState,
 } from "@/app/circles/countdown-actions";
+import { LiveDot } from "@/components/live-dot";
 import { useCircleLive } from "@/components/use-circle-live";
 import {
   CHECKPOINT_LABEL_MAX,
@@ -39,7 +40,11 @@ export function StillUs({
   const couple = circleType === "couple";
 
   return (
-    <section aria-labelledby="still-us-heading" className="flex flex-col gap-6">
+    <section
+      data-testid="still-us"
+      aria-labelledby="still-us-heading"
+      className="flex flex-col gap-6"
+    >
       <div>
         <h2
           id="still-us-heading"
@@ -52,13 +57,7 @@ export function StillUs({
             ? "One countdown for the two of you. The days are counted in your own timezone."
             : "A countdown for a day you're aiming at. Days are counted in your own timezone."}
         </p>
-        <p className="mt-2 text-sm text-foreground/70" role="status">
-          {live === "live"
-            ? "Live. A checkpoint shows up here."
-            : live === "connecting"
-              ? "Connecting live updates…"
-              : "Live updates aren't connected. A checkpoint you add still sticks. Reload to see one added on another device."}
-        </p>
+        <LiveDot live={live} />
       </div>
 
       {countdowns.length === 0 ? (

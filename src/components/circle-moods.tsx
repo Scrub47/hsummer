@@ -14,6 +14,7 @@ import {
   setCurrentMood,
   type MoodActionState,
 } from "@/app/circles/mood-actions";
+import { LiveDot } from "@/components/live-dot";
 import { MemberChoice } from "@/components/member-choice";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { useCircleLive } from "@/components/use-circle-live";
@@ -74,6 +75,12 @@ export function CircleMoods({
     initialState,
   );
   const [formKey, setFormKey] = useState(0);
+  const [picked, setPicked] = useState<string | null>(null);
+  const [seenState, setSeenState] = useState(state);
+  if (state !== seenState) {
+    setSeenState(state);
+    if (state.error) setPicked(null);
+  }
   const [latest, setLatest] = useState<"set" | "clear" | null>(null);
   const seen = useRef(state);
   const seenClear = useRef(cleared);
@@ -105,7 +112,11 @@ export function CircleMoods({
       : null;
 
   return (
-    <section aria-labelledby="mood-heading" className="flex flex-col gap-6">
+    <section
+      data-testid="circle-moods"
+      aria-labelledby="mood-heading"
+      className="flex flex-col gap-6"
+    >
       <div>
         <h2 id="mood-heading" className="font-serif text-3xl tracking-tight">
           Mood
@@ -117,19 +128,23 @@ export function CircleMoods({
               ? `${partnerName ?? "Your partner"} can see how you're feeling. A tap saves it here. Check the box to also send a notification.`
               : "Everyone here can see how you're feeling. A tap saves it here."}
         </p>
-        <p className="mt-2 text-sm text-foreground/70" role="status">
-          {live === "live"
-            ? "Live. A new mood shows up here for everyone in the circle."
-            : live === "connecting"
-              ? "Connecting live updates…"
-              : "Live updates aren't connected. Saves still stick. Reload to see someone else's mood."}
-        </p>
+        <LiveDot live={live} />
       </div>
 
       <ul aria-label="Circle moods" className="flex flex-col gap-3">
         {members.map((member) => {
-          const mood = moods.find((row) => row.userId === member.userId);
+          const saved = moods.find((row) => row.userId === member.userId);
           const you = member.userId === selfId;
+          const optimistic = you
+            ? MOODS.find((item) => item.emoji === picked)
+            : undefined;
+          const mood = optimistic
+            ? {
+                emoji: optimistic.emoji,
+                label: optimistic.label,
+                when: "Just now",
+              }
+            : saved;
           return (
             <li
               key={member.userId}
@@ -176,13 +191,14 @@ export function CircleMoods({
           className="flex flex-wrap gap-2"
         >
           {MOODS.map((mood) => {
-            const pressed = own?.emoji === mood.emoji;
+            const pressed = (picked ?? own?.emoji) === mood.emoji;
             return (
               <button
                 key={mood.emoji}
                 type="submit"
                 name="emoji"
                 value={mood.emoji}
+                onClick={() => setPicked(mood.emoji)}
                 aria-pressed={pressed}
                 disabled={saving || clearing}
                 className={`inline-flex h-12 items-center gap-2 rounded-full border px-4 text-sm font-medium disabled:opacity-60 ${

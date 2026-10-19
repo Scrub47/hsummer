@@ -1,58 +1,21 @@
-import Link from "next/link";
+import { BearMark } from "@/components/bear-mark";
+import { TabBar } from "@/components/tab-bar";
 
+/**
+ * A small wordmark and the bottom tab bar. Sign out lives on Profile.
+ */
 export function SignedInHeader({
   current,
 }: {
   current: "home" | "profile" | "circles";
 }) {
   return (
-    <header className="flex flex-wrap items-center justify-between gap-4">
-      <Link href="/home" className="font-serif text-xl tracking-tight">
-        Hsummer
-      </Link>
-      <nav className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <HeaderLink href="/home" current={current === "home"}>
-          Home
-        </HeaderLink>
-        <HeaderLink href="/circles" current={current === "circles"}>
-          Circles
-        </HeaderLink>
-        <HeaderLink href="/profile" current={current === "profile"}>
-          Profile
-        </HeaderLink>
-        <form action="/auth/sign-out" method="post">
-          <button
-            type="submit"
-            className="text-sm font-medium text-pine underline decoration-pine/40"
-          >
-            Sign out
-          </button>
-        </form>
-      </nav>
-    </header>
-  );
-}
-
-function HeaderLink({
-  href,
-  current,
-  children,
-}: {
-  href: string;
-  current: boolean;
-  children: string;
-}) {
-  return (
-    <Link
-      href={href}
-      aria-current={current ? "page" : undefined}
-      className={
-        current
-          ? "text-sm font-medium"
-          : "text-sm font-medium text-pine underline decoration-pine/40"
-      }
-    >
-      {children}
-    </Link>
+    <>
+      <div className="brand-row">
+        <BearMark size={36} alt="" />
+        <span className="font-hand text-2xl leading-none">Hsummer</span>
+      </div>
+      <TabBar current={current} />
+    </>
   );
 }

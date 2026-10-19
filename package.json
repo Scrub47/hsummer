@@ -19,7 +19,7 @@
     "test:e2e:local": "playwright test --config playwright.local.config.ts",
     "audit:deps": "node scripts/audit-deps.mjs",
     "generate:vapid": "node scripts/generate-vapid-keys.mjs",
-    "generate:icons": "node scripts/generate-icons.mjs"
+    "generate:icons": "python3 scripts/export-brand.py"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -27,6 +27,7 @@
     "@upstash/qstash": "^2.12.0",
     "@upstash/ratelimit": "^2.2.0",
     "@upstash/redis": "^1.39.0",
+    "lucide-react": "^1.59.0",
     "next": "16.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",

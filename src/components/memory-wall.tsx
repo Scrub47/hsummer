@@ -15,6 +15,7 @@ import {
   deleteMemory,
   type MemoryActionState,
 } from "@/app/circles/memory-actions";
+import { LiveDot } from "@/components/live-dot";
 import { PhotoStrip } from "@/components/photo-strip";
 import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
 import { useCircleLive } from "@/components/use-circle-live";
@@ -73,7 +74,11 @@ export function MemoryWall({
   );
 
   return (
-    <section aria-labelledby="memory-heading" className="flex flex-col gap-6">
+    <section
+      data-testid="memory-wall"
+      aria-labelledby="memory-heading"
+      className="flex flex-col gap-6"
+    >
       <RefreshSignedUrls
         enabled={hasPhoto}
         seconds={MEMORY_SIGNED_URL_SECONDS}
@@ -90,13 +95,7 @@ export function MemoryWall({
         <p className="mt-2 text-sm text-foreground/70">
           {formatMemoryUsage(usedBytes, MEMORY_QUOTA_BYTES)}
         </p>
-        <p className="mt-2 text-sm text-foreground/70" role="status">
-          {live === "live"
-            ? "Live. New memories show up here for people who can see them."
-            : live === "connecting"
-              ? "Connecting live updates…"
-              : "Live updates aren't connected. Saves still stick. Reload to see someone else's."}
-        </p>
+        <LiveDot live={live} />
       </div>
 
       <AddMemoryForm circleId={circleId} people={people} today={today} />
@@ -120,28 +119,28 @@ export function MemoryWall({
       ) : null}
 
       {months.length === 0 ? (
-        <p className="text-sm leading-6 text-foreground/70">
+        <p className="text-sm text-muted">
           {memories.length === 0
             ? "Nothing on the wall yet."
             : "Nothing with that tag."}
         </p>
       ) : (
-        months.map((month) => (
-          <div key={month.key} className="flex flex-col gap-4">
-            <h3 className="font-serif text-2xl tracking-tight">
-              {month.label}
-            </h3>
-            <ul className="flex flex-col gap-4">
-              {month.memories.map((memory) => (
-                <MemoryCardView
-                  key={memory.id}
-                  circleId={circleId}
-                  memory={memory}
-                />
-              ))}
-            </ul>
-          </div>
-        ))
+        <div className="memory-scroll">
+          {months.map((month) => (
+            <div key={month.key} className="flex flex-col gap-3">
+              <h3 className="text-lg font-bold">{month.label}</h3>
+              <ul className="flex flex-col gap-3">
+                {month.memories.map((memory) => (
+                  <MemoryCardView
+                    key={memory.id}
+                    circleId={circleId}
+                    memory={memory}
+                  />
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
       )}
     </section>
   );

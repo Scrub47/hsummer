@@ -12,7 +12,10 @@ import {
   updateProfile,
   type ProfileFormState,
 } from "@/app/profile/actions";
+import { Camera } from "lucide-react";
+
 import { ProfileAvatar } from "@/components/profile-avatar";
+import { InfoTip } from "@/components/info-tip";
 import { prepareBrowserImage } from "@/lib/memories/prepare-photo";
 import {
   AVATAR_ERROR,
@@ -21,6 +24,7 @@ import {
   sniffAvatar,
   supportedTimeZones,
 } from "@/lib/profile/fields";
+import { friendlyZoneLabel } from "@/lib/time/zones";
 
 const initialState: ProfileFormState = { error: null, savedAt: null };
 
@@ -195,36 +199,42 @@ export function ProfileForm({
           </p>
         ) : null}
 
-        <div className="flex flex-wrap items-center gap-5">
-          <ProfileAvatar
-            name={displayName || storedName}
-            url={shownUrl}
-            alt="Profile photo"
-            className="h-24 w-24 text-3xl"
+        <div className="flex flex-wrap items-center gap-4">
+          <label htmlFor="avatar" className="avatar-button">
+            <ProfileAvatar
+              name={displayName || storedName}
+              url={shownUrl}
+              alt=""
+              className="h-24 w-24 text-3xl"
+            />
+            <span className="camera-badge" aria-hidden="true">
+              <Camera size={14} />
+            </span>
+            <span className="sr-only">Photo</span>
+          </label>
+          <input
+            key={fileKey}
+            id="avatar"
+            name="avatar"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={onAvatarChange}
+            className="sr-only"
           />
           <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <label htmlFor="avatar" className="text-sm font-medium">
-              Photo
-            </label>
-            <input
-              key={fileKey}
-              id="avatar"
-              name="avatar"
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={onAvatarChange}
-              className="block w-full text-sm file:mr-3 file:rounded-full file:border-0 file:bg-pine file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
-            />
-            <p className="text-sm leading-6 text-foreground/70">
-              JPEG, PNG, or WebP. Up to 2 MB. Stored privately and shown with a
-              link that expires.
-            </p>
+            <div className="flex items-center gap-1">
+              <p className="text-sm font-bold">Photo</p>
+              <InfoTip label="About your photo">
+                JPEG, PNG, or WebP. Up to 2 MB. Stored privately and shown with
+                a link that expires.
+              </InfoTip>
+            </div>
             {hasAvatar ? (
               <button
                 type="submit"
                 form="remove-photo"
                 disabled={pending || removePending}
-                className="self-start text-sm font-medium text-pine underline decoration-pine/40 disabled:opacity-60"
+                className="btn-quiet"
               >
                 {removePending ? "Removing…" : "Remove photo"}
               </button>
@@ -263,16 +273,12 @@ export function ProfileForm({
           >
             {options.map((zone) => (
               <option key={zone} value={zone}>
-                {zone}
+                {friendlyZoneLabel(zone)}
               </option>
             ))}
           </select>
-          <p
-            id="timezone-help"
-            className="text-sm leading-6 text-foreground/70"
-          >
-            {detectedNote ??
-              "Letters and countdowns will use this later. When your profile is still UTC, the field starts as this browser's timezone."}
+          <p id="timezone-help" className="text-sm leading-6 text-muted">
+            {detectedNote ?? "Letters and countdowns use this."}
           </p>
           {browserZone && timezone !== browserZone ? (
             <button

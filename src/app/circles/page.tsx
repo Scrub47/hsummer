@@ -3,8 +3,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { CircleCreateForm } from "@/components/circle-create-form";
+import { EmptyState } from "@/components/empty-state";
+import { InfoTip } from "@/components/info-tip";
 import { SignedInHeader } from "@/components/signed-in-header";
 import { loadCircles } from "@/lib/circles/load";
+import { circleStatusLabel } from "@/lib/circles/status";
 import { getSession } from "@/lib/supabase/session";
 
 export const metadata: Metadata = {
@@ -21,13 +24,13 @@ export default async function CirclesPage() {
     <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-6 py-10">
       <SignedInHeader current="circles" />
       <main className="flex flex-1 flex-col gap-10 py-16">
-        <div>
-          <h1 className="font-serif text-5xl tracking-tight">Circles</h1>
-          <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
-            A circle is the private space you share. Start a couple circle, or a
-            group, family, or friends circle. A couple invite works once. A
-            group invite can be used until it expires, or until you set a limit.
-          </p>
+        <div className="flex items-center gap-1">
+          <h1 className="text-2xl font-bold tracking-tight">Circles</h1>
+          <InfoTip label="About circles">
+            A circle is the private space you share. A couple invite works once.
+            A group invite can be used until it expires, or until you set a
+            limit.
+          </InfoTip>
         </div>
 
         {loaded.ok && loaded.circles.length > 0 ? (
@@ -36,19 +39,26 @@ export default async function CirclesPage() {
               <li key={circle.id}>
                 <Link
                   href={`/circles/${circle.id}`}
-                  className="flex items-center justify-between gap-4 rounded-3xl border border-line bg-card px-5 py-4"
+                  className="card flex min-h-14 items-center justify-between gap-4 px-4 py-3"
                 >
                   <span>
-                    <span className="block font-medium">{circle.title}</span>
-                    <span className="mt-1 block text-sm text-foreground/70">
-                      {statusLabel(circle.status)}
+                    <span className="block font-bold">{circle.title}</span>
+                    <span className="mt-0.5 block text-sm text-muted">
+                      {circleStatusLabel(circle.status)}
                     </span>
                   </span>
-                  <span className="text-sm text-pine">Open</span>
+                  <span aria-hidden="true" className="text-muted">
+                    ›
+                  </span>
                 </Link>
               </li>
             ))}
           </ul>
+        ) : loaded.ok ? (
+          <EmptyState
+            title="No circle yet"
+            detail="Create one when you're ready."
+          />
         ) : null}
 
         {!loaded.ok ? (
@@ -65,10 +75,4 @@ export default async function CirclesPage() {
       </main>
     </div>
   );
-}
-
-function statusLabel(status: "pending" | "active" | "archived"): string {
-  if (status === "active") return "Active";
-  if (status === "archived") return "Archived";
-  return "Waiting for someone to join";
 }

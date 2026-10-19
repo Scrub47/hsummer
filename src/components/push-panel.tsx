@@ -16,11 +16,12 @@ export function PushPanel() {
   const [pending, setPending] = useState<"enable" | "test" | "disable" | null>(
     null,
   );
+  const [readyToAsk, setReadyToAsk] = useState(false);
   const [status, setStatus] = useState<Status>(null);
 
   const needsInstall = useNeedsIosInstall();
 
-  async function enable() {
+  function beginEnable() {
     setStatus(null);
     if (iosInstallRequired()) {
       setStatus({
@@ -29,8 +30,7 @@ export function PushPanel() {
       });
       return;
     }
-    const publicKey = getVapidPublicKey();
-    if (!publicKey) {
+    if (!getVapidPublicKey()) {
       setStatus({
         tone: "error",
         text: "VAPID keys aren't configured yet. Generate a pair and add it to .env.local.",
@@ -44,6 +44,13 @@ export function PushPanel() {
       });
       return;
     }
+    setReadyToAsk(true);
+  }
+
+  async function enable() {
+    setReadyToAsk(false);
+    const publicKey = getVapidPublicKey();
+    if (!publicKey) return;
 
     setPending("enable");
     try {
@@ -163,25 +170,50 @@ export function PushPanel() {
   return (
     <section className="flex flex-col gap-4">
       <div>
-        <h2 className="font-serif text-2xl">Notifications</h2>
+        <h2 className="text-xl font-bold">Notifications</h2>
         {needsInstall ? null : (
-          <p className="mt-2 text-sm leading-6 text-foreground/80">
-            A test push says only that notifications work. It never includes a
-            name, a letter, or anything else private — lock screens are public.
+          <p className="mt-1 text-sm text-muted">
+            A test says only that notifications work. Lock screens are public.
           </p>
         )}
       </div>
       {needsInstall ? <InstallHint /> : null}
       {needsInstall ? null : (
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          <button
-            type="button"
-            onClick={enable}
-            disabled={pending !== null}
-            className="inline-flex h-11 items-center justify-center rounded-full bg-accent px-4 text-sm font-medium text-accent-ink disabled:opacity-60"
-          >
-            {pending === "enable" ? "Enabling…" : "Enable notifications"}
-          </button>
+          {readyToAsk ? (
+            <div className="card flex flex-col gap-3 p-4">
+              <p className="text-sm leading-6">
+                Thinking of You can show up on a lock screen. The browser will
+                ask next. Hsummer does not put names or letters in that ping.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void enable()}
+                  disabled={pending !== null}
+                  className="btn"
+                >
+                  {pending === "enable" ? "Enabling…" : "Allow notifications"}
+                </button>
+                <button
+                  type="button"
+                  className="btn-quiet"
+                  onClick={() => setReadyToAsk(false)}
+                >
+                  Not now
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={beginEnable}
+              disabled={pending !== null}
+              className="btn"
+            >
+              Enable notifications
+            </button>
+          )}
           <button
             type="button"
             onClick={sendTest}

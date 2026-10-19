@@ -4,6 +4,9 @@ import { staticSecurityHeaders } from "./src/lib/security/headers";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // The dev indicator is an unstyled gray button. It is not part of the app,
+  // and it was landing in the phone screenshots.
+  devIndicators: false,
   // Playwright opens the app at 127.0.0.1. The dev server allows localhost
   // only, and without this the sign-in form never hydrates.
   allowedDevOrigins: ["127.0.0.1"],

@@ -8,8 +8,13 @@ export function RecentPings({
   selfId: string;
 }) {
   return (
-    <section>
-      <h2 className="font-serif text-2xl tracking-tight">Recent</h2>
+    <section data-testid="recent-pings" aria-labelledby="recent-pings-heading">
+      <h2
+        id="recent-pings-heading"
+        className="font-serif text-2xl tracking-tight"
+      >
+        Recent
+      </h2>
       {pings.length === 0 ? (
         <p className="mt-3 text-sm leading-6 text-foreground/70">
           No pings yet. The first one is the button above.
@@ -19,7 +24,7 @@ export function RecentPings({
           {pings.map((ping) => (
             <li
               key={ping.id}
-              className="flex items-baseline justify-between gap-4 rounded-3xl border border-line bg-card px-4 py-3"
+              className="flex items-baseline justify-between gap-3 rounded-2xl border border-line bg-card px-3 py-2 text-sm"
             >
               <span>
                 <span className="font-medium">

@@ -1,21 +1,32 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, Outfit } from "next/font/google";
+import localFont from "next/font/local";
 import { connection } from "next/server";
 
+import { OfflineBanner } from "@/components/offline-banner";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import { SiteFooter } from "@/components/site-footer";
+import { ToastHost } from "@/components/toast-host";
 import { getSiteUrl } from "@/lib/env";
 
 import "./globals.css";
 
-const outfit = Outfit({
-  subsets: ["latin"],
-  variable: "--font-outfit",
+const nunito = localFont({
+  src: [
+    { path: "../fonts/nunito-400.woff2", weight: "400", style: "normal" },
+    { path: "../fonts/nunito-600.woff2", weight: "600", style: "normal" },
+    { path: "../fonts/nunito-700.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--font-nunito",
+  display: "swap",
 });
 
-const fraunces = Fraunces({
-  subsets: ["latin"],
-  variable: "--font-fraunces",
+const caveat = localFont({
+  src: [
+    { path: "../fonts/caveat-500.woff2", weight: "500", style: "normal" },
+    { path: "../fonts/caveat-700.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--font-caveat",
+  display: "swap",
 });
 
 const siteUrl = getSiteUrl();
@@ -32,14 +43,18 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "Hsummer",
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#f3ecdf",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f7f0e8" },
+    { media: "(prefers-color-scheme: dark)", color: "#3a1824" },
+  ],
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
@@ -50,15 +65,17 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${outfit.variable} ${fraunces.variable} h-full antialiased`}
+      className={`${nunito.variable} ${caveat.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-background font-sans text-foreground">
         <a href="#content" className="skip-link">
           Skip to content
         </a>
         <ServiceWorkerRegister />
+        <OfflineBanner />
         <div id="content">{children}</div>
         <SiteFooter />
+        <ToastHost />
       </body>
     </html>
   );
