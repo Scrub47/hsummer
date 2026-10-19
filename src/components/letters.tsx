@@ -75,7 +75,11 @@ export function Letters({
   const keepsakes = letters.filter((letter) => pinned.has(letter.id));
 
   return (
-    <section aria-labelledby="letters-heading" className="flex flex-col gap-6">
+    <section
+      data-testid="letters"
+      aria-labelledby="letters-heading"
+      className="flex flex-col gap-6"
+    >
       <div>
         <h2 id="letters-heading" className="font-serif text-3xl tracking-tight">
           Letters

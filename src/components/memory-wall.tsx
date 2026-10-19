@@ -85,7 +85,11 @@ export function MemoryWall({
   );
 
   return (
-    <section aria-labelledby="memory-heading" className="flex flex-col gap-6">
+    <section
+      data-testid="memory-wall"
+      aria-labelledby="memory-heading"
+      className="flex flex-col gap-6"
+    >
       <RefreshSignedUrls
         enabled={hasPhoto}
         seconds={MEMORY_SIGNED_URL_SECONDS}

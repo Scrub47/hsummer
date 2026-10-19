@@ -113,7 +113,11 @@ export function CircleMoods({
       : null;
 
   return (
-    <section aria-labelledby="mood-heading" className="flex flex-col gap-6">
+    <section
+      data-testid="circle-moods"
+      aria-labelledby="mood-heading"
+      className="flex flex-col gap-6"
+    >
       <div>
         <h2 id="mood-heading" className="font-serif text-3xl tracking-tight">
           Mood
