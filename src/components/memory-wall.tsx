@@ -17,9 +17,17 @@ import {
 } from "@/app/circles/memory-actions";
 import { LiveDot } from "@/components/live-dot";
 import { PhotoStrip } from "@/components/photo-strip";
+import { ReactionBar } from "@/components/reaction-bar";
 import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
 import { useCircleLive } from "@/components/use-circle-live";
-import { filterLabel, layoutLabel } from "@/lib/booth/fields";
+import {
+  STRIP_HEIGHT,
+  STRIP_WIDTH,
+  filterLabel,
+  layoutLabel,
+  shotCount,
+} from "@/lib/booth/fields";
+import { drawStrip } from "@/lib/booth/draw";
 import { themeBundle } from "@/lib/booth/themes";
 import {
   CAPTION_ERROR,
@@ -37,6 +45,7 @@ import {
   type MemoryCard,
 } from "@/lib/memories/group";
 import { prepareMemoryPhoto } from "@/lib/memories/prepare-photo";
+import type { ResponseView } from "@/lib/responses/load";
 
 const initialState: MemoryActionState = { error: null, saved: false };
 
@@ -53,6 +62,7 @@ export function MemoryWall({
   today,
   usedBytes,
   pending,
+  responses = {},
 }: {
   circleId: string;
   memories: MemoryCard[];
@@ -60,6 +70,7 @@ export function MemoryWall({
   today: string;
   usedBytes: number;
   pending: boolean;
+  responses?: Record<string, ResponseView>;
 }) {
   const router = useRouter();
   const refresh = useCallback(() => {
@@ -98,6 +109,10 @@ export function MemoryWall({
         <LiveDot live={live} />
       </div>
 
+      <a href={`/circles/${circleId}/book`} className="btn-quiet w-fit">
+        Memory book
+      </a>
+
       <AddMemoryForm circleId={circleId} people={people} today={today} />
 
       {tags.length > 0 ? (
@@ -135,6 +150,7 @@ export function MemoryWall({
                     key={memory.id}
                     circleId={circleId}
                     memory={memory}
+                    responses={responses[`memory:${memory.id}`]}
                   />
                 ))}
               </ul>
@@ -332,9 +348,11 @@ function AddMemoryForm({
 function MemoryCardView({
   circleId,
   memory,
+  responses,
 }: {
   circleId: string;
   memory: MemoryCard;
+  responses?: ResponseView;
 }) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState(
@@ -433,6 +451,30 @@ function MemoryCardView({
           ))}
         </ul>
       ) : null}
+      {memory.photoUrl ? (
+        <button
+          type="button"
+          className="btn-quiet w-fit"
+          onClick={() => void savePhoto(memory.id)}
+        >
+          Save photo
+        </button>
+      ) : null}
+      {memory.kind === "photo-strip" && memory.booth ? (
+        <button
+          type="button"
+          className="btn-quiet w-fit"
+          onClick={() => void saveStrip(memory)}
+        >
+          Save strip
+        </button>
+      ) : null}
+      <ReactionBar
+        circleId={circleId}
+        targetKind="memory"
+        targetId={memory.id}
+        view={responses}
+      />
       {memory.mine && memory.kind !== "milestone" ? (
         <form action={formAction}>
           <input type="hidden" name="circleId" value={circleId} />
@@ -454,6 +496,72 @@ function MemoryCardView({
       ) : null}
     </li>
   );
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function savePhoto(memoryId: string) {
+  const response = await fetch(
+    `/api/media?memoryId=${encodeURIComponent(memoryId)}`,
+  );
+  if (!response.ok) return;
+  downloadBlob(await response.blob(), `hsummer-${memoryId}.jpg`);
+}
+
+async function saveStrip(memory: MemoryCard) {
+  const booth = memory.booth;
+  if (!booth) return;
+  const count = shotCount(booth.frameLayout);
+  const images: (CanvasImageSource | null)[] = Array.from(
+    { length: count },
+    () => null,
+  );
+  for (const shot of booth.shots) {
+    const response = await fetch(
+      `/api/media?memoryId=${encodeURIComponent(memory.id)}&position=${shot.position}`,
+    );
+    if (!response.ok) continue;
+    images[shot.position] = await blobImage(await response.blob());
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = STRIP_WIDTH;
+  canvas.height = STRIP_HEIGHT;
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  drawStrip(context, {
+    theme: themeBundle(booth.theme),
+    layout: booth.frameLayout,
+    images,
+    dateLabel: stripDate(memory.occurredOn),
+    fontFamily: "Nunito, sans-serif",
+  });
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, "image/jpeg", 0.92);
+  });
+  if (blob) downloadBlob(blob, `hsummer-strip-${memory.id}.jpg`);
+}
+
+function blobImage(blob: Blob): Promise<HTMLImageElement | null> {
+  const url = URL.createObjectURL(blob);
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+    image.src = url;
+  });
 }
 
 function stripDate(iso: string): string {

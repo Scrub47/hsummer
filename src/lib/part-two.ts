@@ -1,14 +1,16 @@
 /**
- * Hooks for the next pass. Nothing here is a screen yet.
+ * Part 2 routes and storage keys. The screens live under these names.
  *
- * - Settings: notification toggles, quiet hours, time zone, theme.
- *   `account_private.notification_prefs` is the column. Theme can set
- *   `data-theme` on `<html>` (light / dark) and the tokens already follow it.
- * - Pinned letters: a saved set, separate from the full letter list.
- * - Reactions and replies on letters, photos, and memories.
- * - Memory book: a keepsake export beside the existing ZIP.
- * - Haptics and sound on ping, seal, and mood.
- * - Letter-into-envelope: the seal animation in globals.css is the start.
+ * - Settings: `/profile/settings`. Toggles, quiet hours, time zone, theme,
+ *   and sounds are `account_private.notification_prefs`. Theme sets
+ *   `data-theme` on `<html>` (light / dark). System omits the attribute.
+ * - Pinned letters: `letter_pins`, shown as the Keepsakes shelf.
+ * - Reactions and replies: `reactions` and `replies` on letters and memories.
+ * - Memory book: `/circles/[id]/book` and `POST /api/keepsake`.
+ * - Haptics and sound: `src/lib/feel/feedback.ts`. Sounds stay off until
+ *   the Settings toggle writes `localStorage` key `hsummer-sounds`.
+ * - Letter-into-envelope: `EnvelopeFlight` and the envelope frames in
+ *   `globals.css`.
  */
 export const partTwo = {
   settingsRoute: "/profile/settings",

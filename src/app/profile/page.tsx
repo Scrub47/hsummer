@@ -3,16 +3,13 @@ import { redirect } from "next/navigation";
 
 import Link from "next/link";
 
-import { DeleteAccountForm } from "@/components/delete-account-form";
 import { DemoBanner } from "@/components/demo-banner";
-import { ExportButton } from "@/components/export-button";
 import { ProfileForm } from "@/components/profile-form";
 import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
 import { SignedInHeader } from "@/components/signed-in-header";
 import { AVATAR_SIGNED_URL_SECONDS } from "@/lib/profile/fields";
 import { loadAccountFlags } from "@/lib/account/load";
 import { loadOwnProfile } from "@/lib/profile/load";
-import { partTwo } from "@/lib/part-two";
 import { getSession } from "@/lib/supabase/session";
 
 export const metadata: Metadata = {
@@ -62,23 +59,14 @@ export default async function ProfilePage() {
             one.
           </p>
         )}
-        {account.isDemo ? null : (
-          <section className="flex flex-col gap-4">
-            <h2 className="font-serif text-2xl tracking-tight">Your data</h2>
-            <p className="max-w-xl text-sm leading-6 text-foreground/80">
-              A ZIP of the profile, circles, letters, and photos you can already
-              see. It is not a backup of anyone else&apos;s private letters, and
-              it is not the weekly database backup.
-            </p>
-            <ExportButton />
-          </section>
-        )}
-        {account.isDemo ? null : <DeleteAccountForm />}
-        <section
-          className="flex flex-col gap-3"
-          data-settings={partTwo.settingsRoute}
-        >
+        <section className="flex flex-col gap-3">
           <h2 className="text-xl font-bold">Account</h2>
+          <Link href="/profile/settings" className="btn w-fit">
+            Settings
+          </Link>
+          <p className="max-w-xl text-sm leading-6 text-muted">
+            Notifications, quiet hours, time zone, theme, and privacy.
+          </p>
           <nav className="flex gap-4 text-sm font-bold">
             <Link href="/privacy" className="underline">
               Privacy
