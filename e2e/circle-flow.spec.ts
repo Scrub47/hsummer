@@ -95,6 +95,9 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     await openFeature(partnerPage, "Moods");
     await expect(moods(partnerPage)).toContainText("Isaac");
     await expect(moods(partnerPage)).toContainText("Good");
+    // Recent lives on the Thinking of You tab. Open it so the list is the
+    // one this check reads, including when a mood was not shared as a ping.
+    await openFeature(partnerPage, "Thinking of You");
     await expect(recent(partnerPage)).not.toContainText("Feeling");
 
     await openFeature(page, "Moods");
@@ -221,18 +224,18 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     await expect(
       summerLetters.getByRole("heading", { name: "Dear Summer" }),
     ).toBeVisible();
+    await openFeature(partnerPage, "Memory wall");
     await expect(wall(partnerPage).getByText("Opened letter")).toBeVisible();
 
     await page.reload();
+    await openFeature(page, "Memory wall");
     await expect(wall(page).getByText("Opened letter")).toBeVisible();
     await expect(
       wall(page).getByRole("link", { name: "Read the letter" }),
     ).toBeVisible();
 
     await openFeature(page, "Still Us");
-    const still = page
-      .locator("section")
-      .filter({ has: page.getByRole("heading", { name: "Still Us" }) });
+    const still = page.getByTestId("still-us");
     await still.getByLabel("Reunion date").fill("2027-02-14");
     await still.getByRole("button", { name: "Save the date" }).click();
     await expect(
@@ -248,15 +251,15 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     await expect(
       still.getByText("Hit. It's on the memory wall."),
     ).toBeVisible();
+    await openFeature(page, "Memory wall");
     await expect(wall(page).getByText("Still Us")).toBeVisible();
     await expect(wall(page).getByText("Flight booked")).toBeVisible();
 
     await partnerPage.reload();
     await openFeature(partnerPage, "Still Us");
-    const partnerStill = partnerPage.locator("section").filter({
-      has: partnerPage.getByRole("heading", { name: "Still Us" }),
-    });
+    const partnerStill = partnerPage.getByTestId("still-us");
     await expect(partnerStill.getByText(/\d+ days|Today/)).toBeVisible();
+    await openFeature(partnerPage, "Memory wall");
     await expect(wall(partnerPage).getByText("Flight booked")).toBeVisible();
 
     await openFeature(page, "Letters");
@@ -284,21 +287,15 @@ async function openFeature(page: Page, name: string) {
 }
 
 function moods(page: Page) {
-  return page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Mood" }) });
+  return page.getByTestId("circle-moods");
 }
 
 function letters(page: Page) {
-  return page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Letters" }) });
+  return page.getByTestId("letters");
 }
 
 function wall(page: Page) {
-  return page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Memory wall" }) });
+  return page.getByTestId("memory-wall");
 }
 
 function utcDay(daysAgo: number): string {
@@ -317,9 +314,7 @@ function monthLabel(iso: string): string {
 }
 
 function recent(page: Page) {
-  return page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Recent" }) });
+  return page.getByTestId("recent-pings");
 }
 
 async function signIn(

@@ -40,7 +40,11 @@ export function StillUs({
   const couple = circleType === "couple";
 
   return (
-    <section aria-labelledby="still-us-heading" className="flex flex-col gap-6">
+    <section
+      data-testid="still-us"
+      aria-labelledby="still-us-heading"
+      className="flex flex-col gap-6"
+    >
       <div>
         <h2
           id="still-us-heading"

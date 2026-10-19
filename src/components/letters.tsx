@@ -64,7 +64,11 @@ export function Letters({
   const canCompose = canWrite && (partnerName || people.length > 1);
 
   return (
-    <section aria-labelledby="letters-heading" className="flex flex-col gap-6">
+    <section
+      data-testid="letters"
+      aria-labelledby="letters-heading"
+      className="flex flex-col gap-6"
+    >
       <div>
         <h2 id="letters-heading" className="font-serif text-3xl tracking-tight">
           Letters

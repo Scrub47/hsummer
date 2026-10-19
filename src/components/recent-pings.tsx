@@ -8,8 +8,13 @@ export function RecentPings({
   selfId: string;
 }) {
   return (
-    <section>
-      <h2 className="font-serif text-2xl tracking-tight">Recent</h2>
+    <section data-testid="recent-pings" aria-labelledby="recent-pings-heading">
+      <h2
+        id="recent-pings-heading"
+        className="font-serif text-2xl tracking-tight"
+      >
+        Recent
+      </h2>
       {pings.length === 0 ? (
         <p className="mt-3 text-sm leading-6 text-foreground/70">
           No pings yet. The first one is the button above.
