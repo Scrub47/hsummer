@@ -4,9 +4,13 @@ const verifyQstashRequest = vi.hoisted(() => vi.fn());
 const createAdminClient = vi.hoisted(() => vi.fn());
 const notifyLetterRecipient = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/schedule/qstash", () => ({
-  verifyQstashRequest,
-}));
+vi.mock("@/lib/schedule/qstash", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/schedule/qstash")>();
+  return {
+    ...actual,
+    verifyQstashRequest,
+  };
+});
 
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient,
@@ -42,6 +46,11 @@ describe("POST /api/letters/deliver", () => {
     verifyQstashRequest.mockResolvedValue(false);
     const response = await POST(request(JSON.stringify({ letterId })));
     expect(response.status).toBe(401);
+    expect(verifyQstashRequest).toHaveBeenCalledWith({
+      signature: "signed",
+      body: JSON.stringify({ letterId }),
+      url: "https://hsummer.vercel.app/api/letters/deliver",
+    });
     expect(createAdminClient).not.toHaveBeenCalled();
     expect(notifyLetterRecipient).not.toHaveBeenCalled();
   });

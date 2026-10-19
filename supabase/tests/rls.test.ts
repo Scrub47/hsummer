@@ -3967,6 +3967,27 @@ describe("phase 4 keeps a third member out of what they were not picked for", ()
     expect(opened.error).toBeNull();
     const sessionId = opened.data?.session_id ?? "";
 
+    const thirdSession = await third
+      .from("booth_sessions")
+      .select("id")
+      .eq("id", sessionId);
+    expect(thirdSession.data ?? []).toEqual([]);
+    const thirdPeople = await third
+      .from("booth_contributors")
+      .select("user_id")
+      .eq("session_id", sessionId);
+    expect(thirdPeople.data ?? []).toEqual([]);
+    const outsideSession = await outsider
+      .from("booth_sessions")
+      .select("id")
+      .eq("id", sessionId);
+    expect(outsideSession.data ?? []).toEqual([]);
+    const hostSession = await host
+      .from("booth_sessions")
+      .select("id")
+      .eq("id", sessionId);
+    expect(hostSession.data?.[0]?.id).toBe(sessionId);
+
     const one = await host.rpc("mark_together_ready", {
       target_session: sessionId,
       offset_ms: 12,
@@ -4027,6 +4048,67 @@ describe("phase 4 keeps a third member out of what they were not picked for", ()
       .is("revoked_at", null)
       .single();
     expect(invite.data?.max_uses).toBe(4);
+  });
+
+  it("hides an open live booth from a person who left", async () => {
+    const nonce = crypto.randomUUID();
+    const leaverId = await createUser(admin, {
+      email: `rls-p4-left-${nonce}@example.com`,
+      displayName: "Phase Left",
+      timezone: "UTC",
+    });
+    const leaver = (
+      await signIn(apiUrl, anonKey, `rls-p4-left-${nonce}@example.com`)
+    ).client;
+    const created = await rpc(host, "create_circle", {
+      circle_name: "Leave the booth",
+      circle_type: "group",
+    });
+    const circleId = created.circle_id ?? "";
+    await rpc(leaver, "redeem_invite", {
+      raw_token: created.token ?? "",
+      ip_hash: freshIp(),
+    });
+    const opened = await host.rpc("open_together_booth", {
+      target_circle: circleId,
+      participant_ids: [hostId, leaverId],
+      target_theme: "minimal",
+      target_layout: "2-cut",
+    });
+    expect(opened.error).toBeNull();
+    const sessionId = opened.data?.session_id ?? "";
+    const left = await leaver.rpc("leave_circle", {
+      target_circle: circleId,
+      remove_content: false,
+    });
+    expect(left.error).toBeNull();
+    const hidden = await leaver
+      .from("booth_sessions")
+      .select("id")
+      .eq("id", sessionId);
+    expect(hidden.data ?? []).toEqual([]);
+    const shots = await leaver
+      .from("booth_shots")
+      .select("session_id")
+      .eq("session_id", sessionId);
+    expect(shots.data ?? []).toEqual([]);
+  });
+
+  it("does not expose the together-channel helper through the Data API", async () => {
+    const untyped = third as unknown as {
+      rpc: (
+        name: string,
+        args: { topic: string },
+      ) => Promise<{ error: { message: string } | null }>;
+    };
+    const probed = await untyped.rpc("can_join_together_topic", {
+      topic: "together:00000000-0000-4000-8000-000000000000",
+    });
+    expect(probed.error).toBeTruthy();
+    const circleProbe = await untyped.rpc("can_join_circle_topic", {
+      topic: "memories:00000000-0000-4000-8000-000000000000",
+    });
+    expect(circleProbe.error).toBeTruthy();
   });
 });
 

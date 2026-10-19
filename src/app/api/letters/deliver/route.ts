@@ -3,14 +3,15 @@ import { z } from "zod";
 
 import { getSiteUrl } from "@/lib/env";
 import { notifyLetterRecipient } from "@/lib/letters/notify";
-import { verifyQstashRequest } from "@/lib/schedule/qstash";
+import { qstashCallbackUrl, verifyQstashRequest } from "@/lib/schedule/qstash";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
  * QStash calls this when a scheduled letter is due.
  *
- * The signature is checked before any read or write. A missing key, a bad
- * signature, or an unsigned body does not deliver the letter. The handler
+ * The signature is checked before any read or write, and it has to be for
+ * this exact URL. A missing key, a bad signature, a signature for another
+ * URL, or an unsigned body does not deliver the letter. The handler
  * then re-checks that both people are still in the circle. The push says
  * "You have a new letter." and nothing else.
  *
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
   const valid = await verifyQstashRequest({
     signature: request.headers.get("upstash-signature"),
     body: raw,
+    url: qstashCallbackUrl(request.url),
   });
   if (!valid) {
     return NextResponse.json({ error: "Bad signature." }, { status: 401 });
