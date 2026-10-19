@@ -5,6 +5,8 @@ import { z } from "zod";
 
 import { resetDemoCircle } from "@/lib/demo/reset";
 import { getCronSecret } from "@/lib/env.server";
+import { getSiteUrl } from "@/lib/env";
+import { releaseDuePings } from "@/lib/settings/release";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
@@ -36,6 +38,7 @@ export async function GET(request: Request) {
   });
   const demo = await resetDemoCircle();
   const exportsRemoved = await removeOldExports(admin);
+  const released = await releaseDuePings(getSiteUrl() ?? "https://hsummer.app");
 
   if (purged.error || swept.error || together.error || !demo.ok) {
     console.error(
@@ -51,6 +54,7 @@ export async function GET(request: Request) {
     togetherExpired: together.data ?? 0,
     demoReset: true,
     exportsRemoved,
+    quietReleased: released,
   });
 }
 

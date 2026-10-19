@@ -4112,6 +4112,393 @@ describe("phase 4 keeps a third member out of what they were not picked for", ()
   });
 });
 
+describe("part 2 keeps reactions, replies, and pins with the people who can see the item", () => {
+  let third: Client;
+  let leaver: Client;
+  let outsider: Client;
+  let rapid: Client;
+  let thirdId = "";
+  let leaverId = "";
+  let rapidId = "";
+  let groupId = "";
+  let letterId = "";
+  let sharedNoteId = "";
+  let privateNoteId = "";
+
+  beforeAll(async () => {
+    const nonce = crypto.randomUUID();
+    thirdId = await createUser(admin, {
+      email: `rls-part2-third-${nonce}@example.com`,
+      displayName: "Part Two Third",
+      timezone: "UTC",
+    });
+    leaverId = await createUser(admin, {
+      email: `rls-part2-left-${nonce}@example.com`,
+      displayName: "Part Two Leaver",
+      timezone: "UTC",
+    });
+    rapidId = await createUser(admin, {
+      email: `rls-part2-rapid-${nonce}@example.com`,
+      displayName: "Part Two Rapid",
+      timezone: "UTC",
+    });
+    await createUser(admin, {
+      email: `rls-part2-out-${nonce}@example.com`,
+      displayName: "Part Two Outsider",
+      timezone: "UTC",
+    });
+    third = (
+      await signIn(apiUrl, anonKey, `rls-part2-third-${nonce}@example.com`)
+    ).client;
+    leaver = (
+      await signIn(apiUrl, anonKey, `rls-part2-left-${nonce}@example.com`)
+    ).client;
+    outsider = (
+      await signIn(apiUrl, anonKey, `rls-part2-out-${nonce}@example.com`)
+    ).client;
+    rapid = (
+      await signIn(apiUrl, anonKey, `rls-part2-rapid-${nonce}@example.com`)
+    ).client;
+
+    const group = await admin
+      .from("circles")
+      .insert({
+        name: "Part two",
+        circle_type: "group",
+        created_by: ownerId,
+      })
+      .select("id")
+      .single();
+    if (group.error || !group.data) throw group.error ?? new Error("no group");
+    groupId = group.data.id;
+    const members = await admin.from("circle_members").insert([
+      { circle_id: groupId, user_id: ownerId },
+      { circle_id: groupId, user_id: otherId },
+      { circle_id: groupId, user_id: thirdId },
+      { circle_id: groupId, user_id: leaverId },
+      { circle_id: groupId, user_id: rapidId },
+    ]);
+    if (members.error) throw members.error;
+
+    const letter = await owner
+      .from("letters")
+      .insert({
+        circle_id: groupId,
+        from_user_id: ownerId,
+        to_user_id: otherId,
+        category: "feeling-sad",
+        body: "only for the two of us",
+        design: "minimal",
+      })
+      .select("id, status, delivered_at")
+      .single();
+    if (letter.error || !letter.data)
+      throw letter.error ?? new Error("no letter");
+    expect(letter.data.status).toBe("delivered");
+    expect(letter.data.delivered_at).toBeTruthy();
+    letterId = letter.data.id;
+
+    const shared = await owner
+      .from("memories")
+      .insert({
+        circle_id: groupId,
+        kind: "note",
+        body: "everyone can see this",
+        occurred_on: utcDay(0),
+        visibility: "circle",
+      })
+      .select("id")
+      .single();
+    if (shared.error || !shared.data)
+      throw shared.error ?? new Error("no note");
+    sharedNoteId = shared.data.id;
+
+    const hidden = await owner
+      .from("memories")
+      .insert({
+        circle_id: groupId,
+        kind: "note",
+        body: "only the author",
+        occurred_on: utcDay(0),
+        visibility: "selected",
+      })
+      .select("id")
+      .single();
+    if (hidden.error || !hidden.data)
+      throw hidden.error ?? new Error("no private note");
+    privateNoteId = hidden.data.id;
+
+    const goodbye = await leaver
+      .from("circle_members")
+      .update({ left_at: new Date().toISOString() })
+      .eq("circle_id", groupId)
+      .eq("user_id", leaverId)
+      .select("left_at");
+    if (goodbye.error || !goodbye.data?.[0]?.left_at) {
+      throw goodbye.error ?? new Error("could not leave");
+    }
+  });
+
+  it("lets the recipient react and reply, and denies a third member and a former member", async () => {
+    const reacted = await other
+      .from("reactions")
+      .insert({
+        circle_id: groupId,
+        user_id: otherId,
+        target_kind: "letter",
+        target_id: letterId,
+        emoji: "heart",
+      })
+      .select("id");
+    expect(reacted.error).toBeNull();
+    expect(reacted.data?.length).toBe(1);
+
+    const replied = await other
+      .from("replies")
+      .insert({
+        circle_id: groupId,
+        user_id: otherId,
+        target_kind: "letter",
+        target_id: letterId,
+        body: "I kept this.",
+      })
+      .select("id, body");
+    expect(replied.error).toBeNull();
+    expect(replied.data?.[0]?.body).toBe("I kept this.");
+
+    const senderSees = await owner
+      .from("reactions")
+      .select("emoji")
+      .eq("target_id", letterId);
+    expect(senderSees.data?.map((row) => row.emoji)).toContain("heart");
+
+    const thirdRead = await third
+      .from("reactions")
+      .select("emoji")
+      .eq("target_id", letterId);
+    expect(thirdRead.error).toBeNull();
+    expect(thirdRead.data).toEqual([]);
+    const thirdReply = await third
+      .from("replies")
+      .select("body")
+      .eq("target_id", letterId);
+    expect(thirdReply.data).toEqual([]);
+    expect(JSON.stringify(thirdReply.data)).not.toContain("I kept this.");
+
+    const thirdWrite = await third.from("reactions").insert({
+      circle_id: groupId,
+      user_id: thirdId,
+      target_kind: "letter",
+      target_id: letterId,
+      emoji: "hug",
+    });
+    expect(thirdWrite.error).toBeTruthy();
+
+    const formerRead = await leaver
+      .from("replies")
+      .select("body")
+      .eq("target_id", letterId);
+    expect(formerRead.data).toEqual([]);
+    const formerWrite = await leaver.from("reactions").insert({
+      circle_id: groupId,
+      user_id: leaverId,
+      target_kind: "letter",
+      target_id: letterId,
+      emoji: "spark",
+    });
+    expect(formerWrite.error).toBeTruthy();
+
+    const address = await other.from("replies").insert({
+      circle_id: groupId,
+      user_id: otherId,
+      target_kind: "letter",
+      target_id: letterId,
+      body: "reach me at summer@example.com",
+    });
+    expect(address.error).toBeTruthy();
+  });
+
+  it("hides a selected memory from a third member and a former member, and shows a circle memory to the third", async () => {
+    const denied = await third.from("reactions").insert({
+      circle_id: groupId,
+      user_id: thirdId,
+      target_kind: "memory",
+      target_id: privateNoteId,
+      emoji: "heart",
+    });
+    expect(denied.error).toBeTruthy();
+
+    const former = await leaver.from("reactions").insert({
+      circle_id: groupId,
+      user_id: leaverId,
+      target_kind: "memory",
+      target_id: sharedNoteId,
+      emoji: "heart",
+    });
+    expect(former.error).toBeTruthy();
+
+    const allowed = await third
+      .from("reactions")
+      .insert({
+        circle_id: groupId,
+        user_id: thirdId,
+        target_kind: "memory",
+        target_id: sharedNoteId,
+        emoji: "spark",
+      })
+      .select("id");
+    expect(allowed.error).toBeNull();
+    expect(allowed.data?.length).toBe(1);
+
+    const authorSees = await owner
+      .from("reactions")
+      .select("emoji")
+      .eq("target_id", sharedNoteId);
+    expect(authorSees.data?.map((row) => row.emoji)).toContain("spark");
+  });
+
+  it("lets someone pin a letter they can read, and refuses a third member and a former member", async () => {
+    const pinned = await owner
+      .from("letter_pins")
+      .insert({
+        letter_id: letterId,
+        circle_id: groupId,
+        user_id: ownerId,
+      })
+      .select("id");
+    expect(pinned.error).toBeNull();
+
+    const thirdPin = await third.from("letter_pins").insert({
+      letter_id: letterId,
+      circle_id: groupId,
+      user_id: thirdId,
+    });
+    expect(thirdPin.error).toBeTruthy();
+    const thirdShelf = await third
+      .from("letter_pins")
+      .select("id")
+      .eq("letter_id", letterId);
+    expect(thirdShelf.data).toEqual([]);
+
+    const formerPin = await leaver.from("letter_pins").insert({
+      letter_id: letterId,
+      circle_id: groupId,
+      user_id: leaverId,
+    });
+    expect(formerPin.error).toBeTruthy();
+
+    const shelf = await owner
+      .from("letter_pins")
+      .select("letter_id")
+      .eq("letter_id", letterId);
+    expect(shelf.data?.map((row) => row.letter_id)).toContain(letterId);
+  });
+
+  it("stops the 31st reaction inside 10 minutes", async () => {
+    const notes = [];
+    for (let index = 0; index < 7; index += 1) {
+      const note = await rapid
+        .from("memories")
+        .insert({
+          circle_id: groupId,
+          kind: "note",
+          body: `Rate note ${index}`,
+          occurred_on: utcDay(0),
+        })
+        .select("id")
+        .single();
+      expect(note.error, `note ${index}`).toBeNull();
+      notes.push(note.data?.id ?? "");
+    }
+    const emojis = ["heart", "adore", "hug", "spark", "letter"] as const;
+    let count = 0;
+    for (const noteId of notes) {
+      for (const emoji of emojis) {
+        if (count >= 30) break;
+        const inserted = await rapid.from("reactions").insert({
+          circle_id: groupId,
+          user_id: rapidId,
+          target_kind: "memory",
+          target_id: noteId,
+          emoji,
+        });
+        expect(inserted.error, `${count}`).toBeNull();
+        count += 1;
+      }
+    }
+    expect(count).toBe(30);
+    const extra = await rapid
+      .from("memories")
+      .insert({
+        circle_id: groupId,
+        kind: "note",
+        body: "One past the cap",
+        occurred_on: utcDay(0),
+      })
+      .select("id")
+      .single();
+    expect(extra.error).toBeNull();
+    const blocked = await rapid.from("reactions").insert({
+      circle_id: groupId,
+      user_id: rapidId,
+      target_kind: "memory",
+      target_id: extra.data?.id ?? "",
+      emoji: "heart",
+    });
+    expect(blocked.error?.message).toContain("hsummer_rate_limited");
+  });
+
+  it("tells a circle member about quiet hours and tells an outsider and a former member nothing", async () => {
+    const now = new Date();
+    const minutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+    const start = (minutes + 24 * 60 - 30) % (24 * 60);
+    const end = (minutes + 31) % (24 * 60);
+    const fmt = (value: number) =>
+      `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
+    const saved = await other
+      .from("account_private")
+      .update({
+        notification_prefs: {
+          pings: true,
+          quiet: { enabled: true, start: fmt(start), end: fmt(end) },
+        },
+      })
+      .eq("user_id", otherId)
+      .select("user_id");
+    expect(saved.error).toBeNull();
+    expect(saved.data?.length).toBe(1);
+
+    const partner = await owner.rpc("recipient_quiet_status", {
+      target: otherId,
+    });
+    expect(partner.error).toBeNull();
+    expect(partner.data?.[0]?.in_quiet).toBe(true);
+    expect(partner.data?.[0]?.pings_enabled).toBe(true);
+    expect(partner.data?.[0]?.resume_label).toMatch(/AM|PM/);
+
+    const outside = await outsider.rpc("recipient_quiet_status", {
+      target: otherId,
+    });
+    expect(outside.data ?? []).toEqual([]);
+
+    const former = await leaver.rpc("recipient_quiet_status", {
+      target: otherId,
+    });
+    expect(former.data ?? []).toEqual([]);
+
+    const held = await owner.from("held_notifications").select("id");
+    expect(held.data ?? []).toEqual([]);
+    const planted = await owner.from("held_notifications").insert({
+      user_id: otherId,
+      circle_id: groupId,
+      kind: "ping",
+      ref_id: letterId,
+      deliver_at: new Date().toISOString(),
+    });
+    expect(planted.error).toBeTruthy();
+  });
+});
+
 async function rpc(
   client: Client,
   fn:

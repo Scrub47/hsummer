@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
+import { cookies } from "next/headers";
 import { connection } from "next/server";
 
 import { OfflineBanner } from "@/components/offline-banner";
@@ -61,10 +62,13 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   // Nonce-based CSP is per request. Waiting for the request keeps every page
   // dynamic so Next can stamp that nonce on its scripts.
   await connection();
+  const theme = (await cookies()).get("hsummer-theme")?.value;
+  const dataTheme = theme === "light" || theme === "dark" ? theme : undefined;
 
   return (
     <html
       lang="en"
+      data-theme={dataTheme}
       className={`${nunito.variable} ${caveat.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-background font-sans text-foreground">

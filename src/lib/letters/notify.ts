@@ -6,6 +6,7 @@ import { getVapidConfig } from "@/lib/env.server";
 import { deliverGroupPushes } from "@/lib/push/group-delivery";
 import { buildLetterNotification } from "@/lib/push/payload";
 import { deliverTestPushes, subscriptionsToPrune } from "@/lib/push/prune";
+import { notifiedUserIds } from "@/lib/settings/enforce";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -37,10 +38,18 @@ export async function notifyLetterRecipient(input: {
         circleId: input.circleId,
         userIds: [input.recipientId],
         origin: input.origin,
+        kind: "letters",
         specific: buildLetterNotification(input.origin, input.circleId),
       });
       return;
     }
+
+    const allowed = await notifiedUserIds(
+      [input.recipientId],
+      "letters",
+      "couple",
+    );
+    if (!allowed.includes(input.recipientId)) return;
 
     const { data: rows, error } = await admin
       .from("push_subscriptions")

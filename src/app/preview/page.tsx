@@ -4,13 +4,24 @@ import { notFound } from "next/navigation";
 import { BucketList } from "@/components/bucket-list";
 import { CircleMoods } from "@/components/circle-moods";
 import { CircleTabs } from "@/components/circle-tabs";
+import {
+  EnvelopeFlight,
+  type EnvelopeFrame,
+} from "@/components/envelope-flight";
+import { HeartBurst } from "@/components/heart-burst";
 import { HomeHero } from "@/components/home-hero";
 import { HomeShortcuts } from "@/components/home-shortcuts";
 import { Letters } from "@/components/letters";
 import { MemoryWall } from "@/components/memory-wall";
+import { ReactionBar } from "@/components/reaction-bar";
+import { DeleteAccountForm } from "@/components/delete-account-form";
+import { ExportButton } from "@/components/export-button";
+import { LeaveCircleForm } from "@/components/leave-circle-form";
+import { SettingsPanel } from "@/components/settings-panel";
+import { SignedInHeader } from "@/components/signed-in-header";
+import { DEFAULT_PREFS } from "@/lib/settings/prefs";
 import { ProfileForm } from "@/components/profile-form";
 import { RecentPings } from "@/components/recent-pings";
-import { SignedInHeader } from "@/components/signed-in-header";
 import { StillUs } from "@/components/still-us";
 import { ThinkingOfYou } from "@/components/thinking-of-you";
 import type { LetterCard } from "@/lib/letters/view";
@@ -29,25 +40,43 @@ const circleId = "11111111-1111-4111-8111-111111111111";
 export default async function PreviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ screen?: string; tab?: string }>;
+  searchParams: Promise<{ screen?: string; tab?: string; frame?: string }>;
 }) {
   if (process.env.NODE_ENV === "production") notFound();
   const params = await searchParams;
   const screen = params.screen ?? "home";
+  const header =
+    screen === "profile" || screen === "settings" || screen === "quiet"
+      ? "profile"
+      : screen === "circle" ||
+          screen === "empty" ||
+          screen === "keepsakes" ||
+          screen === "reactions" ||
+          screen === "envelope"
+        ? "circles"
+        : "home";
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-6 py-10">
-      <SignedInHeader
-        current={
-          screen === "profile"
-            ? "profile"
-            : screen === "circle" || screen === "empty"
-              ? "circles"
-              : "home"
-        }
-      />
+      <SignedInHeader current={header} />
       <main className="flex flex-1 flex-col gap-5 py-6">
         {screen === "profile" ? <ProfilePreview /> : null}
+        {screen === "settings" ? <SettingsPreview /> : null}
+        {screen === "quiet" ? (
+          <SettingsPanel
+            prefs={{
+              ...DEFAULT_PREFS,
+              quiet: { enabled: true, start: "22:00", end: "08:00" },
+            }}
+            timezone="America/Los_Angeles"
+            focus="quiet"
+          />
+        ) : null}
+        {screen === "keepsakes" ? <KeepsakePreview /> : null}
+        {screen === "reactions" ? <ReactionPreview /> : null}
+        {screen === "envelope" ? (
+          <EnvelopePreview frame={params.frame ?? "seal"} />
+        ) : null}
         {screen === "home" ? <HomePreview filled={false} /> : null}
         {screen === "filled" ? <HomePreview filled /> : null}
         {screen === "circle" ? (
@@ -104,6 +133,104 @@ function HomePreview({ filled }: { filled: boolean }) {
   );
 }
 
+function SettingsPreview() {
+  return (
+    <>
+      <div>
+        <p className="text-sm font-bold text-pine">Profile</p>
+        <h1 className="mt-2 text-2xl font-bold">Settings</h1>
+      </div>
+      <SettingsPanel prefs={DEFAULT_PREFS} timezone="America/Los_Angeles" />
+      <section
+        className="flex flex-col gap-4"
+        aria-labelledby="privacy-heading"
+      >
+        <h2 id="privacy-heading" className="text-lg font-bold">
+          Privacy
+        </h2>
+        <p className="text-sm leading-6 text-muted">
+          Your copy of what you can see, leaving a circle, and deleting the
+          account.
+        </p>
+        <ExportButton />
+        <LeaveCircleForm circleId={circleId} />
+        <DeleteAccountForm />
+      </section>
+    </>
+  );
+}
+
+function KeepsakePreview() {
+  return (
+    <Letters
+      circleId={circleId}
+      partnerName="Summer"
+      partnerTimeZone="America/New_York"
+      canWrite
+      pending={false}
+      letters={[previewLetter]}
+      categories={[]}
+      pinnedIds={[previewLetter.id]}
+    />
+  );
+}
+
+function ReactionPreview() {
+  return (
+    <div className="flex flex-col gap-4">
+      <article className="letter-sheet" data-design="kawaii">
+        <h3 className="font-hand text-4xl">Dear Summer</h3>
+        <p className="letter-body mt-3">The ferry is still ours.</p>
+        <ReactionBar
+          circleId={circleId}
+          targetKind="letter"
+          targetId="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+          view={{
+            reactions: [
+              { emoji: "heart", count: 2, mine: true },
+              { emoji: "letter", count: 1, mine: false },
+            ],
+            replies: [
+              {
+                id: "reply-1",
+                body: "Come home soon.",
+                author: "Summer",
+                mine: false,
+              },
+            ],
+          }}
+        />
+      </article>
+      <HeartBurst label="Still Us" />
+    </div>
+  );
+}
+
+function EnvelopePreview({ frame }: { frame: string }) {
+  const known = [
+    "fold",
+    "seal",
+    "fly",
+    "arrive",
+    "unseal",
+    "read",
+    "play",
+  ] as const;
+  const picked = known.find((item) => item === frame) ?? "seal";
+  const mode =
+    picked === "arrive" || picked === "unseal" || picked === "read"
+      ? "open"
+      : "send";
+  return (
+    <EnvelopeFlight
+      mode={mode}
+      frame={picked as EnvelopeFrame}
+      dear="Dear Summer"
+      body="The ferry is still ours."
+    />
+  );
+}
+
 function ProfilePreview() {
   return (
     <>
@@ -118,26 +245,28 @@ function ProfilePreview() {
   );
 }
 
+const previewLetter: LetterCard = {
+  id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  fromUserId: "isaac",
+  toUserId: "summer",
+  category: "need-motivation",
+  categoryLabel: "Need motivation",
+  title: "For the ferry",
+  body: "The ferry is still ours.",
+  design: "kawaii",
+  status: "delivered",
+  scheduledFor: null,
+  deliveredAt: "2026-10-01T00:00:00.000Z",
+  openedAt: "2026-10-02T00:00:00.000Z",
+  createdAt: "2026-10-01T00:00:00.000Z",
+  mine: true,
+  sealed: false,
+  dearName: "Dear Summer",
+  fromName: "Isaac",
+};
+
 function CirclePreview({ tab, empty }: { tab: string; empty: boolean }) {
-  const letter: LetterCard = {
-    id: "letter-1",
-    fromUserId: "isaac",
-    toUserId: "summer",
-    category: "need-motivation",
-    categoryLabel: "Need motivation",
-    title: "For the ferry",
-    body: "The ferry is still ours.",
-    design: "kawaii",
-    status: "delivered",
-    scheduledFor: null,
-    deliveredAt: "2026-10-01T00:00:00.000Z",
-    openedAt: null,
-    createdAt: "2026-10-01T00:00:00.000Z",
-    mine: true,
-    sealed: false,
-    dearName: "Dear Summer",
-    fromName: "Isaac",
-  };
+  const letter = previewLetter;
 
   return (
     <>

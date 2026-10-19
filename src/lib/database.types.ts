@@ -1,6 +1,9 @@
 /**
  * Hand-written slice of the generated Supabase types.
  *
+ * `notification_prefs` is a JSON object. Quiet hours, theme, and sounds
+ * live in it beside the boolean toggles.
+ *
  * Profiles, account settings, circles, invites, pings, the bucket list,
  * current moods, the memory wall, letters, and push subscriptions live here. When the
  * schema grows, replace this file with
@@ -12,6 +15,14 @@
  * `circle_invites.created_at` is on Update only so a test can move a row out
  * of the rate-limit window. Authenticated clients have no update grant.
  */
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
+
 export type Database = {
   public: {
     Tables: {
@@ -41,20 +52,20 @@ export type Database = {
         Row: {
           user_id: string;
           age_confirmed_at: string | null;
-          notification_prefs: Record<string, boolean>;
+          notification_prefs: { [key: string]: Json | undefined };
           is_demo: boolean;
           created_at: string;
         };
         Insert: {
           user_id: string;
           age_confirmed_at?: string | null;
-          notification_prefs?: Record<string, boolean>;
+          notification_prefs?: { [key: string]: Json | undefined };
           is_demo?: boolean;
           created_at?: string;
         };
         Update: {
           age_confirmed_at?: string | null;
-          notification_prefs?: Record<string, boolean>;
+          notification_prefs?: { [key: string]: Json | undefined };
         };
         Relationships: [];
       };
@@ -604,6 +615,100 @@ export type Database = {
         };
         Relationships: [];
       };
+      letter_pins: {
+        Row: {
+          id: string;
+          letter_id: string;
+          user_id: string;
+          circle_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          letter_id: string;
+          user_id?: string;
+          circle_id: string;
+          created_at?: string;
+        };
+        Update: {
+          letter_id?: string;
+        };
+        Relationships: [];
+      };
+      reactions: {
+        Row: {
+          id: string;
+          circle_id: string;
+          user_id: string;
+          target_kind: "letter" | "memory";
+          target_id: string;
+          emoji: "heart" | "adore" | "hug" | "spark" | "letter";
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          circle_id: string;
+          user_id?: string;
+          target_kind: "letter" | "memory";
+          target_id: string;
+          emoji: "heart" | "adore" | "hug" | "spark" | "letter";
+          created_at?: string;
+        };
+        Update: {
+          emoji?: "heart" | "adore" | "hug" | "spark" | "letter";
+        };
+        Relationships: [];
+      };
+      replies: {
+        Row: {
+          id: string;
+          circle_id: string;
+          user_id: string | null;
+          target_kind: "letter" | "memory";
+          target_id: string;
+          body: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          circle_id: string;
+          user_id?: string | null;
+          target_kind: "letter" | "memory";
+          target_id: string;
+          body: string;
+          created_at?: string;
+        };
+        Update: {
+          body?: string;
+        };
+        Relationships: [];
+      };
+      held_notifications: {
+        Row: {
+          id: string;
+          user_id: string;
+          circle_id: string;
+          kind: "ping";
+          ref_id: string;
+          deliver_at: string;
+          delivered_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          circle_id: string;
+          kind: "ping";
+          ref_id: string;
+          deliver_at: string;
+          delivered_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          delivered_at?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -852,6 +957,14 @@ export type Database = {
       sweep_quiet_circles: {
         Args: Record<string, never>;
         Returns: number;
+      };
+      recipient_quiet_status: {
+        Args: { target: string };
+        Returns: {
+          in_quiet: boolean;
+          resume_label: string | null;
+          pings_enabled: boolean;
+        }[];
       };
       seed_demo_circle: {
         Args: { photo_bytes: number };

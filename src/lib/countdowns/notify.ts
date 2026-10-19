@@ -6,6 +6,7 @@ import { getVapidConfig } from "@/lib/env.server";
 import { deliverGroupPushes } from "@/lib/push/group-delivery";
 import { buildCheckpointNotification } from "@/lib/push/payload";
 import { deliverTestPushes, subscriptionsToPrune } from "@/lib/push/prune";
+import { notifiedUserIds } from "@/lib/settings/enforce";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -35,15 +36,19 @@ export async function notifyCheckpoint(input: {
         circleId: input.circleId,
         userIds: ids,
         origin: input.origin,
+        kind: "stillUs",
         specific: buildCheckpointNotification(input.origin, input.circleId),
       });
       return;
     }
 
+    const allowed = await notifiedUserIds(ids, "stillUs", "couple");
+    if (allowed.length === 0) return;
+
     const { data: rows, error } = await admin
       .from("push_subscriptions")
       .select("id, user_id, endpoint, p256dh, auth")
-      .in("user_id", ids);
+      .in("user_id", allowed);
 
     if (error || !rows || rows.length === 0) return;
 

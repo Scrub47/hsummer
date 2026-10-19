@@ -18,6 +18,7 @@ import { LiveDot } from "@/components/live-dot";
 import { MemberChoice } from "@/components/member-choice";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { useCircleLive } from "@/components/use-circle-live";
+import { tapFeedback } from "@/lib/feel/feedback";
 import { MOODS, moodSavedMessage } from "@/lib/moods/fields";
 
 const initialState: MoodActionState = {
@@ -194,7 +195,10 @@ export function CircleMoods({
                 type="submit"
                 name="emoji"
                 value={mood.emoji}
-                onClick={() => setPicked(mood.emoji)}
+                onClick={() => {
+                  setPicked(mood.emoji);
+                  tapFeedback("mood");
+                }}
                 aria-pressed={pressed}
                 disabled={saving || clearing}
                 className={`inline-flex h-12 items-center gap-2 rounded-full border px-4 text-sm font-medium disabled:opacity-60 ${
