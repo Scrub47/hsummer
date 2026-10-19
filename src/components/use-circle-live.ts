@@ -11,6 +11,11 @@ import { createClient } from "@/lib/supabase/client";
  *
  * The socket has to join with the signed-in access token. Joining first as
  * the anonymous key accepts the channel and then drops every change.
+ *
+ * The channel is private. With Realtime's "Allow public access" off, a
+ * join that leaves that flag off is rejected. The read policy on
+ * realtime.messages allows an active member of this circle. The rows
+ * themselves are still filtered by the table's own policies.
  */
 export function useCircleLive(
   circleId: string,
@@ -48,7 +53,7 @@ export function useCircleLive(
         if (!active) return;
 
         channel = supabase
-          .channel(`${table}:${circleId}`)
+          .channel(`${table}:${circleId}`, { config: { private: true } })
           .on(
             "postgres_changes",
             {

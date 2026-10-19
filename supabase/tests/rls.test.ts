@@ -4105,6 +4105,10 @@ describe("phase 4 keeps a third member out of what they were not picked for", ()
       topic: "together:00000000-0000-4000-8000-000000000000",
     });
     expect(probed.error).toBeTruthy();
+    const circleProbe = await untyped.rpc("can_join_circle_topic", {
+      topic: "memories:00000000-0000-4000-8000-000000000000",
+    });
+    expect(circleProbe.error).toBeTruthy();
   });
 });
 

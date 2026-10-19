@@ -41,8 +41,28 @@ describe("security audit v2 migration", () => {
     );
   });
 
+  it("lets an active member read a private circle channel and does not let them broadcast on it", () => {
+    expect(sql).toContain(
+      "drop policy if exists circle_channel_read on realtime.messages",
+    );
+    expect(sql).toContain("private.can_join_circle_topic(realtime.topic())");
+    expect(sql).toContain(
+      "grant execute on function private.can_join_circle_topic(text) to authenticated",
+    );
+    expect(sql).toContain(
+      "revoke all on function private.can_join_circle_topic(text) from public, anon",
+    );
+    expect(sql).not.toContain("circle_channel_write");
+    const client = readFileSync(
+      path.join(process.cwd(), "src/components/use-circle-live.ts"),
+      "utf8",
+    );
+    expect(client).toContain("{ config: { private: true } }");
+  });
+
   it("asks the catalog to fail when a channel policy is missing or open", () => {
     expect(sql).toContain("together_channel");
+    expect(sql).toContain("circle_channel");
     expect(sql).toContain("realtime_open");
     expect(sql).toContain("definer_search_path");
     expect(sql).toContain("anon_execute");
