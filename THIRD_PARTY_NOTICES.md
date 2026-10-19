@@ -5,7 +5,7 @@ Hsummer itself is not open source. See LICENSE. The packages below keep their ow
 ## Fonts and icons
 
 - Nunito and Caveat are self-hosted with `next/font/local` from `src/fonts`. Both are released under the SIL Open Font License 1.1. The woff2 files are committed so the build does not call Google. https://openfontlicense.org/
-- Interface icons come from `lucide-react` (ISC). The bear and the PWA icons are drawn from the Hsummer logo in `public/brand/bear.svg` by `scripts/export-brand.py`.
+- Interface icons come from `lucide-react` (ISC). The Hsummer mark is Isaac's logo in `public/brand/logo-source.png`, resized by `scripts/generate-icons.mjs`.
 
 ## Direct dependencies
 

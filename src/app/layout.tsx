@@ -6,6 +6,13 @@ import { OfflineBanner } from "@/components/offline-banner";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import { SiteFooter } from "@/components/site-footer";
 import { ToastHost } from "@/components/toast-host";
+import {
+  appleStartupImages,
+  appleTouchIcon,
+  favicon32,
+  faviconIco,
+  icon192,
+} from "@/lib/brand/icons";
 import { getSiteUrl } from "@/lib/env";
 
 import "./globals.css";
@@ -40,10 +47,19 @@ export const metadata: Metadata = {
     "A private shared space for couples, friends, and families who are far apart.",
   applicationName: "Hsummer",
   metadataBase: siteUrl ? new URL(siteUrl) : undefined,
+  icons: {
+    icon: [
+      { url: favicon32, sizes: "32x32", type: "image/png" },
+      { url: faviconIco },
+      { url: icon192, sizes: "192x192", type: "image/png" },
+    ],
+    apple: [{ url: appleTouchIcon, sizes: "180x180", type: "image/png" }],
+  },
   appleWebApp: {
     capable: true,
     title: "Hsummer",
     statusBarStyle: "black-translucent",
+    startupImage: [...appleStartupImages],
   },
 };
 

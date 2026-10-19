@@ -354,7 +354,7 @@ function CirclePreview({ tab, empty }: { tab: string; empty: boolean }) {
                         id: "memory-2",
                         kind: "photo",
                         body: "Kitchen light",
-                        photoUrl: "/brand/bear-512.png",
+                        photoUrl: "/brand/logo-512-v2.png",
                         photoPath: null,
                         tags: [],
                         visibility: "circle",

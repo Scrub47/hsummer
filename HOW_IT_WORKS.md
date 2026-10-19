@@ -311,16 +311,16 @@ The ping is inserted before the push, with the user's client. If the secret key 
 
 ## PWA files
 
-| File                                         | Role                                                   |
-| -------------------------------------------- | ------------------------------------------------------ |
-| `src/app/manifest.ts`                        | Name, standalone display, icons                        |
-| `public/sw.js`                               | `push` and `notificationclick`                         |
-| `public/icons/`                              | Stable icon URLs for the manifest and the notification |
-| `src/app/icon.png`, `src/app/apple-icon.png` | Favicon and Apple touch icon                           |
-| `src/components/service-worker-register.tsx` | Registers `/sw.js` after the page loads                |
-| `src/components/install-hint.tsx`            | iOS Home Screen instructions                           |
+| File                                         | Role                                           |
+| -------------------------------------------- | ---------------------------------------------- |
+| `src/app/manifest.ts`                        | Name, standalone display, icons                |
+| `public/sw.js`                               | `push` and `notificationclick`                 |
+| `public/icons/`                              | Versioned icon, favicon, and splash URLs       |
+| `public/brand/logo-source.png`               | Isaac's logo. Icons are resized from this file |
+| `src/components/service-worker-register.tsx` | Registers `/sw.js` after the page loads        |
+| `src/components/install-hint.tsx`            | iOS Home Screen instructions                   |
 
-The icons are resized from `public/brand/bear.svg` by `scripts/export-brand.py` (`npm run generate:icons`).
+`npm run generate:icons` only resizes `public/brand/logo-source.png`. The apple touch icon is 180. The manifest lists 192 and 512, plus maskable copies with padding on the logo's burgundy. Filenames end in `-v2` so a Home Screen install does not keep the previous artwork. The in-app bear and the loading splash use the same file.
 
 ## Tests and CI
 
