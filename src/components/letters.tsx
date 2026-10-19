@@ -18,6 +18,7 @@ import {
   sendLetter,
   type LetterActionState,
 } from "@/app/circles/letter-actions";
+import { togglePin } from "@/app/circles/pin-actions";
 import { EmptyState } from "@/components/empty-state";
 import {
   LetterEnvelope,
@@ -26,7 +27,9 @@ import {
 import { trackProductEvent } from "@/lib/analytics/client";
 import { LiveDot } from "@/components/live-dot";
 import { MemberChoice } from "@/components/member-choice";
+import { ReactionBar } from "@/components/reaction-bar";
 import { useCircleLive } from "@/components/use-circle-live";
+import { tapFeedback } from "@/lib/feel/feedback";
 import {
   DEFAULT_LETTER_CATEGORIES,
   LETTER_BODY_MAX,
@@ -36,6 +39,7 @@ import {
   type LetterDesign,
 } from "@/lib/letters/fields";
 import type { LetterCard, LetterCategory } from "@/lib/letters/view";
+import type { ResponseView } from "@/lib/responses/load";
 import { formatInZone } from "@/lib/schedule/time";
 
 const initialState: LetterActionState = {
@@ -59,6 +63,8 @@ export function Letters({
   letters,
   categories,
   people = [],
+  pinnedIds = [],
+  responses = {},
 }: {
   circleId: string;
   partnerName: string | null;
@@ -68,12 +74,16 @@ export function Letters({
   letters: LetterCard[];
   categories: LetterCategory[];
   people?: { userId: string; displayName: string; timezone: string }[];
+  pinnedIds?: string[];
+  responses?: Record<string, ResponseView>;
 }) {
   const router = useRouter();
   const refresh = () => router.refresh();
   const live = useCircleLive(circleId, "letters", refresh);
   const [composing, setComposing] = useState(false);
   const canCompose = canWrite && (partnerName || people.length > 1);
+  const pinned = new Set(pinnedIds);
+  const keepsakes = letters.filter((letter) => pinned.has(letter.id));
 
   return (
     <section
@@ -93,6 +103,30 @@ export function Letters({
         <LiveDot live={live} />
       </div>
 
+      {keepsakes.length > 0 ? (
+        <section
+          aria-labelledby="keepsakes-heading"
+          className="flex flex-col gap-3"
+        >
+          <h3 id="keepsakes-heading" className="font-hand text-3xl">
+            Keepsakes
+          </h3>
+          <ul className="flex flex-col gap-3">
+            {keepsakes.map((letter) => (
+              <li key={`pin-${letter.id}`}>
+                <LetterFold
+                  circleId={circleId}
+                  letter={letter}
+                  partnerTimeZone={partnerTimeZone}
+                  pinned
+                  responses={responses[`letter:${letter.id}`]}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {letters.length === 0 ? (
         <EmptyState
           title="No letters yet"
@@ -106,23 +140,14 @@ export function Letters({
         <ul className="flex flex-col gap-3">
           {letters.map((letter, index) => (
             <li key={letter.id} className="letter-fold">
-              <details className="fold" open={letter.sealed || index === 0}>
-                <summary>
-                  <span>{letter.dearName}</span>
-                  <span className="text-sm font-medium text-muted">
-                    {letter.categoryLabel}
-                  </span>
-                </summary>
-                {letter.sealed ? (
-                  <SealedLetter circleId={circleId} letter={letter} />
-                ) : (
-                  <OpenedLetter
-                    circleId={circleId}
-                    letter={letter}
-                    partnerTimeZone={partnerTimeZone}
-                  />
-                )}
-              </details>
+              <LetterFold
+                circleId={circleId}
+                letter={letter}
+                partnerTimeZone={partnerTimeZone}
+                pinned={pinned.has(letter.id)}
+                responses={responses[`letter:${letter.id}`]}
+                startOpen={letter.sealed || index === 0}
+              />
             </li>
           ))}
         </ul>
@@ -153,6 +178,52 @@ export function Letters({
   );
 }
 
+function LetterFold({
+  circleId,
+  letter,
+  partnerTimeZone,
+  pinned,
+  responses,
+  startOpen = true,
+}: {
+  circleId: string;
+  letter: LetterCard;
+  partnerTimeZone: string;
+  pinned: boolean;
+  responses?: ResponseView;
+  startOpen?: boolean;
+}) {
+  return (
+    <details className="fold" open={startOpen}>
+      <summary>
+        <span>
+          {pinned ? "♥ " : ""}
+          {letter.dearName}
+        </span>
+        <span className="text-sm font-medium text-muted">
+          {letter.categoryLabel}
+        </span>
+      </summary>
+      {letter.sealed ? (
+        <SealedLetter
+          circleId={circleId}
+          letter={letter}
+          pinned={pinned}
+          responses={responses}
+        />
+      ) : (
+        <OpenedLetter
+          circleId={circleId}
+          letter={letter}
+          partnerTimeZone={partnerTimeZone}
+          pinned={pinned}
+          responses={responses}
+        />
+      )}
+    </details>
+  );
+}
+
 function WriteLetter({
   circleId,
   partnerName,
@@ -179,12 +250,16 @@ function WriteLetter({
 
   if (state.saved !== seenSaved) {
     setSeenSaved(state.saved);
-    if (state.saved) setWhen("now");
+    if (state.saved) {
+      setWhen("now");
+      setFlying(true);
+    }
   }
 
   useEffect(() => {
     if (!state.saved) return;
     trackProductEvent("letter_sent");
+    tapFeedback("seal");
     formRef.current?.reset();
   }, [state]);
 
@@ -482,10 +557,14 @@ function OpenedLetter({
   circleId,
   letter,
   partnerTimeZone,
+  pinned = false,
+  responses,
 }: {
   circleId: string;
   letter: LetterCard;
   partnerTimeZone: string;
+  pinned?: boolean;
+  responses?: ResponseView;
 }) {
   const arrival =
     letter.status === "scheduled" && letter.scheduledFor
@@ -522,7 +601,49 @@ function OpenedLetter({
       {letter.mine && letter.status === "scheduled" ? (
         <ScheduledControls circleId={circleId} letterId={letter.id} />
       ) : null}
+      <PinButton circleId={circleId} letterId={letter.id} pinned={pinned} />
+      {letter.status === "delivered" ? (
+        <ReactionBar
+          circleId={circleId}
+          targetKind="letter"
+          targetId={letter.id}
+          view={responses}
+        />
+      ) : null}
     </article>
+  );
+}
+
+function PinButton({
+  circleId,
+  letterId,
+  pinned,
+}: {
+  circleId: string;
+  letterId: string;
+  pinned: boolean;
+}) {
+  const [state, action, pending] = useActionState(togglePin, {
+    error: null,
+    saved: false,
+  });
+  return (
+    <form action={action} className="mt-3">
+      <input type="hidden" name="circleId" value={circleId} />
+      <input type="hidden" name="letterId" value={letterId} />
+      <button type="submit" className="btn-quiet" disabled={pending}>
+        {pending
+          ? "Saving…"
+          : pinned
+            ? "Unpin from Keepsakes"
+            : "Pin to Keepsakes"}
+      </button>
+      {state.error ? (
+        <p className="mt-2 text-sm text-accent" role="alert">
+          {state.error}
+        </p>
+      ) : null}
+    </form>
   );
 }
 
@@ -621,9 +742,13 @@ function ScheduledControls({
 function SealedLetter({
   circleId,
   letter,
+  pinned = false,
+  responses,
 }: {
   circleId: string;
   letter: LetterCard;
+  pinned?: boolean;
+  responses?: ResponseView;
 }) {
   const router = useRouter();
   const { ms } = useEnvelopeMotion();
@@ -654,6 +779,7 @@ function SealedLetter({
         setTitle(result.title);
         setPhase("open");
         trackProductEvent("letter_opened");
+        tapFeedback("seal");
         router.refresh();
       });
     }, ms);
@@ -664,6 +790,8 @@ function SealedLetter({
       <OpenedLetter
         circleId={circleId}
         partnerTimeZone="UTC"
+        pinned={pinned}
+        responses={responses}
         letter={{
           ...letter,
           sealed: false,

@@ -9,7 +9,9 @@ import {
   type TestNotification,
 } from "@/lib/push/payload";
 import { deliverTestPushes, subscriptionsToPrune } from "@/lib/push/prune";
+import { notifiedUserIds } from "@/lib/settings/enforce";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { NotifyKind } from "@/lib/settings/prefs";
 
 /**
  * Sends a group push, or holds it for the rest of the minute.
@@ -24,8 +26,10 @@ export async function deliverGroupPushes(input: {
   userIds: readonly string[];
   origin: string;
   specific: TestNotification;
+  kind: NotifyKind;
 }): Promise<"unconfigured" | "done"> {
-  const ids = [...new Set(input.userIds)].filter((id) => id.length > 0);
+  const allowed = await notifiedUserIds(input.userIds, input.kind, "group");
+  const ids = [...new Set(allowed)].filter((id) => id.length > 0);
   if (ids.length === 0) return "done";
 
   try {

@@ -3,10 +3,9 @@
  *
  * Properties are a closed list of short labels. Letter text, names, emails,
  * captions, and emoji never qualify, so a caller cannot attach them by
- * accident. reaction_added, reply_sent, and keepsake_exported are part of
- * this list for the reactions, replies, and memory-book export named in
- * part-two.ts. Those screens are not built yet. Call trackProductEvent
- * with the name and no message text when they are.
+ * accident. reaction_added fires when a reaction is added, reply_sent when
+ * a short reply is saved, and keepsake_exported when a memory-book PDF or
+ * a photo strip file is saved. None of those calls include the text.
  */
 
 export const PRODUCT_EVENTS = [

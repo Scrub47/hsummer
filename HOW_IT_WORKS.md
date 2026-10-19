@@ -16,7 +16,7 @@ A circle page opens on its home. That home is the only place that shows People, 
 
 Create circle is a button that opens a bottom sheet. Circle type is a set of cards. The profile photo is the avatar itself, with a camera badge. Taps use a pressed scale, a toast (`pushToast`), and a pulsing heart on a ping. `src/components/offline-banner.tsx` listens for the browser offline event. `loading.tsx` files are the skeletons and the bear splash. The first-run card is `src/components/onboarding.tsx` and remembers itself in `localStorage`. Notification permission is explained in `PushPanel` on Settings, before `Notification.requestPermission()`. The same section holds Send test notification. Home does not.
 
-`src/lib/part-two.ts` names the next pass: settings (the route `/profile/settings`, quiet hours, theme via `data-theme`), pinned letters, reactions, a memory book, and haptics. Sending a letter plays fold, seal, and fly. Opening one plays arrive, unseal, and slide. Both run about 1.5 seconds. Reduce Motion uses a 1.2 second fade and scale. The stage is portaled to `#letter-stage-root` so a folded `<details>` panel cannot clip it, and the open request waits until the animation finishes.
+Settings live at `/profile/settings`. Notifications, quiet hours, theme, and soft sounds are one JSON object on `account_private.notification_prefs`. Theme writes `<html data-theme="light|dark">`; system leaves the attribute off so `prefers-color-scheme` applies. A favorite letter is pinned to the Keepsakes shelf. Letters, photos, strips, and memories take a small set of reactions and short replies. The memory book at `/circles/[id]/book` prints a page or downloads a PDF. Sending a letter plays fold, seal, and fly. Opening one plays arrive, unseal, and slide. Both run about 1.5 seconds. Reduce Motion uses a 1.2 second fade and scale. The stage is portaled to `#letter-stage-root` so a folded panel cannot clip it, and the open request waits until the animation finishes. `src/lib/part-two.ts` names those routes.
 
 `src/app/preview/page.tsx` renders fixture screens for design checks. It calls `notFound()` when `NODE_ENV` is production, so a deployed build does not serve it.
 
@@ -47,7 +47,12 @@ Next.js (App Router) on Vercel
   src/app/profile/delete-actions.ts delete the signed-in account
   src/app/api/account/export       ZIP of what this person can see
   src/app/api/demo/enter           sign in as the fictional demo couple
-  src/app/api/cron/daily           purge, expire pings, sweep, demo reset, old exports
+  src/app/profile/settings         notifications, quiet hours, theme, privacy, feedback
+  src/app/api/quiet/release        QStash callback that releases a held ping
+  src/app/api/keepsake             PDF of memories this person can already see
+  src/app/api/media                same-origin photo bytes for a strip download
+  src/app/api/feedback             insert-only rating and optional note
+  src/app/api/cron/daily           purge, expire pings, sweep, demo reset, old exports, held pings
         │
         ▼
 Supabase
@@ -56,7 +61,8 @@ Supabase
             pings, bucket_items, current_moods, memories,
             memory_viewers, letters, letter_categories,
             countdowns, checkpoints, push_subscriptions,
-            booth_sessions, booth_contributors, booth_shots
+            booth_sessions, booth_contributors, booth_shots,
+            letter_pins, reactions, replies, held_notifications
   Realtime: bucket_items, current_moods, memories, letters,
             countdowns, and checkpoints
   Storage: private buckets "avatars", "memories", "backups", and "exports"
@@ -134,6 +140,8 @@ The form is a Client Component because it needs the browser timezone and `useAct
 The action uploads with the user's Supabase client, so Storage RLS applies, then updates `profiles`. If the update fails, it deletes the object it just uploaded. Replacing a photo deletes the previous object when that previous value is an object path in the caller's folder. Legacy `https://` values are not sent to Storage. `removeProfilePhoto` is a separate form so pressing Enter in the name field saves, and does not remove the picture.
 
 The page does not show the email address. It also does not read `account_private`. That table stays owner-only after circles exist. Co-members can read a name, a photo, and a timezone, and nothing else on the account.
+
+`/profile/settings` is the place that does read the owner's `notification_prefs`. Export, leave circle, and delete account are grouped there under Privacy. The profile page itself keeps the name, the photo, and sign out.
 
 Avatar images are a plain `<img>`, not `next/image`. The optimizer would fetch and cache the signed URL.
 
@@ -275,6 +283,8 @@ The sender can cancel a scheduled letter or move its time. Cancel deletes the QS
 
 The recipient's page does not include the body until they open it. The open button plays arrive, unseal, and slide (about 1.5 seconds, or a 1.2 second fade when Reduce Motion is on), then `open_letter` sets `opened_at` and inserts one `memories` row with `kind = letter`, `visibility = selected`, and the recipient in `memory_viewers`. The memory stores the title, or the words "A letter", not the body. The author of that memory is the sender, so both people can read it and a third member cannot. A second open returns the same memory. The sender cannot add another viewer or flip the memory to the whole circle. The push, when VAPID is configured, says "You have a new letter." and nothing else.
 
+A pin is personal. `letter_pins` is one row per person per letter, and the select policy is `user_id = auth.uid()` plus `private.can_read_letter`. The Keepsakes shelf is that set, drawn above the rest of the list. A third member and a former member cannot pin a letter they cannot read, and they cannot see someone else's pins. Unpinning is a delete of the caller's own row.
+
 Leaving a circle does not yet cancel a letter that is still waiting from the leave screen. Delivery does cancel it when the callback or the app-open path sees that a person has left. The leave screen itself is a later week.
 
 ## Still Us
@@ -283,7 +293,7 @@ A countdown is a label and a calendar date, with no time and no zone. Days remai
 
 Checkpoints sit on a countdown in the same circle. `trigger` is `auto-by-date` or `manual`. Ten new checkpoints per person per 10 minutes, in the trigger and in `checkpoint:{user id}` when Redis is configured. `hit_at` is not granted on insert or update. `sync_auto_checkpoints` sets it for auto checkpoints whose date is today or earlier in the caller's timezone, under an advisory lock for that circle. `hit_checkpoint` does the same for a manual row, and a second tap returns the same memory. Both file one `memories` row with `kind = milestone`, `visibility = circle`, `body` equal to the checkpoint label, and tag `still-us`. A unique index on `checkpoint_id` plus a swallowed unique violation means two devices opening the app create one memory. The push says "A countdown checkpoint was reached." and does not include the label.
 
-A milestone has no photo and no delete button on the wall. Deleting the checkpoint cascades the memory. An unhit checkpoint can be removed. A hit one cannot, from the action.
+A milestone has no photo and no delete button on the wall. Deleting the checkpoint cascades the memory. An unhit checkpoint can be removed. A hit one cannot, from the action. Saving a hit plays a short heart burst. `prefers-reduced-motion` leaves the hearts still.
 
 ## Push
 
@@ -301,13 +311,29 @@ When the push service answers **404** or **410**, the subscription is dead (expi
 
 Both routes are POST on purpose. A GET would run from a prefetch or an `<img>` and could buzz a phone.
 
-The ping is inserted before the push, with the user's client. If the secret key or the VAPID keys are missing, the row still exists and the response says notifications are not configured. A missing device does not undo the gesture.
+The ping is inserted before the push, with the user's client. If the secret key or the VAPID keys are missing, the row still exists and the response says notifications are not configured. A missing device does not undo the gesture. Quiet hours, when the secret key is present, can hold that push. See the next section.
+
+## Settings, quiet hours, reactions, and the memory book
+
+`saveSettings` writes `profiles.timezone` and `account_private.notification_prefs` for the signed-in user. The JSON is checked with zod and must stay under 2,048 bytes, which is the column's existing check. Missing keys mean notifications on, sounds off, theme `system`, and quiet hours off (the stored default window is 22:00–08:00). A group, family, or friends circle also requires the group toggle. A couple does not. Turning a kind off skips the push and does not tell the sender. The theme cookie `hsummer-theme` is httpOnly. The layout sets `data-theme` only for `light` or `dark`.
+
+Quiet hours apply to pings, in the recipient's own timezone. `start = end` means the window is off. `start < end` is the same day, from the start minute up to but not including the end. `start > end` wraps past midnight. The server reads the recipient's private row with the service role, because the sender's JWT cannot. The SQL function `public.recipient_quiet_status(target, at)` answers the same question for a person who shares an active circle. `at` defaults to `now()`, so a test can pin the clock. The migration drops `public.recipient_quiet_status(uuid)` before creating the two-argument function, so a database that already ran the earlier file does not keep both overloads. It returns no row to an outsider or a former member. The app's hold path uses the TypeScript copy of that math (`quietDecision`), because the service role has a null `auth.uid()` and the function would return nothing. They have to stay in step: the resume label for `08:00` is `8 AM`.
+
+A ping sent during quiet hours is still inserted. The push is not sent. A row in `held_notifications` says when to release it. That table has RLS and no policies, and `authenticated` has no grant, so a client cannot read or plant a hold. The sender's button says `Summer's in quiet hours, we'll deliver it at 8 AM` (the name and the clock come from the recipient). Release happens three ways, and each one checks quiet hours again before it pushes: the daily cron, opening Home, and `POST /api/quiet/release` when QStash is configured. That route checks the QStash signature before it touches the database. If the person turned pings off before the release, the hold is marked delivered and no push goes out.
+
+Reactions and replies sit on a letter or a memory. A photo and a photo strip are memories, so they use the same two tables. The emoji is stored as a code (`heart`, `adore`, `hug`, `spark`, `letter`), not the glyph. A reply is 1–280 characters and cannot contain `@`. `private.can_respond_to` is the read and insert check: an active member who can already read that letter or memory. A third member cannot react to a 1:1 letter or a selected memory. A former member cannot react to a circle memory. The before-insert triggers cap reactions at 30 per 10 minutes and replies at 20. `src/app/circles/response-actions.ts` checks the same caps with the existing Upstash limiter first. The body is escaped by React when it is rendered as text.
+
+The memory book lists the memories this person can already see. Print uses the browser. Download posts the chosen ids to `POST /api/keepsake`, which loads them again under the session (ids they cannot read are dropped) and builds a small PDF in `src/lib/keepsake/pdf.ts`. No PDF library was added. A single photo or strip is saved from the wall. The bytes come from `GET /api/media`, which checks the session and only downloads a path that already belongs to a memory this person can read. The browser canvas is same-origin, so the strip can be drawn and saved as a PNG.
+
+Haptics call `navigator.vibrate` only when that function exists. iOS Safari does not have it, and the app does not pretend. Soft sounds are Web Audio oscillators, off until Settings turns them on. The choice is mirrored in `localStorage` (`hsummer-sounds`) so a tap does not wait on the server. No audio file is hosted.
+
+The migration is `supabase/migrations/20270318120000_part_two.sql`. It is idempotent (`create table if not exists`, `create or replace`, `drop policy if exists` before `create policy`). Paste that file into the Supabase SQL editor. No new environment variable is required. Quiet-hour scheduling reuses `QSTASH_*` when those are already set, and the cron plus Home still release holds when they are not. Upstash Redis stays optional, in front of the SQL caps.
 
 ## Environment variables
 
 `src/lib/env.ts` is safe for Client Components. It only reads `NEXT_PUBLIC_` variables, and it reads them as `process.env.NEXT_PUBLIC_SOMETHING` rather than `process.env[name]`. Next.js inlines public variables into the browser bundle only for that static form. Placeholder values from `.env.example` count as "not configured", so copying the example file cannot accidentally call a fake project.
 
-`src/lib/env.server.ts` imports `server-only`. A Client Component that imported it would fail the build. The VAPID private key, the Supabase secret key, the optional Upstash Redis token, and the optional QStash token and signing keys are read there, inside the request, not at module scope. Thinking of You uses the secret key that was already required. The bucket list does not add a required variable. Redis is read only by the rate-limit helper, and only when both of its variables are set. QStash is read only by the letter scheduler and the deliver route, and only when all three of its variables are set. A placeholder value counts as missing, so scheduling degrades to the app-open path.
+`src/lib/env.server.ts` imports `server-only`. A Client Component that imported it would fail the build. The VAPID private key, the Supabase secret key, the optional Upstash Redis token, and the optional QStash token and signing keys are read there, inside the request, not at module scope. Thinking of You uses the secret key that was already required. The bucket list does not add a required variable. Redis is read only by the rate-limit helper, and only when both of its variables are set. QStash is read by the letter scheduler, the letter deliver route, and the quiet-hour release route, and only when all three of its variables are set. A placeholder value counts as missing, so scheduling degrades to the app-open path. Quiet-hour holds then wait for Home or the daily cron.
 
 ## PWA files
 
@@ -377,7 +403,7 @@ The restore drill is in the README. Short version: decrypt, `npx supabase db res
 
 Cache Components (the Next.js 16 default for new apps) are off. Signed-in pages depend on the request cookie, and there is no public data worth caching yet. The comment is in `next.config.ts`.
 
-Copying the `avatars` and `memories` buckets into the weekly backup is later. Cancelling a waiting letter from the leave screen is later too; delivery already cancels it when a person has left. A daily cron was not added. Opening the app is what hits auto checkpoints and delivers a letter whose time has passed when QStash is not configured. The database dump is what week 6 stores. `completed_at` is set when a bucket item is marked done, and that does not add a memory. The wall is notes and photos added by hand. Join is limited by `private.join_attempts`, now serialized. Pings, invites, and memories are each limited by their own insert trigger. Upstash, when its two variables are set, checks the same caps first and is not required. Memory photos are stripped of EXIF before they are stored. A JPEG, or a photo the phone labeled HEIC, is drawn to a canvas in the browser first so the pixels are upright and the file is under 2 MB. A small PNG or WebP is uploaded as-is and stripped on the server. Profile photos go through the same canvas step, and the server removes EXIF and text chunks before the avatar object is saved. A signed photo URL lasts five minutes. While a photo is on screen, the page asks for a new one before that, and again when the phone wakes. An image that already failed does that once. Avatar URLs last an hour and refresh the same way. The age-confirmation column is null until that screen exists. The group-circle create form, recipient pickers, and whole-circle pings from the app are later. The leave screen is later too; leaving is possible through the membership column so the status rule and the access cutoff can be tested. `POST /api/pings` still refuses a mood field. The share checkbox is what writes `mood-share`, and only for the partner in an active couple.
+Copying the `avatars` and `memories` buckets into the weekly backup is later. Cancelling a waiting letter from the leave screen is later too; delivery already cancels it when a person has left. `GET /api/cron/daily` purges empty circles, sweeps quiet ones, resets the demo, deletes old export ZIPs, and releases pings held for quiet hours. Opening the app still hits auto checkpoints, delivers a letter whose time has passed when QStash is not configured, and releases a hold that is already due. The database dump is what week 6 stores. `completed_at` is set when a bucket item is marked done, and that does not add a memory. The wall is notes and photos added by hand. Join is limited by `private.join_attempts`, now serialized. Pings, invites, and memories are each limited by their own insert trigger. Upstash, when its two variables are set, checks the same caps first and is not required. Memory photos are stripped of EXIF before they are stored. A JPEG, or a photo the phone labeled HEIC, is drawn to a canvas in the browser first so the pixels are upright and the file is under 2 MB. A small PNG or WebP is uploaded as-is and stripped on the server. Profile photos go through the same canvas step, and the server removes EXIF and text chunks before the avatar object is saved. A signed photo URL lasts five minutes. While a photo is on screen, the page asks for a new one before that, and again when the phone wakes. An image that already failed does that once. Avatar URLs last an hour and refresh the same way. The age-confirmation column is null until that screen exists. The group-circle create form, recipient pickers, and whole-circle pings from the app are later. The leave screen is later too; leaving is possible through the membership column so the status rule and the access cutoff can be tested. `POST /api/pings` still refuses a mood field. The share checkbox is what writes `mood-share`, and only for the partner in an active couple.
 
 ## File map
 
@@ -477,7 +503,16 @@ Copying the `avatars` and `memories` buckets into the weekly backup is later. Ca
 | `src/lib/demo/reset.ts`                  | Rebuild Alex and Jordan and upload the generated JPEG                               |
 | `src/app/api/demo/enter/route.ts`        | Reviewer session as Alex                                                            |
 | `src/app/api/cron/daily/route.ts`        | Daily purge, ping expiry, sweep, demo reset, export cleanup                         |
-| `src/app/profile/settings/page.tsx`      | Settings. Notifications, including the test push, live here                         |
+| `src/app/profile/settings/page.tsx`      | Notifications, quiet hours, privacy, and feedback                                   |
+| `src/app/profile/settings/actions.ts`    | Save prefs, the analytics opt-out, and the feedback prompt                          |
+| `src/components/reaction-bar.tsx`        | Cozy reactions and short replies                                                    |
+| `src/components/settings-panel.tsx`      | The toggles, the zone list, and the theme tiles                                     |
+| `src/lib/keepsake/pdf.ts`                | The memory-book PDF                                                                 |
+| `src/app/circles/[id]/book/page.tsx`     | Pick memories, print, or download the PDF                                           |
+| `src/app/api/keepsake/route.ts`          | PDF download, scoped by the memory query                                            |
+| `src/app/api/media/route.ts`             | Same-origin bytes for saving one photo or strip                                     |
+| `src/app/api/feedback/route.ts`          | Insert-only rating and optional note                                                |
+| `docs/metrics.sql`                       | Read-only resume numbers                                                            |
 | `src/app/api/health/route.ts`            | Liveness check that does not read the database                                      |
 | `src/lib/monitor/sentry.ts`              | Optional server-only Sentry store API                                               |
 | `src/app/confirm-age/page.tsx`           | 13+ confirmation for a session that does not have one yet                           |

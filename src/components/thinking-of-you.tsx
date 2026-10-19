@@ -7,6 +7,7 @@ import { Heart } from "lucide-react";
 
 import { pushToast } from "@/components/toast-host";
 import { trackProductEvent } from "@/lib/analytics/client";
+import { tapFeedback } from "@/lib/feel/feedback";
 import { missingName } from "@/lib/pings/fields";
 
 const LONG_PRESS_MS = 700;
@@ -62,6 +63,7 @@ export function ThinkingOfYou({
     setPending(true);
     setPulse(true);
     setStatus(null);
+    tapFeedback("ping");
     try {
       const chosen =
         people.length > 1
@@ -91,6 +93,7 @@ export function ThinkingOfYou({
         sent?: number;
         devices?: number;
         push?: string;
+        quietNotice?: string;
       } | null;
       if (!response.ok) {
         setStatus({
@@ -108,7 +111,7 @@ export function ThinkingOfYou({
           : partnerName;
       setStatus({ tone: "ok", text: successText(body, label) });
       trackProductEvent("ping_sent");
-      pushToast("Ping sent");
+      pushToast(body?.quietNotice ?? "Ping sent");
       router.refresh();
     } catch {
       setStatus({ tone: "error", text: "That ping couldn't be sent." });
@@ -206,9 +209,15 @@ export function ThinkingOfYou({
 }
 
 function successText(
-  body: { sent?: number; devices?: number; push?: string } | null,
+  body: {
+    sent?: number;
+    devices?: number;
+    push?: string;
+    quietNotice?: string;
+  } | null,
   partnerName: string,
 ): string {
+  if (body?.quietNotice) return body.quietNotice;
   if (!body || body.push === "unconfigured") {
     return `Saved for ${partnerName}. Notifications aren't configured on the server yet.`;
   }

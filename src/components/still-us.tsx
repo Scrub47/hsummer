@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -10,8 +10,10 @@ import {
   saveCountdown,
   type CountdownActionState,
 } from "@/app/circles/countdown-actions";
+import { HeartBurst } from "@/components/heart-burst";
 import { LiveDot } from "@/components/live-dot";
 import { useCircleLive } from "@/components/use-circle-live";
+import { tapFeedback } from "@/lib/feel/feedback";
 import {
   CHECKPOINT_LABEL_MAX,
   COUNTDOWN_LABEL_MAX,
@@ -295,6 +297,10 @@ function CheckpointRow({
     deleteCheckpoint,
     initialState,
   );
+  useEffect(() => {
+    if (!hitState.saved) return;
+    tapFeedback("milestone");
+  }, [hitState.saved]);
 
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-line px-4 py-3">
@@ -309,6 +315,7 @@ function CheckpointRow({
             ? "Hits on this date, in whoever's timezone reaches it first."
             : "Waiting for one of you to mark it."}
       </p>
+      {hitState.saved ? <HeartBurst label="Still Us" /> : null}
       {checkpoint.trigger === "manual" && !checkpoint.hitAt ? (
         <form action={hitAction}>
           <input type="hidden" name="circleId" value={circleId} />

@@ -20,6 +20,7 @@ import { buildPingNotification } from "@/lib/push/payload";
 import { deliverGroupPushes } from "@/lib/push/group-delivery";
 import { deliverTestPushes, subscriptionsToPrune } from "@/lib/push/prune";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { planPingDelivery } from "@/lib/settings/enforce";
 import type { Session } from "@/lib/supabase/session";
 
 export type PingSendResponse = {
@@ -34,6 +35,7 @@ export type PingSendResponse = {
         sent: number;
         removed: number;
         push: "sent" | "unconfigured" | "none" | "failed";
+        quietNotice?: string;
       };
 };
 
@@ -160,20 +162,33 @@ export async function sendThinkingOfYou(
   revalidatePath(`/circles/${input.circleId}`);
   revalidatePath("/home");
 
+  const targets =
+    partner.toUserId === null
+      ? memberIds.filter((id) => id !== session.userId)
+      : [partner.toUserId];
+  const plan = await planPingDelivery({
+    userIds: targets,
+    circleId: input.circleId,
+    pingId: inserted.data.id,
+    circleType: circle.data.circle_type,
+    origin: input.origin,
+  });
+  const quietNotice = plan.notices[0];
+
   if (circle.data.circle_type !== "couple") {
-    const targets =
-      partner.toUserId === null
-        ? memberIds.filter((id) => id !== session.userId)
-        : [partner.toUserId];
-    const grouped = await deliverGroupPushes({
-      circleId: input.circleId,
-      userIds: targets,
-      origin: input.origin,
-      specific: buildPingNotification(input.origin, {
-        secretVariant: inserted.data.secret_variant,
-        circleId: input.circleId,
-      }),
-    });
+    const grouped =
+      plan.deliverIds.length === 0
+        ? "done"
+        : await deliverGroupPushes({
+            circleId: input.circleId,
+            userIds: plan.deliverIds,
+            origin: input.origin,
+            kind: "pings",
+            specific: buildPingNotification(input.origin, {
+              secretVariant: inserted.data.secret_variant,
+              circleId: input.circleId,
+            }),
+          });
     return {
       status: 200,
       body: {
@@ -184,12 +199,29 @@ export async function sendThinkingOfYou(
         sent: 0,
         removed: 0,
         push: grouped === "unconfigured" ? "unconfigured" : "none",
+        ...(quietNotice ? { quietNotice } : {}),
+      },
+    };
+  }
+
+  if (!partner.toUserId || plan.deliverIds.length === 0) {
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        pingId: inserted.data.id,
+        secretVariant: inserted.data.secret_variant,
+        devices: 0,
+        sent: 0,
+        removed: 0,
+        push: "none",
+        ...(quietNotice ? { quietNotice } : {}),
       },
     };
   }
 
   const delivery = await pushToPartner({
-    partnerId: partner.toUserId ?? "",
+    partnerId: partner.toUserId,
     origin: input.origin,
     circleId: input.circleId,
     secretVariant: inserted.data.secret_variant,
@@ -202,6 +234,7 @@ export async function sendThinkingOfYou(
       pingId: inserted.data.id,
       secretVariant: inserted.data.secret_variant,
       ...delivery,
+      ...(quietNotice ? { quietNotice } : {}),
     },
   };
 }

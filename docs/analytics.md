@@ -8,7 +8,7 @@ The database queries in `docs/metrics.sql` do not need either product. They read
 
 Vercel Web Analytics counts page views. Speed Insights records loading times. Neither one needs an environment variable.
 
-PostHog records a short list of actions: signed up, circle created, partner joined, letter sent, letter opened, ping sent, mood shared, booth photo taken, strip completed, memory added, and push enabled. Three more names are reserved for later (`reaction_added`, `reply_sent`, `keepsake_exported`) and are not sent until those screens exist. A circle type or a booth mode can ride along. The words of a letter, a name, an email, a caption, and an emoji do not.
+PostHog records a short list of actions: signed up, circle created, partner joined, letter sent, letter opened, ping sent, mood shared, booth photo taken, strip completed, memory added, reaction added, reply sent, keepsake exported, and push enabled. A circle type or a booth mode can ride along. The words of a letter, a reply, a name, an email, a caption, and an emoji do not.
 
 PostHog is told the Supabase user id and nothing else. Signing out clears that id in the browser. Settings, then Privacy, has a switch that stops PostHog in that tab immediately and saves the choice on the account. The demo account never loads PostHog.
 
