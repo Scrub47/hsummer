@@ -362,7 +362,14 @@ function MemoryCardView({
           }}
         />
       ) : null}
-      {memory.kind === "letter" ? (
+      {memory.kind === "milestone" ? (
+        <div>
+          <p className="font-serif text-2xl tracking-tight">Still Us</p>
+          {memory.body ? (
+            <p className="mt-2 text-base leading-7">{memory.body}</p>
+          ) : null}
+        </div>
+      ) : memory.kind === "letter" ? (
         <div>
           <p className="font-serif text-2xl tracking-tight">Opened letter</p>
           {memory.body ? (
@@ -392,7 +399,7 @@ function MemoryCardView({
           ))}
         </ul>
       ) : null}
-      {memory.mine ? (
+      {memory.mine && memory.kind !== "milestone" ? (
         <form action={formAction}>
           <input type="hidden" name="circleId" value={circleId} />
           <input type="hidden" name="id" value={memory.id} />

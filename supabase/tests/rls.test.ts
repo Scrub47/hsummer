@@ -2476,6 +2476,325 @@ describe("letters stay between the sender and the recipient", () => {
     expect(blocked.error?.message ?? "").toContain("hsummer_rate_limited");
     expect(bodies.every((message) => message === "")).toBe(true);
   });
+
+  it("keeps a future letter scheduled and hidden, and delivers one that is due", async () => {
+    const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const scheduled = await owner
+      .from("letters")
+      .insert({
+        circle_id: groupId,
+        from_user_id: ownerId,
+        to_user_id: otherId,
+        category: "when-you-miss-me",
+        body: "Open this next week.",
+        design: "minimal",
+        scheduled_for: future,
+      })
+      .select("id, status, delivered_at, scheduled_for")
+      .single();
+    expect(scheduled.error).toBeNull();
+    expect(scheduled.data?.status).toBe("scheduled");
+    expect(scheduled.data?.delivered_at).toBeNull();
+    const scheduledId = scheduled.data?.id ?? "";
+
+    const hidden = await other
+      .from("letters")
+      .select("body")
+      .eq("id", scheduledId);
+    expect(hidden.data).toEqual([]);
+    expect(JSON.stringify(hidden.data)).not.toContain("next week");
+
+    const thirdView = await third
+      .from("letters")
+      .select("id")
+      .eq("id", scheduledId);
+    expect(thirdView.data).toEqual([]);
+
+    const tooSoon = await owner.from("letters").insert({
+      circle_id: groupId,
+      from_user_id: ownerId,
+      to_user_id: otherId,
+      category: "need-help",
+      body: "This minute is too soon.",
+      design: "minimal",
+      scheduled_for: new Date(Date.now() + 5_000).toISOString(),
+    });
+    expect(tooSoon.error?.message ?? "").toContain("hsummer_letter_schedule");
+
+    const qstashColumn = await owner
+      .from("letters")
+      .select("qstash_message_id")
+      .eq("id", scheduledId);
+    expect(qstashColumn.error).not.toBeNull();
+
+    const forgedQueue = await owner
+      .from("letters")
+      .update({ qstash_message_id: "msg_test_queue" })
+      .eq("id", scheduledId);
+    expect(forgedQueue.error).not.toBeNull();
+
+    const callerDelivers = await owner.rpc("deliver_scheduled_letter", {
+      target: scheduledId,
+    });
+    expect(callerDelivers.error).not.toBeNull();
+
+    const early = await admin.rpc("deliver_scheduled_letter", {
+      target: scheduledId,
+    });
+    expect(early.error).toBeNull();
+    expect(early.data).toBe("early");
+    const stillHidden = await other
+      .from("letters")
+      .select("id")
+      .eq("id", scheduledId);
+    expect(stillHidden.data).toEqual([]);
+
+    const due = await admin
+      .from("letters")
+      .insert({
+        circle_id: groupId,
+        from_user_id: ownerId,
+        to_user_id: otherId,
+        category: "feeling-lonely",
+        body: "The morning letter is here.",
+        design: "minimal",
+        scheduled_for: new Date(Date.now() - 60_000).toISOString(),
+      })
+      .select("id, status")
+      .single();
+    expect(due.error).toBeNull();
+    expect(due.data?.status).toBe("scheduled");
+    const dueId = due.data?.id ?? "";
+
+    const arrived = await admin.rpc("deliver_scheduled_letter", {
+      target: dueId,
+    });
+    expect(arrived.error).toBeNull();
+    expect(arrived.data).toBe("delivered");
+    const again = await admin.rpc("deliver_scheduled_letter", {
+      target: dueId,
+    });
+    expect(again.data).toBe("already");
+
+    const recipient = await other
+      .from("letters")
+      .select("body")
+      .eq("id", dueId);
+    expect(recipient.data?.[0]?.body).toBe("The morning letter is here.");
+    const thirdAfter = await third
+      .from("letters")
+      .select("body")
+      .eq("id", dueId);
+    expect(thirdAfter.data).toEqual([]);
+    expect(JSON.stringify(thirdAfter.data)).not.toContain("morning letter");
+
+    const leftBehind = await admin
+      .from("letters")
+      .insert({
+        circle_id: groupId,
+        from_user_id: ownerId,
+        to_user_id: leaverId,
+        category: "need-help",
+        body: "Do not deliver this to someone who left.",
+        design: "minimal",
+        scheduled_for: new Date(Date.now() - 60_000).toISOString(),
+      })
+      .select("id")
+      .single();
+    expect(leftBehind.error).toBeNull();
+    const cancelled = await admin.rpc("deliver_scheduled_letter", {
+      target: leftBehind.data?.id ?? "",
+    });
+    expect(cancelled.data).toBe("cancelled");
+    const leaverView = await leaver
+      .from("letters")
+      .select("id")
+      .eq("id", leftBehind.data?.id ?? "");
+    expect(leaverView.data).toEqual([]);
+  });
+});
+
+describe("Still Us stays inside the circle and hits once", () => {
+  it("gives a couple one countdown and one memory when two people sync", async () => {
+    const created = await owner.rpc("create_circle", {
+      circle_name: "Still Us",
+      circle_type: "couple",
+    });
+    expect(created.error).toBeNull();
+    const circleId = created.data?.[0]?.circle_id ?? "";
+    expect(circleId).toMatch(/^[0-9a-f-]{36}$/i);
+
+    const seeded = await owner
+      .from("countdowns")
+      .select("id, label, target_date")
+      .eq("circle_id", circleId);
+    expect(seeded.data).toHaveLength(1);
+    expect(seeded.data?.[0]?.label).toBe("Still Us");
+    expect(seeded.data?.[0]?.target_date).toBeNull();
+    const countdownId = seeded.data?.[0]?.id ?? "";
+
+    const nonce = crypto.randomUUID();
+    const outsiderId = await createUser(admin, {
+      email: `rls-still-out-${nonce}@example.com`,
+      displayName: "Still Out",
+      timezone: "UTC",
+    });
+    const outsider = await signIn(
+      apiUrl,
+      anonKey,
+      `rls-still-out-${nonce}@example.com`,
+    );
+    const outside = await outsider.client
+      .from("countdowns")
+      .select("id")
+      .eq("circle_id", circleId);
+    expect(outside.data).toEqual([]);
+    const sneaky = await outsider.client.from("countdowns").insert({
+      circle_id: circleId,
+      label: "Nope",
+      created_by: outsiderId,
+    });
+    expect(sneaky.error).not.toBeNull();
+
+    const second = await owner.from("countdowns").insert({
+      circle_id: circleId,
+      label: "Another reunion",
+      target_date: "2027-06-01",
+      created_by: ownerId,
+    });
+    expect(second.error?.message ?? "").toContain("hsummer_countdown_couple");
+
+    const removed = await owner
+      .from("countdowns")
+      .delete()
+      .eq("id", countdownId)
+      .select("id");
+    expect(removed.error?.message ?? "").toContain("hsummer_countdown_couple");
+
+    const dated = await owner
+      .from("countdowns")
+      .update({ target_date: "2027-02-14", label: "Winter" })
+      .eq("id", countdownId)
+      .select("target_date, label");
+    expect(dated.error).toBeNull();
+    expect(dated.data?.[0]?.target_date).toBe("2027-02-14");
+
+    const joined = await admin.from("circle_members").insert({
+      circle_id: circleId,
+      user_id: otherId,
+    });
+    expect(joined.error).toBeNull();
+
+    const partnerSees = await other
+      .from("countdowns")
+      .select("label")
+      .eq("id", countdownId);
+    expect(partnerSees.data?.[0]?.label).toBe("Winter");
+
+    const auto = await owner
+      .from("checkpoints")
+      .insert({
+        countdown_id: countdownId,
+        circle_id: circleId,
+        label: "100 days",
+        date: "2020-01-01",
+        trigger: "auto-by-date",
+        created_by: ownerId,
+      })
+      .select("id")
+      .single();
+    expect(auto.error).toBeNull();
+    const autoId = auto.data?.id ?? "";
+
+    const [first, secondSync] = await Promise.all([
+      owner.rpc("sync_auto_checkpoints", { target_circle: circleId }),
+      other.rpc("sync_auto_checkpoints", { target_circle: circleId }),
+    ]);
+    expect(first.error).toBeNull();
+    expect(secondSync.error).toBeNull();
+
+    const memories = await owner
+      .from("memories")
+      .select("id, kind, visibility, body, checkpoint_id")
+      .eq("checkpoint_id", autoId);
+    expect(memories.data).toHaveLength(1);
+    expect(memories.data?.[0]).toMatchObject({
+      kind: "milestone",
+      visibility: "circle",
+      body: "100 days",
+      checkpoint_id: autoId,
+    });
+    const memoryId = memories.data?.[0]?.id ?? "";
+
+    const partnerMemory = await other
+      .from("memories")
+      .select("id, body")
+      .eq("id", memoryId);
+    expect(partnerMemory.data?.[0]?.body).toBe("100 days");
+
+    const outsiderMemory = await outsider.client
+      .from("memories")
+      .select("id, body")
+      .eq("circle_id", circleId);
+    expect(outsiderMemory.data).toEqual([]);
+    expect(JSON.stringify(outsiderMemory.data)).not.toContain("100 days");
+
+    const again = await owner.rpc("sync_auto_checkpoints", {
+      target_circle: circleId,
+    });
+    expect(again.error).toBeNull();
+    expect(again.data ?? []).toEqual([]);
+    const stillOne = await owner
+      .from("memories")
+      .select("id")
+      .eq("checkpoint_id", autoId);
+    expect(stillOne.data).toHaveLength(1);
+
+    const manual = await other
+      .from("checkpoints")
+      .insert({
+        countdown_id: countdownId,
+        circle_id: circleId,
+        label: "Flight booked",
+        date: "2027-03-01",
+        trigger: "manual",
+        created_by: otherId,
+      })
+      .select("id")
+      .single();
+    expect(manual.error).toBeNull();
+    const manualId = manual.data?.id ?? "";
+
+    const forgedHit = await other
+      .from("checkpoints")
+      .update({ hit_at: new Date().toISOString() })
+      .eq("id", manualId);
+    expect(forgedHit.error).not.toBeNull();
+
+    const hit = await other.rpc("hit_checkpoint", { target: manualId });
+    expect(hit.error).toBeNull();
+    const hitAgain = await owner.rpc("hit_checkpoint", { target: manualId });
+    expect(hitAgain.error).toBeNull();
+    expect(hitAgain.data).toBe(hit.data);
+
+    const manualMemories = await owner
+      .from("memories")
+      .select("id")
+      .eq("checkpoint_id", manualId);
+    expect(manualMemories.data).toHaveLength(1);
+
+    const autoHit = await owner.rpc("hit_checkpoint", { target: autoId });
+    expect(autoHit.error).not.toBeNull();
+
+    const planted = await owner.from("memories").insert({
+      circle_id: circleId,
+      kind: "milestone",
+      body: "Forged milestone",
+      visibility: "circle",
+      occurred_on: "2026-10-14",
+    });
+    expect(planted.error).not.toBeNull();
+  });
 });
 
 async function rpc(
