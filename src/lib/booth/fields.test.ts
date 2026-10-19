@@ -6,9 +6,14 @@ import {
   BOOTH_LAYOUT_ERROR,
   BOOTH_SHOTS_ERROR,
   BOOTH_THEME_ERROR,
+  PASS_OPEN_MESSAGE,
+  PASS_UNAVAILABLE,
   boothWriteFailure,
+  creatorPositions,
   isBoothShotPath,
   parseBoothForm,
+  parsePassStart,
+  partnerPositions,
   shotCount,
 } from "@/lib/booth/fields";
 
@@ -90,6 +95,52 @@ describe("booth paths and errors", () => {
     expect(boothWriteFailure("hsummer_booth_memory", "P0001")).toBe(
       "That strip isn't valid.",
     );
+    expect(boothWriteFailure("hsummer_booth_open", "P0001")).toBe(
+      PASS_OPEN_MESSAGE,
+    );
+    expect(
+      boothWriteFailure("create_pass_booth does not exist", "PGRST202"),
+    ).toBe(PASS_UNAVAILABLE);
     expect(BOOTH_JPEG_ERROR).toMatch(/JPEG/);
+  });
+});
+
+describe("pass assignments", () => {
+  it("splits a strip once, with the starter on the top frames", () => {
+    for (const layout of ["4-cut", "2-cut"] as const) {
+      const mine = creatorPositions(layout);
+      const theirs = partnerPositions(layout);
+      const all = [...mine, ...theirs].sort((a, b) => a - b);
+      expect(all).toEqual(
+        Array.from({ length: shotCount(layout) }, (_, index) => index),
+      );
+      expect(mine.some((position) => theirs.includes(position))).toBe(false);
+    }
+    expect(creatorPositions("4-cut")).toEqual([0, 1]);
+    expect(partnerPositions("2-cut")).toEqual([1]);
+  });
+
+  it("accepts the starter's half and refuses a full strip", () => {
+    const parsed = parsePassStart({
+      circleId,
+      theme: "minimal",
+      layout: "2-cut",
+      filter: "cool",
+      caption: "  Later  ",
+      shotCount: 1,
+    });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.value.caption).toBe("Later");
+    expect(
+      parsePassStart({
+        circleId,
+        theme: "kawaii",
+        layout: "4-cut",
+        filter: "none",
+        caption: "",
+        shotCount: 4,
+      }).ok,
+    ).toBe(false);
   });
 });

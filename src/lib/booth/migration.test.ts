@@ -14,6 +14,11 @@ const week13 = readFileSync(
   "utf8",
 );
 
+const week15 = readFileSync(
+  path.join(root, "supabase/migrations/20270118120000_pass_the_booth.sql"),
+  "utf8",
+);
+
 describe("week 13 migration", () => {
   it("adds the booth tables and a private-bucket policy without a new bucket", () => {
     expect(week13).toContain("create table public.booth_sessions");
@@ -56,5 +61,45 @@ describe("week 13 migration", () => {
     expect(week13).toContain("private.booth_shots_remove_object");
     expect(week13).toContain("mode = 'solo'");
     expect(week13).toContain("theme in ('kawaii', 'minimal')");
+  });
+});
+
+describe("week 15 migration", () => {
+  it("adds pass functions without a new bucket or a live-together write", () => {
+    expect(week15).toContain("public.create_pass_booth");
+    expect(week15).toContain("public.submit_pass_shots");
+    expect(week15).toContain("public.finish_pass_booth");
+    expect(week15).toContain("public.cancel_pass_booth");
+    expect(week15).toContain("public.expire_pass_booths");
+    expect(week15).toContain("interval '7 days'");
+    expect(week15).toContain("interval '24 hours'");
+    expect(week15).toContain("array[0, 1]");
+    expect(week15).toContain("array[2, 3]");
+    expect(week15).toContain(
+      "unnest(contributor.assigned_positions) as assigned(pos)",
+    );
+    expect(week15).toContain("recent >= 10");
+    expect(week15).toContain("open_count >= 3");
+    expect(week15).not.toMatch(/insert into storage\.buckets/i);
+    expect(week15).not.toMatch(/drop table/i);
+    expect(week15).not.toMatch(/drop column/i);
+    expect(week15).not.toContain("circle_type");
+    expect(week15).not.toContain("capture_at =");
+    expect(week15).not.toContain("ready_at =");
+    expect(week15).not.toMatch(/grant insert on table public\.booth_sessions/i);
+  });
+
+  it("explains the statements the SQL editor may flag", () => {
+    expect(week15).toContain(
+      "CREATE OR REPLACE FUNCTION replaces memories_guard",
+    );
+    expect(week15).toContain("DROP POLICY replaces three select policies");
+    expect(week15).toContain("None of them delete a memory");
+    expect(week15).toContain("older than 24 hours");
+    expect(week15).toContain("drop policy booth_sessions_select_member");
+    expect(week15).toContain("private.is_booth_contributor");
+    expect(week15).toContain("do not recurse");
+    expect(week15).toContain("mode = 'pass'");
+    expect(week15).toContain("status = 'complete'");
   });
 });

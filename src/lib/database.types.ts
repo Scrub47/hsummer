@@ -305,6 +305,7 @@ export type Database = {
             | "expired";
           capture_at: string | null;
           expires_at: string | null;
+          caption: string | null;
           created_at: string;
         };
         Insert: {
@@ -335,6 +336,9 @@ export type Database = {
             | "complete"
             | "cancelled"
             | "expired";
+          // Not granted to authenticated. Present so a test can try to move it.
+          expires_at?: string | null;
+          caption?: string | null;
         };
         Relationships: [];
       };
@@ -632,6 +636,57 @@ export type Database = {
           memory_id: string;
           paths: string[];
         };
+      };
+      create_pass_booth: {
+        Args: {
+          target_circle: string;
+          partner_id: string;
+          target_theme: string;
+          target_layout: string;
+          target_filter: string;
+          target_caption: string;
+          shot_sizes: number[];
+        };
+        Returns: {
+          session_id: string;
+          positions: number[];
+          paths: string[];
+        };
+      };
+      submit_pass_shots: {
+        Args: {
+          target_session: string;
+          target_filter: string;
+          shot_sizes: number[];
+        };
+        Returns: {
+          status: string;
+          paths: string[];
+          already: boolean;
+        };
+      };
+      finish_pass_booth: {
+        Args: { target_session: string };
+        Returns: {
+          status: string;
+          memory_id: string | null;
+        };
+      };
+      cancel_pass_booth: {
+        Args: { target_session: string };
+        Returns: { status: string };
+      };
+      discard_pass_booth: {
+        Args: { target_session: string };
+        Returns: { ok: boolean };
+      };
+      release_pass_shots: {
+        Args: { target_session: string };
+        Returns: { ok: boolean };
+      };
+      expire_pass_booths: {
+        Args: { target_circle: string };
+        Returns: number;
       };
       consume_auth_attempt: {
         Args: {

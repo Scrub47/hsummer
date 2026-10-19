@@ -4,10 +4,12 @@ import { MOODS } from "@/lib/moods/fields";
 import {
   buildCheckpointNotification,
   buildLetterNotification,
+  buildPassNotification,
   buildPingNotification,
   buildTestNotification,
   CHECKPOINT_NOTIFICATION_BODY,
   LETTER_NOTIFICATION_BODY,
+  PASS_NOTIFICATION_BODY,
   PING_NOTIFICATION_BODY,
   PING_SECRET_NOTIFICATION_BODY,
   TEST_NOTIFICATION_BODY,
@@ -100,6 +102,35 @@ describe("buildLetterNotification", () => {
     expect(serialized).not.toContain("Dear");
     expect(serialized).not.toContain("Summer");
     expect(notification.body).toBe("You have a new letter.");
+  });
+});
+
+describe("buildPassNotification", () => {
+  const circleId = "11111111-1111-4111-8111-111111111111";
+
+  it("says it is your turn and leaves names and photos out", () => {
+    const notification = buildPassNotification(
+      "https://hsummer.example",
+      circleId,
+    );
+    expect(notification).toEqual({
+      title: "Hsummer",
+      body: PASS_NOTIFICATION_BODY,
+      url: `https://hsummer.example/circles/${circleId}/booth`,
+    });
+    const serialized = JSON.stringify(notification);
+    expect(serialized).not.toContain("@");
+    expect(serialized).not.toContain("Summer");
+    expect(serialized).not.toContain("caption");
+    expect(notification.body).toBe("It's your turn in the photo booth.");
+  });
+
+  it("refuses to put a non-id into the click target", () => {
+    const notification = buildPassNotification(
+      "https://hsummer.example",
+      "not-a-circle",
+    );
+    expect(notification.url).toBe("https://hsummer.example/home");
   });
 });
 

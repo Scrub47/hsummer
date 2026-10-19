@@ -8,15 +8,31 @@ vi.mock("next/navigation", () => ({
   redirect: vi.fn(),
 }));
 
+vi.mock("next/headers", () => ({
+  headers: async () => ({
+    get: (name: string) => (name === "host" ? "127.0.0.1:3000" : null),
+  }),
+}));
+
 const getSession = vi.hoisted(() => vi.fn());
+const notifyPassPartner = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/supabase/session", () => ({
   getSession,
 }));
 
-import { BOOTH_JPEG_ERROR } from "@/lib/booth/fields";
+vi.mock("@/lib/booth/notify", () => ({
+  notifyPassPartner,
+}));
 
-import { saveSoloBooth, type BoothActionState } from "./booth-actions";
+import { BOOTH_JPEG_ERROR, PASS_GROUP, PASS_WAITING } from "@/lib/booth/fields";
+
+import {
+  saveSoloBooth,
+  startPassBooth,
+  type BoothActionState,
+  type PassActionState,
+} from "./booth-actions";
 
 const circleId = "11111111-1111-4111-8111-111111111111";
 const sessionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -26,6 +42,7 @@ const previous: BoothActionState = { error: null, saved: false };
 describe("saveSoloBooth", () => {
   beforeEach(() => {
     getSession.mockReset();
+    notifyPassPartner.mockReset();
   });
 
   it("strips EXIF, then records the session and uploads each frame", async () => {
@@ -187,6 +204,126 @@ describe("saveSoloBooth", () => {
   });
 });
 
+const partnerId = "33333333-3333-4333-8333-333333333333";
+const selfId = "22222222-2222-4222-8222-222222222222";
+const passPrevious: PassActionState = { error: null, notice: null };
+
+describe("startPassBooth", () => {
+  beforeEach(() => {
+    getSession.mockReset();
+    notifyPassPartner.mockReset();
+  });
+
+  it("strips EXIF, records the caller's half, and notifies the partner", async () => {
+    const uploads: { path: string; bytes: Uint8Array }[] = [];
+    const calls: { name: string; args: unknown }[] = [];
+    getSession.mockResolvedValue(
+      passSession(calls, uploads, {
+        data: {
+          session_id: sessionId,
+          positions: [0, 1],
+          paths: [0, 1].map(
+            (position) => `${circleId}/${sessionId}/${position}.jpg`,
+          ),
+        },
+        error: null,
+      }),
+    );
+
+    const data = form({ layout: "4-cut" });
+    const original = jpegWithExif();
+    for (let index = 0; index < 2; index += 1) {
+      data.append(
+        "shot",
+        new File([Buffer.from(original)], `shot-${index}.jpg`, {
+          type: "image/jpeg",
+        }),
+      );
+    }
+
+    const result = await startPassBooth(passPrevious, data);
+    expect(result).toEqual({ error: null, notice: PASS_WAITING });
+    expect(calls[0]).toEqual({
+      name: "create_pass_booth",
+      args: expect.objectContaining({
+        target_circle: circleId,
+        partner_id: partnerId,
+        target_layout: "4-cut",
+        target_theme: "kawaii",
+      }),
+    });
+    expect(uploads).toHaveLength(2);
+    expect(Buffer.from(uploads[0]!.bytes).toString("latin1")).not.toContain(
+      "GPSLatitude",
+    );
+    expect(notifyPassPartner).toHaveBeenCalledWith({
+      partnerId,
+      circleId,
+      origin: "http://127.0.0.1:3000",
+    });
+    const payload = JSON.stringify(notifyPassPartner.mock.calls[0]);
+    expect(payload).not.toContain("Ferry");
+  });
+
+  it("does not notify when the circle is a group", async () => {
+    const calls: { name: string; args: unknown }[] = [];
+    getSession.mockResolvedValue(
+      passSession(
+        calls,
+        [],
+        { data: null, error: null },
+        {
+          circleType: "group",
+          status: "active",
+          members: [selfId, partnerId, "44444444-4444-4444-8444-444444444444"],
+        },
+      ),
+    );
+    const data = form({ layout: "2-cut" });
+    const jpeg = jpegWithExif();
+    data.append(
+      "shot",
+      new File([Buffer.from(jpeg)], "a.jpg", { type: "image/jpeg" }),
+    );
+    const result = await startPassBooth(passPrevious, data);
+    expect(result.error).toBe(PASS_GROUP);
+    expect(calls).toEqual([]);
+    expect(notifyPassPartner).not.toHaveBeenCalled();
+  });
+
+  it("discards the session when an upload fails", async () => {
+    const calls: { name: string; args: unknown }[] = [];
+    getSession.mockResolvedValue(
+      passSession(
+        calls,
+        [],
+        {
+          data: {
+            session_id: sessionId,
+            positions: [0],
+            paths: [`${circleId}/${sessionId}/0.jpg`],
+          },
+          error: null,
+        },
+        undefined,
+        { message: "bucket down" },
+      ),
+    );
+    const data = form({ layout: "2-cut" });
+    data.append(
+      "shot",
+      new File([Buffer.from(jpegWithExif())], "a.jpg", { type: "image/jpeg" }),
+    );
+    const result = await startPassBooth(passPrevious, data);
+    expect(result.notice).toBeNull();
+    expect(calls.map((call) => call.name)).toEqual([
+      "create_pass_booth",
+      "discard_pass_booth",
+    ]);
+    expect(notifyPassPartner).not.toHaveBeenCalled();
+  });
+});
+
 function form(overrides: Record<string, string> = {}): FormData {
   const data = new FormData();
   data.set("circleId", circleId);
@@ -209,7 +346,7 @@ function session(
   uploadError: { message: string } | null = null,
 ) {
   return {
-    userId: "22222222-2222-4222-8222-222222222222",
+    userId: selfId,
     supabase: {
       rpc: async (_name: string, args: unknown) => {
         calls.push(args);
@@ -225,6 +362,93 @@ function session(
               },
             };
             return builder;
+          },
+        };
+      },
+      storage: {
+        from() {
+          return {
+            upload: async (path: string, body: Blob) => {
+              uploads.push({
+                path,
+                bytes: new Uint8Array(await body.arrayBuffer()),
+              });
+              return { error: uploadError };
+            },
+            remove: async () => ({ error: null }),
+          };
+        },
+      },
+    },
+  };
+}
+
+function passSession(
+  calls: { name: string; args: unknown }[],
+  uploads: { path: string; bytes: Uint8Array }[],
+  rpcResult: {
+    data: unknown;
+    error: { message: string; code?: string } | null;
+  },
+  circle: {
+    circleType: string;
+    status: string;
+    members: string[];
+  } = {
+    circleType: "couple",
+    status: "active",
+    members: [selfId, partnerId],
+  },
+  uploadError: { message: string } | null = null,
+) {
+  return {
+    userId: selfId,
+    supabase: {
+      rpc: async (name: string, args: unknown) => {
+        calls.push({ name, args });
+        return rpcResult;
+      },
+      from(table: string) {
+        if (table === "circles") {
+          return {
+            select() {
+              return {
+                eq() {
+                  return {
+                    maybeSingle: async () => ({
+                      data: {
+                        circle_type: circle.circleType,
+                        status: circle.status,
+                      },
+                      error: null,
+                    }),
+                  };
+                },
+              };
+            },
+          };
+        }
+        if (table === "circle_members") {
+          return {
+            select() {
+              return {
+                eq() {
+                  return {
+                    is: async () => ({
+                      data: circle.members.map((user_id) => ({ user_id })),
+                      error: null,
+                    }),
+                  };
+                },
+              };
+            },
+          };
+        }
+        return {
+          delete() {
+            return {
+              eq: async () => ({ error: null }),
+            };
           },
         };
       },

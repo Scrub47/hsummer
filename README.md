@@ -102,6 +102,7 @@ Apply each file in `supabase/migrations` once, in filename order, in the SQL edi
 | `20261221120000_letters.sql`                         | letters, custom categories, letter memories |
 | `20261228120000_still_us.sql`                        | scheduled letters, Still Us countdowns      |
 | `20270104120000_solo_booth.sql`                      | Solo photo booth, photo-strip memories      |
+| `20270118120000_pass_the_booth.sql`                  | Pass the Booth: async frames, 7-day expiry  |
 
 In **Authentication → URL Configuration**, set the Site URL and add redirect URLs:
 

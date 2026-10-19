@@ -1,8 +1,12 @@
 /**
- * Solo Booth rules shared by the camera page, the save action, and the tests.
+ * Photo booth rules shared by the camera page, the save actions, and the tests.
  *
- * Shooting does not write a row. Save creates one booth session, its shots,
- * and one photo-strip memory. Pass the Booth and Live Together are later.
+ * Solo: shooting does not write a row. Save creates one complete session and
+ * one photo-strip memory.
+ *
+ * Pass: the starter's frames create an open session. The partner fills the
+ * other frames later. The memory is created only when every frame is in.
+ * Live Together is later.
  */
 
 import { z } from "zod";
@@ -51,6 +55,45 @@ export const BOOTH_RATE_LIMIT_MESSAGE =
 export const BOOTH_UNAVAILABLE =
   "The photo booth can't save yet. Apply the week 13 SQL in the Supabase SQL editor, then try again.";
 
+export const PASS_EXPIRES_DAYS = 7;
+export const PASS_OPEN_LIMIT = 3;
+
+export const PASS_UNAVAILABLE =
+  "Pass the booth can't start yet. Apply the week 15 SQL in the Supabase SQL editor, then try again.";
+export const PASS_PENDING =
+  "Share the invite link first. Pass the booth starts once you're both here.";
+export const PASS_GROUP =
+  "Pass the booth is for the two of you. Choosing more people comes later.";
+export const PASS_OPEN_MESSAGE =
+  "You already have a few booths waiting. Finish or cancel one first.";
+export const PASS_EXPIRED = "That booth expired before it was finished.";
+export const PASS_CANCELLED = "That booth was cancelled.";
+export const PASS_WAITING =
+  "Passed on. They'll get a notification to take their frames.";
+export const PASS_FINISHED = "The strip is on the memory wall for both of you.";
+
+export type PassFrame = {
+  position: number;
+  url: string | null;
+};
+
+export type PassTurn = {
+  sessionId: string;
+  theme: BoothTheme;
+  layout: BoothLayout;
+  status: "open" | "expired" | "cancelled";
+  expiresLabel: string | null;
+  startedByMe: boolean;
+  partnerName: string;
+  myPositions: number[];
+  frames: PassFrame[];
+  caption: string | null;
+  /** True when this person still has frames to take. */
+  waitingOnYou: boolean;
+};
+
+export type PassBlocked = "pending" | "group" | "alone";
+
 export const BOOTH_SHOT_PATH =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-3]\.jpg$/;
 
@@ -82,6 +125,25 @@ export function isBoothFilter(value: string): value is BoothFilter {
 
 export function shotCount(layout: BoothLayout): number {
   return layout === "4-cut" ? 4 : 2;
+}
+
+/** Top half. The person who starts a pass fills these. */
+export function creatorPositions(layout: BoothLayout): number[] {
+  return layout === "4-cut" ? [0, 1] : [0];
+}
+
+/** Bottom half. The partner fills these later. */
+export function partnerPositions(layout: BoothLayout): number[] {
+  return layout === "4-cut" ? [2, 3] : [1];
+}
+
+/** One filter when every contributor used it. Null when they differ. */
+export function uniformFilter(filters: readonly string[]): BoothFilter | null {
+  const known = filters.filter(isBoothFilter);
+  if (known.length === 0) return null;
+  const first = known[0];
+  if (!first) return null;
+  return known.every((filter) => filter === first) ? first : null;
 }
 
 export function isBoothShotPath(path: string): boolean {
@@ -142,12 +204,100 @@ export function parseBoothForm(input: {
   };
 }
 
+/** The starter sends only their half of the strip. */
+export function parsePassStart(input: {
+  circleId: unknown;
+  theme: unknown;
+  layout: unknown;
+  filter: unknown;
+  caption: unknown;
+  shotCount: number;
+}): Parsed<BoothDraft> {
+  const theme = themeSchema.safeParse(input.theme);
+  const layout = layoutSchema.safeParse(input.layout);
+  const filter = filterSchema.safeParse(input.filter);
+  if (!theme.success) return { ok: false, error: BOOTH_THEME_ERROR };
+  if (!layout.success) return { ok: false, error: BOOTH_LAYOUT_ERROR };
+  if (!filter.success) return { ok: false, error: BOOTH_FILTER_ERROR };
+  if (typeof input.circleId !== "string" || !isCircleId(input.circleId)) {
+    return { ok: false, error: "That circle isn't available." };
+  }
+  if (input.shotCount !== creatorPositions(layout.data).length) {
+    return { ok: false, error: BOOTH_SHOTS_ERROR };
+  }
+  const caption =
+    typeof input.caption === "string" && input.caption.trim().length > 0
+      ? input.caption.trim()
+      : null;
+  if (caption && [...caption].length > MEMORY_CAPTION_MAX) {
+    return { ok: false, error: BOOTH_CAPTION_ERROR };
+  }
+  return {
+    ok: true,
+    value: {
+      circleId: input.circleId,
+      theme: theme.data,
+      layout: layout.data,
+      filter: filter.data,
+      caption,
+    },
+  };
+}
+
+const sessionIdSchema = z.string().uuid();
+
+export function parsePassTurn(input: {
+  sessionId: unknown;
+  filter: unknown;
+  shotCount: number;
+}): Parsed<{ sessionId: string; filter: BoothFilter }> {
+  const sessionId = sessionIdSchema.safeParse(input.sessionId);
+  if (!sessionId.success) {
+    return { ok: false, error: "That booth isn't available." };
+  }
+  const filter = filterSchema.safeParse(input.filter);
+  if (!filter.success) return { ok: false, error: BOOTH_FILTER_ERROR };
+  if (input.shotCount !== 1 && input.shotCount !== 2) {
+    return { ok: false, error: BOOTH_SHOTS_ERROR };
+  }
+  return {
+    ok: true,
+    value: { sessionId: sessionId.data, filter: filter.data },
+  };
+}
+
+export function parsePassCancel(input: {
+  sessionId: unknown;
+  circleId: unknown;
+}): Parsed<{ sessionId: string; circleId: string }> {
+  if (typeof input.circleId !== "string" || !isCircleId(input.circleId)) {
+    return { ok: false, error: "That circle isn't available." };
+  }
+  const sessionId = sessionIdSchema.safeParse(input.sessionId);
+  if (!sessionId.success) {
+    return { ok: false, error: "That booth isn't available." };
+  }
+  return {
+    ok: true,
+    value: { sessionId: sessionId.data, circleId: input.circleId },
+  };
+}
+
 /** Maps a Postgres error from a booth save onto a sentence, or null. */
 export function boothWriteFailure(
   message: string | undefined,
   code: string | undefined,
 ): string | null {
   if (!message && !code) return null;
+  if (
+    message?.includes("create_pass_booth") ||
+    message?.includes("submit_pass_shots") ||
+    message?.includes("finish_pass_booth") ||
+    message?.includes("cancel_pass_booth") ||
+    message?.includes("pass_the_booth")
+  ) {
+    return PASS_UNAVAILABLE;
+  }
   if (
     code === "42883" ||
     code === "PGRST202" ||
@@ -156,6 +306,9 @@ export function boothWriteFailure(
     (message?.includes("booth_sessions") && message.includes("schema"))
   ) {
     return BOOTH_UNAVAILABLE;
+  }
+  if (message?.includes("hsummer_booth_open")) {
+    return PASS_OPEN_MESSAGE;
   }
   if (message?.includes("hsummer_rate_limited")) {
     return BOOTH_RATE_LIMIT_MESSAGE;

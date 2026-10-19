@@ -3040,6 +3040,420 @@ describe("a solo booth strip is visible to the circle and nobody else", () => {
   });
 });
 
+describe("a pass booth stays between its two people until the strip is finished", () => {
+  let author: Client;
+  let partner: Client;
+  let third: Client;
+  let outsider: Client;
+  let authorId = "";
+  let partnerId = "";
+  let thirdId = "";
+  let circleId = "";
+
+  beforeAll(async () => {
+    const nonce = crypto.randomUUID();
+    authorId = await createUser(admin, {
+      email: `rls-pass-author-${nonce}@example.com`,
+      displayName: "Pass Author",
+      timezone: "America/Los_Angeles",
+    });
+    partnerId = await createUser(admin, {
+      email: `rls-pass-partner-${nonce}@example.com`,
+      displayName: "Pass Partner",
+      timezone: "America/Los_Angeles",
+    });
+    thirdId = await createUser(admin, {
+      email: `rls-pass-third-${nonce}@example.com`,
+      displayName: "Pass Third",
+      timezone: "UTC",
+    });
+    await createUser(admin, {
+      email: `rls-pass-out-${nonce}@example.com`,
+      displayName: "Pass Outsider",
+      timezone: "UTC",
+    });
+    author = (
+      await signIn(apiUrl, anonKey, `rls-pass-author-${nonce}@example.com`)
+    ).client;
+    partner = (
+      await signIn(apiUrl, anonKey, `rls-pass-partner-${nonce}@example.com`)
+    ).client;
+    third = (
+      await signIn(apiUrl, anonKey, `rls-pass-third-${nonce}@example.com`)
+    ).client;
+    outsider = (
+      await signIn(apiUrl, anonKey, `rls-pass-out-${nonce}@example.com`)
+    ).client;
+
+    const created = await rpc(author, "create_circle", {
+      circle_name: "Pass group",
+      circle_type: "group",
+    });
+    circleId = created.circle_id as string;
+    const token = created.token as string;
+    for (const member of [partner, third]) {
+      const joined = await rpc(member, "redeem_invite", {
+        raw_token: token,
+        ip_hash: freshIp(),
+      });
+      expect(joined.invite_state).toBe("joined");
+    }
+  });
+
+  it("hides an open pass from a third member, then shows the finished strip", async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const started = await author.rpc("create_pass_booth", {
+      target_circle: circleId,
+      partner_id: partnerId,
+      target_theme: "kawaii",
+      target_layout: "4-cut",
+      target_filter: "warm",
+      target_caption: "Night ferry",
+      shot_sizes: [jpeg.length, jpeg.length],
+    });
+    expect(started.error).toBeNull();
+    const sessionId = started.data?.session_id ?? "";
+    const paths = started.data?.paths ?? [];
+    expect(paths).toHaveLength(2);
+    expect(authorId).toBeTruthy();
+
+    const contributors = await author
+      .from("booth_contributors")
+      .select("user_id, assigned_positions")
+      .eq("session_id", sessionId);
+    expect(contributors.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          user_id: authorId,
+          assigned_positions: [0, 1],
+        }),
+        expect.objectContaining({
+          user_id: partnerId,
+          assigned_positions: [2, 3],
+        }),
+      ]),
+    );
+
+    const hidden = await third
+      .from("booth_sessions")
+      .select("id")
+      .eq("id", sessionId);
+    expect(hidden.data).toEqual([]);
+    const hiddenShots = await third
+      .from("booth_shots")
+      .select("position")
+      .eq("session_id", sessionId);
+    expect(hiddenShots.data).toEqual([]);
+
+    const outsiderStart = await outsider.rpc("create_pass_booth", {
+      target_circle: circleId,
+      partner_id: partnerId,
+      target_theme: "minimal",
+      target_layout: "2-cut",
+      target_filter: "none",
+      target_caption: "",
+      shot_sizes: [jpeg.length],
+    });
+    expect(outsiderStart.error).not.toBeNull();
+
+    const selfPartner = await author.rpc("create_pass_booth", {
+      target_circle: circleId,
+      partner_id: authorId,
+      target_theme: "kawaii",
+      target_layout: "2-cut",
+      target_filter: "none",
+      target_caption: "",
+      shot_sizes: [jpeg.length],
+    });
+    expect(selfPartner.error).not.toBeNull();
+
+    const tamper = await partner
+      .from("booth_sessions")
+      .update({ status: "complete" })
+      .eq("id", sessionId);
+    expect(tamper.error).not.toBeNull();
+
+    for (const path of paths) {
+      const uploaded = await author.storage
+        .from("memories")
+        .upload(path, jpeg, { contentType: "image/jpeg", upsert: false });
+      expect(uploaded.error).toBeNull();
+    }
+
+    const stolen = await third.storage
+      .from("memories")
+      .createSignedUrl(paths[0] ?? "", 60);
+    expect(stolen.data?.signedUrl ?? null).toBeNull();
+    const signed = await partner.storage
+      .from("memories")
+      .createSignedUrl(paths[0] ?? "", 60);
+    expect(signed.data?.signedUrl).toBeTruthy();
+
+    const wrongFrame = await partner.storage
+      .from("memories")
+      .upload(paths[0] ?? "", jpeg, {
+        contentType: "image/jpeg",
+        upsert: false,
+      });
+    expect(wrongFrame.error).not.toBeNull();
+
+    const thirdSubmit = await third.rpc("submit_pass_shots", {
+      target_session: sessionId,
+      target_filter: "cool",
+      shot_sizes: [jpeg.length, jpeg.length],
+    });
+    expect(thirdSubmit.error).not.toBeNull();
+    const thirdFinish = await third.rpc("finish_pass_booth", {
+      target_session: sessionId,
+    });
+    expect(thirdFinish.error).not.toBeNull();
+    const thirdCancel = await third.rpc("cancel_pass_booth", {
+      target_session: sessionId,
+    });
+    expect(thirdCancel.error).not.toBeNull();
+
+    const early = await author.rpc("finish_pass_booth", {
+      target_session: sessionId,
+    });
+    expect(early.error).toBeNull();
+    expect(early.data?.status).toBe("open");
+    expect(early.data?.memory_id).toBeNull();
+
+    const submitted = await partner.rpc("submit_pass_shots", {
+      target_session: sessionId,
+      target_filter: "cool",
+      shot_sizes: [jpeg.length, jpeg.length],
+    });
+    expect(submitted.error).toBeNull();
+    expect(submitted.data?.status).toBe("open");
+    expect(submitted.data?.paths).toHaveLength(2);
+    for (const path of submitted.data?.paths ?? []) {
+      const uploaded = await partner.storage
+        .from("memories")
+        .upload(path, jpeg, { contentType: "image/jpeg", upsert: false });
+      expect(uploaded.error).toBeNull();
+    }
+
+    const finished = await partner.rpc("finish_pass_booth", {
+      target_session: sessionId,
+    });
+    expect(finished.error).toBeNull();
+    expect(finished.data?.status).toBe("complete");
+    const memoryId = finished.data?.memory_id ?? "";
+    expect(memoryId).toMatch(/^[0-9a-f-]{36}$/);
+
+    const seen = await third
+      .from("memories")
+      .select("id, kind, visibility, body")
+      .eq("id", memoryId);
+    expect(seen.data).toEqual([
+      expect.objectContaining({
+        kind: "photo-strip",
+        visibility: "circle",
+        body: "Night ferry",
+      }),
+    ]);
+    const frames = await third
+      .from("booth_shots")
+      .select("position")
+      .eq("session_id", sessionId);
+    expect(frames.data).toHaveLength(4);
+    const outside = await outsider
+      .from("memories")
+      .select("id")
+      .eq("id", memoryId);
+    expect(outside.data).toEqual([]);
+  });
+
+  it("lets a named third member finish, and refuses everyone else", async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const started = await author.rpc("create_pass_booth", {
+      target_circle: circleId,
+      partner_id: thirdId,
+      target_theme: "minimal",
+      target_layout: "2-cut",
+      target_filter: "none",
+      target_caption: "",
+      shot_sizes: [jpeg.length],
+    });
+    expect(started.error).toBeNull();
+    const sessionId = started.data?.session_id ?? "";
+    const path = started.data?.paths?.[0] ?? "";
+    const uploaded = await author.storage
+      .from("memories")
+      .upload(path, jpeg, { contentType: "image/jpeg", upsert: false });
+    expect(uploaded.error).toBeNull();
+
+    const partnerBlind = await partner
+      .from("booth_sessions")
+      .select("id")
+      .eq("id", sessionId);
+    expect(partnerBlind.data).toEqual([]);
+
+    const seen = await third
+      .from("booth_sessions")
+      .select("id, status")
+      .eq("id", sessionId);
+    expect(seen.data).toEqual([
+      expect.objectContaining({ id: sessionId, status: "open" }),
+    ]);
+
+    const submitted = await third.rpc("submit_pass_shots", {
+      target_session: sessionId,
+      target_filter: "bw",
+      shot_sizes: [jpeg.length],
+    });
+    expect(submitted.error).toBeNull();
+    const theirPath = submitted.data?.paths?.[0] ?? "";
+    const theirUpload = await third.storage
+      .from("memories")
+      .upload(theirPath, jpeg, { contentType: "image/jpeg", upsert: false });
+    expect(theirUpload.error).toBeNull();
+    const finished = await third.rpc("finish_pass_booth", {
+      target_session: sessionId,
+    });
+    expect(finished.data?.status).toBe("complete");
+  });
+
+  it("lets the starter cancel, and closes an expired pass without a memory", async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const started = await author.rpc("create_pass_booth", {
+      target_circle: circleId,
+      partner_id: partnerId,
+      target_theme: "kawaii",
+      target_layout: "2-cut",
+      target_filter: "none",
+      target_caption: "",
+      shot_sizes: [jpeg.length],
+    });
+    expect(started.error).toBeNull();
+    const sessionId = started.data?.session_id ?? "";
+
+    const partnerCancel = await partner.rpc("cancel_pass_booth", {
+      target_session: sessionId,
+    });
+    expect(partnerCancel.error).not.toBeNull();
+
+    const cancelled = await author.rpc("cancel_pass_booth", {
+      target_session: sessionId,
+    });
+    expect(cancelled.error).toBeNull();
+    expect(cancelled.data?.status).toBe("cancelled");
+    const shots = await author
+      .from("booth_shots")
+      .select("position")
+      .eq("session_id", sessionId);
+    expect(shots.data).toEqual([]);
+    const memory = await author
+      .from("memories")
+      .select("id")
+      .eq("booth_session_id", sessionId);
+    expect(memory.data).toEqual([]);
+
+    const expiring = await author.rpc("create_pass_booth", {
+      target_circle: circleId,
+      partner_id: partnerId,
+      target_theme: "minimal",
+      target_layout: "2-cut",
+      target_filter: "sepia",
+      target_caption: "",
+      shot_sizes: [jpeg.length],
+    });
+    expect(expiring.error).toBeNull();
+    const expiredId = expiring.data?.session_id ?? "";
+    const moved = await admin
+      .from("booth_sessions")
+      .update({ expires_at: new Date(Date.now() - 60_000).toISOString() })
+      .eq("id", expiredId)
+      .select("id");
+    expect(moved.error).toBeNull();
+
+    const closed = await partner.rpc("expire_pass_booths", {
+      target_circle: circleId,
+    });
+    expect(closed.error).toBeNull();
+    expect(closed.data).toBeGreaterThanOrEqual(1);
+
+    const row = await partner
+      .from("booth_sessions")
+      .select("status")
+      .eq("id", expiredId);
+    expect(row.data).toEqual([expect.objectContaining({ status: "expired" })]);
+    const leftover = await partner
+      .from("booth_shots")
+      .select("position")
+      .eq("session_id", expiredId);
+    expect(leftover.data).toEqual([]);
+    const stillHidden = await third
+      .from("booth_sessions")
+      .select("id")
+      .eq("id", expiredId);
+    expect(stillHidden.data).toEqual([]);
+
+    const late = await partner.rpc("submit_pass_shots", {
+      target_session: expiredId,
+      target_filter: "none",
+      shot_sizes: [jpeg.length],
+    });
+    expect(late.error).toBeNull();
+    expect(late.data?.status).toBe("expired");
+  });
+
+  it("stops a fourth open pass in one circle", async () => {
+    const nonce = crypto.randomUUID();
+    const starterId = await createUser(admin, {
+      email: `rls-pass-cap-${nonce}@example.com`,
+      displayName: "Pass Cap",
+      timezone: "UTC",
+    });
+    const friendId = await createUser(admin, {
+      email: `rls-pass-cap-friend-${nonce}@example.com`,
+      displayName: "Pass Friend",
+      timezone: "UTC",
+    });
+    const starter = (
+      await signIn(apiUrl, anonKey, `rls-pass-cap-${nonce}@example.com`)
+    ).client;
+    const friend = (
+      await signIn(apiUrl, anonKey, `rls-pass-cap-friend-${nonce}@example.com`)
+    ).client;
+    const created = await rpc(starter, "create_circle", {
+      circle_name: "Pass cap",
+      circle_type: "group",
+    });
+    const joined = await rpc(friend, "redeem_invite", {
+      raw_token: created.token as string,
+      ip_hash: freshIp(),
+    });
+    expect(joined.invite_state).toBe("joined");
+    expect(starterId).toBeTruthy();
+    expect(friendId).toBeTruthy();
+
+    for (let count = 0; count < 3; count += 1) {
+      const started = await starter.rpc("create_pass_booth", {
+        target_circle: created.circle_id as string,
+        partner_id: friendId,
+        target_theme: "kawaii",
+        target_layout: "2-cut",
+        target_filter: "none",
+        target_caption: "",
+        shot_sizes: [8],
+      });
+      expect(started.error).toBeNull();
+    }
+    const blocked = await starter.rpc("create_pass_booth", {
+      target_circle: created.circle_id as string,
+      partner_id: friendId,
+      target_theme: "kawaii",
+      target_layout: "2-cut",
+      target_filter: "none",
+      target_caption: "",
+      shot_sizes: [8],
+    });
+    expect(blocked.error?.message).toContain("hsummer_booth_open");
+  });
+});
+
 async function rpc(
   client: Client,
   fn:
