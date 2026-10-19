@@ -239,6 +239,9 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     await isaacLetters.getByLabel("Letter").fill("The ferry is still ours.");
     await isaacLetters.getByText("Kawaii", { exact: true }).click();
     await isaacLetters.getByRole("button", { name: "Send the letter" }).click();
+    const sentEnvelope = page.getByTestId("letter-envelope");
+    await expect(sentEnvelope).toBeVisible();
+    await expect(sentEnvelope).toHaveAttribute("data-scene", "send");
     await expect(
       isaacLetters.getByRole("status").filter({ hasText: "Sent to Summer" }),
     ).toBeVisible();
@@ -256,6 +259,9 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
       summerLetters.getByText("The ferry is still ours."),
     ).toHaveCount(0);
     await summerLetters.getByRole("button", { name: "Open letter" }).click();
+    const openedEnvelope = partnerPage.getByTestId("letter-envelope");
+    await expect(openedEnvelope).toBeVisible();
+    await expect(openedEnvelope).toHaveAttribute("data-scene", "open");
     await expect(
       summerLetters.getByText("The ferry is still ours."),
     ).toBeVisible();

@@ -913,6 +913,294 @@ textarea.letter-body {
   }
 }
 
+#letter-stage-root {
+  position: static;
+  transform: none;
+  filter: none;
+  contain: none;
+}
+
+.letter-envelope-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  background: var(--background);
+  pointer-events: auto;
+}
+
+.letter-envelope-flight {
+  position: relative;
+  width: 12.5rem;
+  height: 10.5rem;
+  animation-duration: var(--envelope-ms, 1.5s);
+  animation-timing-function: ease;
+  animation-fill-mode: forwards;
+}
+
+.letter-envelope-sheet,
+.letter-envelope-pocket,
+.letter-envelope-flap,
+.letter-envelope-seal {
+  position: absolute;
+  animation-duration: var(--envelope-ms, 1.5s);
+  animation-timing-function: ease;
+  animation-fill-mode: forwards;
+}
+
+.letter-envelope-sheet {
+  z-index: 1;
+  top: 0.2rem;
+  left: 1.35rem;
+  width: 9.8rem;
+  height: 6.4rem;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+.letter-envelope-sheet::before,
+.letter-envelope-sheet::after {
+  content: "";
+  display: block;
+  height: 0.35rem;
+  margin: 1.15rem 1rem 0;
+  border-radius: 999px;
+  background: var(--blush);
+}
+
+.letter-envelope-pocket {
+  z-index: 2;
+  bottom: 0;
+  left: 0;
+  width: 12.5rem;
+  height: 7.4rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  background: #fffaf6;
+  box-shadow: var(--shadow);
+}
+
+.letter-envelope-flap {
+  z-index: 3;
+  bottom: 3.7rem;
+  left: 0;
+  width: 12.5rem;
+  height: 3.8rem;
+  background: var(--cream);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+.letter-envelope-seal {
+  z-index: 4;
+  bottom: 2.45rem;
+  left: 50%;
+  width: 2.6rem;
+  height: 2.6rem;
+  margin-left: -1.3rem;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle at 35% 30%,
+    #e07a86,
+    var(--heart) 55%,
+    #6e2236
+  );
+  box-shadow: inset 0 0 0 3px rgb(247 240 232 / 40%);
+}
+
+.letter-envelope[data-scene="send"] .letter-envelope-flight {
+  animation-name: hsummer-send-fly;
+}
+
+.letter-envelope[data-scene="send"] .letter-envelope-sheet {
+  animation-name: hsummer-send-fold;
+}
+
+.letter-envelope[data-scene="send"] .letter-envelope-flap {
+  animation-name: hsummer-send-flap;
+}
+
+.letter-envelope[data-scene="send"] .letter-envelope-seal {
+  animation-name: hsummer-send-seal;
+}
+
+.letter-envelope[data-scene="open"] .letter-envelope-flight {
+  animation-name: hsummer-open-arrive;
+}
+
+.letter-envelope[data-scene="open"] .letter-envelope-sheet {
+  animation-name: hsummer-open-slide;
+}
+
+.letter-envelope[data-scene="open"] .letter-envelope-pocket {
+  animation-name: hsummer-open-pocket;
+}
+
+.letter-envelope[data-scene="open"] .letter-envelope-flap {
+  animation-name: hsummer-open-flap;
+}
+
+.letter-envelope[data-scene="open"] .letter-envelope-seal {
+  animation-name: hsummer-open-unseal;
+}
+
+.letter-envelope[data-motion="reduced"] .letter-envelope-flight {
+  animation-name: hsummer-envelope-fade;
+}
+
+.letter-envelope[data-motion="reduced"] .letter-envelope-sheet,
+.letter-envelope[data-motion="reduced"] .letter-envelope-pocket,
+.letter-envelope[data-motion="reduced"] .letter-envelope-flap,
+.letter-envelope[data-motion="reduced"] .letter-envelope-seal {
+  animation-name: none;
+}
+
+.letter-envelope[data-hold] .letter-envelope-flight,
+.letter-envelope[data-hold] .letter-envelope-sheet,
+.letter-envelope[data-hold] .letter-envelope-pocket,
+.letter-envelope[data-hold] .letter-envelope-flap,
+.letter-envelope[data-hold] .letter-envelope-seal {
+  animation-delay: var(--envelope-hold, 0ms);
+  animation-play-state: paused;
+}
+
+@keyframes hsummer-send-fold {
+  0% {
+    transform: translateY(0) scaleY(1);
+    opacity: 1;
+  }
+  34% {
+    transform: translateY(2.4rem) scaleY(0.15);
+    opacity: 1;
+  }
+  70%,
+  100% {
+    transform: translateY(2.4rem) scaleY(0.15);
+    opacity: 0;
+  }
+}
+
+@keyframes hsummer-send-flap {
+  0%,
+  22% {
+    transform: translateY(-1.6rem) scaleY(0.2);
+    opacity: 0;
+  }
+  48%,
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes hsummer-send-seal {
+  0%,
+  40% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  58% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  68%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes hsummer-send-fly {
+  0%,
+  62% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-68vh) rotate(-14deg);
+    opacity: 0;
+  }
+}
+
+@keyframes hsummer-open-arrive {
+  0% {
+    transform: translateY(-42vh) scale(0.94);
+    opacity: 0;
+  }
+  28%,
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes hsummer-open-slide {
+  0%,
+  48% {
+    transform: translateY(2.2rem) scaleY(0.12);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(5.2rem) scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes hsummer-open-pocket {
+  0%,
+  62% {
+    transform: none;
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-0.4rem);
+    opacity: 0;
+  }
+}
+
+@keyframes hsummer-open-flap {
+  0%,
+  36% {
+    transform: none;
+    opacity: 1;
+  }
+  62%,
+  100% {
+    transform: translateY(-1.4rem) scaleY(0.15);
+    opacity: 0;
+  }
+}
+
+@keyframes hsummer-open-unseal {
+  0%,
+  30% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  58%,
+  100% {
+    transform: scale(0.2) rotate(20deg);
+    opacity: 0;
+  }
+}
+
+@keyframes hsummer-envelope-fade {
+  0% {
+    transform: scale(0.94);
+    opacity: 0;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.03);
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .letter-seal.is-opening,
   .letter-sheet.is-opening,
@@ -923,6 +1211,21 @@ textarea.letter-body {
   summary {
     animation: none;
     transition: none;
+  }
+
+  .letter-envelope {
+    --envelope-ms: 1.2s;
+  }
+
+  .letter-envelope[data-motion] .letter-envelope-flight {
+    animation-name: hsummer-envelope-fade;
+  }
+
+  .letter-envelope[data-motion] .letter-envelope-sheet,
+  .letter-envelope[data-motion] .letter-envelope-pocket,
+  .letter-envelope[data-motion] .letter-envelope-flap,
+  .letter-envelope[data-motion] .letter-envelope-seal {
+    animation-name: none;
   }
 
   button:active:not(:disabled),

@@ -7,6 +7,7 @@ import { CircleMoods } from "@/components/circle-moods";
 import { CircleTabs } from "@/components/circle-tabs";
 import { HomeHero } from "@/components/home-hero";
 import { HomeShortcuts } from "@/components/home-shortcuts";
+import { LetterEnvelope } from "@/components/letter-envelope";
 import { Letters } from "@/components/letters";
 import { MemoryWall } from "@/components/memory-wall";
 import { ProfileForm } from "@/components/profile-form";
@@ -31,7 +32,13 @@ const circleId = "11111111-1111-4111-8111-111111111111";
 export default async function PreviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ screen?: string; tab?: string }>;
+  searchParams: Promise<{
+    screen?: string;
+    tab?: string;
+    scene?: string;
+    motion?: string;
+    at?: string;
+  }>;
 }) {
   if (process.env.NODE_ENV === "production") notFound();
   const params = await searchParams;
@@ -62,6 +69,17 @@ export default async function PreviewPage({
           <CirclePreview tab={params.tab ?? "ping"} empty={false} />
         ) : null}
         {screen === "empty" ? <CirclePreview tab="letters" empty /> : null}
+        {screen === "envelope" ? (
+          <LetterEnvelope
+            scene={params.scene === "open" ? "open" : "send"}
+            reduced={params.motion === "reduced"}
+            holdAt={
+              params.at != null && Number.isFinite(Number(params.at))
+                ? Number(params.at)
+                : null
+            }
+          />
+        ) : null}
       </main>
     </div>
   );

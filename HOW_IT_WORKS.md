@@ -16,7 +16,7 @@ A circle page opens on its home. That home is the only place that shows People, 
 
 Create circle is a button that opens a bottom sheet. Circle type is a set of cards. The profile photo is the avatar itself, with a camera badge. Taps use a pressed scale, a toast (`pushToast`), and a pulsing heart on a ping. `src/components/offline-banner.tsx` listens for the browser offline event. `loading.tsx` files are the skeletons and the bear splash. The first-run card is `src/components/onboarding.tsx` and remembers itself in `localStorage`. Notification permission is explained in `PushPanel` on Settings, before `Notification.requestPermission()`. The same section holds Send test notification. Home does not.
 
-`src/lib/part-two.ts` names the next pass: settings (the route `/profile/settings`, quiet hours, theme via `data-theme`), pinned letters, reactions, a memory book, haptics, and the envelope animation. The seal animation already in `globals.css` is the start of that last one.
+`src/lib/part-two.ts` names the next pass: settings (the route `/profile/settings`, quiet hours, theme via `data-theme`), pinned letters, reactions, a memory book, and haptics. Sending a letter plays fold, seal, and fly. Opening one plays arrive, unseal, and slide. Both run about 1.5 seconds. Reduce Motion uses a 1.2 second fade and scale. The stage is portaled to `#letter-stage-root` so a folded `<details>` panel cannot clip it, and the open request waits until the animation finishes.
 
 `src/app/preview/page.tsx` renders fixture screens for design checks. It calls `notFound()` when `NODE_ENV` is production, so a deployed build does not serve it.
 
@@ -273,7 +273,7 @@ If any QStash variable is missing, the origin is localhost, the publish fails, o
 
 The sender can cancel a scheduled letter or move its time. Cancel deletes the QStash message when the id was stored. A new time deletes the old message and publishes another. A delivered row matches no update policy, so the writer cannot edit it after it is sent.
 
-The recipient's page does not include the body until they open it. The open button plays a short seal animation, then `open_letter` sets `opened_at` and inserts one `memories` row with `kind = letter`, `visibility = selected`, and the recipient in `memory_viewers`. The memory stores the title, or the words "A letter", not the body. The author of that memory is the sender, so both people can read it and a third member cannot. A second open returns the same memory. The sender cannot add another viewer or flip the memory to the whole circle. The push, when VAPID is configured, says "You have a new letter." and nothing else.
+The recipient's page does not include the body until they open it. The open button plays arrive, unseal, and slide (about 1.5 seconds, or a 1.2 second fade when Reduce Motion is on), then `open_letter` sets `opened_at` and inserts one `memories` row with `kind = letter`, `visibility = selected`, and the recipient in `memory_viewers`. The memory stores the title, or the words "A letter", not the body. The author of that memory is the sender, so both people can read it and a third member cannot. A second open returns the same memory. The sender cannot add another viewer or flip the memory to the whole circle. The push, when VAPID is configured, says "You have a new letter." and nothing else.
 
 Leaving a circle does not yet cancel a letter that is still waiting from the leave screen. Delivery does cancel it when the callback or the app-open path sees that a person has left. The leave screen itself is a later week.
 
@@ -320,7 +320,7 @@ The ping is inserted before the push, with the user's client. If the secret key 
 | `src/components/service-worker-register.tsx` | Registers `/sw.js` after the page loads                |
 | `src/components/install-hint.tsx`            | iOS Home Screen instructions                           |
 
-The icons are a small generated mark (two overlapping circles). `npm run generate:icons` redraws them. They are placeholders, not a finished logo.
+The icons are resized from `public/brand/bear.svg` by `scripts/export-brand.py` (`npm run generate:icons`).
 
 ## Tests and CI
 
