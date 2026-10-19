@@ -101,6 +101,7 @@ Apply each file in `supabase/migrations` once, in filename order, in the SQL edi
 | `20261207120000_security_hardening.sql`              | narrower column grants, auth attempt counts |
 | `20261221120000_letters.sql`                         | letters, custom categories, letter memories |
 | `20261228120000_still_us.sql`                        | scheduled letters, Still Us countdowns      |
+| `20270104120000_solo_booth.sql`                      | Solo photo booth, photo-strip memories      |
 
 In **Authentication → URL Configuration**, set the Site URL and add redirect URLs:
 

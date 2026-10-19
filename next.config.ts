@@ -27,10 +27,9 @@ const nextConfig: NextConfig = {
   // on later for pages that can render a static shell.
   experimental: {
     serverActions: {
-      // Avatar and memory photos are capped at 2 MB. The action body also
-      // carries the multipart boundary and the other fields, so the limit
-      // sits above 2 MB.
-      bodySizeLimit: "3mb",
+      // A memory photo is capped at 2 MB. A Solo strip sends up to four
+      // slot JPEGs. The limit stays under Vercel's 4.5 MB request cap.
+      bodySizeLimit: "4mb",
     },
   },
   turbopack: {

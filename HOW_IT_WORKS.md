@@ -2,7 +2,7 @@
 
 This is the map of the repository as it stands after Still Us and scheduled letters. It is written for reading the code, not as a changelog.
 
-Hsummer is a private space shared by a Circle: a couple, a few friends, or a family. Profiles came first. Who may read one is a single function, and that function now includes people who share an active circle. Circles, memberships, invite links, pings, a shared bucket list, a current mood per person, and a memory wall are in the database. A 1:1 ping is readable only by the sender and the recipient. A bucket item is readable and editable by every active member of that circle. A mood is readable by active members and writable only by the person it belongs to. A memory is readable by every active member when its visibility is the whole circle, and only by the author plus the people they picked when visibility is selected. A letter is readable by the sender, and by the recipient only after it is delivered. Opening it adds one memory that only those two can see. A couple circle also has one Still Us countdown. Hitting a checkpoint adds one memory the whole circle can see.
+Hsummer is a private space shared by a Circle: a couple, a few friends, or a family. Profiles came first. Who may read one is a single function, and that function now includes people who share an active circle. Circles, memberships, invite links, pings, a shared bucket list, a current mood per person, and a memory wall are in the database. A 1:1 ping is readable only by the sender and the recipient. A bucket item is readable and editable by every active member of that circle. A mood is readable by active members and writable only by the person it belongs to. A memory is readable by every active member when its visibility is the whole circle, and only by the author plus the people they picked when visibility is selected. A letter is readable by the sender, and by the recipient only after it is delivered. Opening it adds one memory that only those two can see. A couple circle also has one Still Us countdown. Hitting a checkpoint adds one memory the whole circle can see. The Solo photo booth draws a strip on the phone and, only when you save it, adds one memory the whole circle can see.
 
 ## Shape of the app
 
@@ -20,6 +20,7 @@ Next.js (App Router) on Vercel
   src/app/circles/bucket-actions.ts  add, edit, remove a bucket item
   src/app/circles/mood-actions.ts    set or clear your current mood
   src/app/circles/memory-actions.ts  add or remove a memory; strip photo EXIF
+  src/app/circles/booth-actions.ts   save a Solo strip onto the memory wall
   src/app/circles/letter-actions.ts  write, schedule, cancel, or open a letter
   src/app/circles/countdown-actions.ts  reunion date, checkpoints, mark hit
   src/app/join/actions.ts          redeem an invite link
@@ -33,7 +34,8 @@ Supabase
   Postgres: profiles, account_private, circles, members, invites,
             pings, bucket_items, current_moods, memories,
             memory_viewers, letters, letter_categories,
-            countdowns, checkpoints, push_subscriptions
+            countdowns, checkpoints, push_subscriptions,
+            booth_sessions, booth_contributors, booth_shots
   Realtime: bucket_items, current_moods, memories, letters,
             countdowns, and checkpoints
   Storage: private buckets "avatars", "memories", and "backups"
@@ -199,6 +201,22 @@ Inserts are limited to 10 per person per 10 minutes. The trigger takes an adviso
 The page asks Storage for a signed URL that lasts five minutes (`MEMORY_SIGNED_URL_SECONDS`). Creating that URL requires the select policy, so the user's own JWT is enough. The service-role key is not used. The loader refuses a URL that is not a displayable http(s) address. An `<img>` is used on purpose: the image optimizer would fetch and cache the signed URL. After five minutes Storage rejects the link. Reloading the page asks for a new one. A member who can already see the photo can ask Storage for a longer link from their own session, because the select policy is what allows signing. The page itself always asks for five minutes.
 
 `public.circle_memory_bytes(circle id)` returns the sum for an active member and null for anyone else, so the usage line is the whole circle and not only the photos this person can see. Realtime on `memories` refreshes the page. Adding a viewer bumps `updated_at` so that change is included.
+
+A saved Solo strip is another kind of memory, `photo-strip`. It has no `photo_path`. The bytes that count toward the 100 MB quota are the sum of the frame JPEGs, stored on the memory as `photo_bytes`. The wall draws the strip again from those frames.
+
+## Photo booth
+
+Solo Booth is one phone. Capture, the theme, the filter, and Download all happen in the browser. No `booth_sessions` row exists until Save to this circle. Pass the Booth and Live Together are not in this build.
+
+The page is `/circles/[id]/booth`. It works while the circle is still pending. The preview is a `<video>` with `playsInline`, `muted`, and `autoPlay`, and the element is mirrored with CSS. `getUserMedia` is called from the Use the camera button, with `audio: false`, because the permissions policy allows `camera=(self)` and refuses the microphone. The captured frame is drawn from the video element, so it is not mirrored and text in the picture reads the right way. If permission is denied, the camera is missing, or the page is not a secure context, the message tells an iPhone user where to allow the camera for the Home Screen app and for Safari, and the library picker still works. The picker copies the chosen files before it clears the input. That list is live, so clearing it first would keep only the photo already being read.
+
+A strip is 600×1800. 4-cut is four frames. 2-cut is two taller ones. Kawaii and Minimal are separate theme files (`src/lib/booth/themes/kawaii.ts` and `minimal.ts`): palette, type, padding, and stickers. The layout math only reads those numbers. Filters (black and white, sepia, warm, cool, grain) run on the slot-sized frame. Grain uses the pixel index, so the same photo does not change between saves. Each frame is a JPEG at about 0.9 quality, at that slot's size, with no EXIF because it came from a canvas. Save sends those bytes as an argument of `saveSoloBooth`. A `File` appended onto the form in script does not arrive with the server action, and the save would say the strip is missing photos. The circle, theme, layout, and filter are hidden fields on that form. The server sniffs the bytes and strips metadata again, and it refuses anything that is not a JPEG.
+
+Save calls `save_solo_booth`. That function inserts the session (`mode = solo`, `status = complete`), one contributor whose `assigned_positions` are every frame, the shot rows, and one `memories` row with `kind = photo-strip` and `visibility = circle`, in one transaction. The tag is `photo-booth`. The calendar date is the saver's timezone. Authenticated clients have no insert grant on the booth tables, and a direct insert of a photo-strip memory is rejected. The same 10-memories-per-10-minutes limit and the 100 MB circle quota apply. Upstash, when it is configured, checks `memory:{user id}` first.
+
+The action then uploads each JPEG into the private `memories` bucket at `{circle id}/{session id}/{position}.jpg`. If an upload fails, it deletes the memory. That delete removes the session, and the shot trigger removes any object that landed. There is no combined image in storage. The wall signs each frame for five minutes and draws the strip again with the theme that was saved. Those signed URLs are another origin, so the wall canvas can show the frames and cannot export them. Download on the booth page exports a canvas whose frames are still local blobs.
+
+Download uses the share sheet when the phone allows sharing a file, and otherwise a normal download. It does not call the server.
 
 ## Letters
 
