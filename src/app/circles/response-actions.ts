@@ -7,7 +7,6 @@ import { z } from "zod";
 import { isCircleId } from "@/lib/bucket/fields";
 import { enforceSharedLimit } from "@/lib/rate-limit/enforce";
 import {
-  REACTION_EMOJIS,
   REACTION_LIMIT,
   REACTION_RATE_LIMIT_MESSAGE,
   REACTION_WINDOW_MINUTES,
@@ -177,5 +176,3 @@ export async function addReply(
   revalidatePath(`/circles/${parsed.data.circleId}`);
   return { error: null, saved: true };
 }
-
-export const reactionChoices = REACTION_EMOJIS;
