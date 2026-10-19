@@ -7,6 +7,9 @@ import { DemoBanner } from "@/components/demo-banner";
 import { LeaveCircleForm } from "@/components/leave-circle-form";
 import { BucketList } from "@/components/bucket-list";
 import { CircleMoods } from "@/components/circle-moods";
+import { CircleTabs } from "@/components/circle-tabs";
+import { EmptyState } from "@/components/empty-state";
+import { InfoTip } from "@/components/info-tip";
 import { InvitePanel } from "@/components/invite-panel";
 import { Letters } from "@/components/letters";
 import { MemoryWall } from "@/components/memory-wall";
@@ -18,6 +21,8 @@ import { SignedInHeader } from "@/components/signed-in-header";
 import { StillUs } from "@/components/still-us";
 import { CircleMute } from "@/components/circle-mute";
 import { ThinkingOfYou } from "@/components/thinking-of-you";
+import { circleStatusLabel } from "@/lib/circles/status";
+import { friendlyZoneLabel } from "@/lib/time/zones";
 import { circleNeedsPicker } from "@/lib/circles/fields";
 import { loadPassBooth } from "@/lib/booth/load";
 import { loadBucketItems } from "@/lib/bucket/load";
@@ -106,187 +111,166 @@ export default async function CirclePage({
         />
       )}
       <SignedInHeader current="circles" />
-      <main className="flex flex-1 flex-col gap-10 py-16">
+      <main className="flex flex-1 flex-col gap-6 py-16">
         <div>
-          <p className="text-sm font-medium tracking-wide text-pine uppercase">
-            {circle.status === "active"
-              ? "Active"
-              : circle.status === "archived"
-                ? "Archived"
-                : "Pending"}
+          <p className="text-sm font-bold text-pine">
+            {circleStatusLabel(circle.status)}
           </p>
-          <h1 className="mt-3 font-serif text-5xl tracking-tight">
-            {circle.title}
-          </h1>
+          <div className="mt-1 flex items-center gap-1">
+            <h1 className="text-2xl font-bold tracking-tight">
+              {circle.title}
+            </h1>
+            <InfoTip label="About this circle">
+              {circle.status === "pending"
+                ? "Share the invite. Moods, Still Us, the photo booth, the memory wall, and the bucket list work now. Letters and Thinking of You open once you're both here."
+                : "Moods, letters, Still Us, the photo booth, memories, and the bucket list live in the tabs."}
+            </InfoTip>
+          </div>
           {circle.isDemo ? (
             <div className="mt-4">
               <DemoBanner />
             </div>
           ) : null}
-          {circle.isDemo ? (
-            <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
-              Look around Alex and Jordan&apos;s circle. Nothing you type is
-              saved.
-            </p>
-          ) : circle.status === "pending" ? (
-            <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
-              This circle is waiting for one more person. Share the invite link.
-              You can set a mood, set the Still Us date, open the photo booth,
-              add to the memory wall, and start the bucket list now. Letters,
-              Thinking of You, and Pass the booth stay closed until you both are
-              here.
-            </p>
-          ) : (
-            <p className="mt-4 max-w-xl text-base leading-7 text-foreground/80">
-              {others.length > 0
+          <p className="mt-2 text-sm text-muted">
+            {circle.isDemo
+              ? "Look around. Nothing you type is saved."
+              : others.length > 0
                 ? `You're here with ${others.map((member) => member.displayName).join(", ")}.`
-                : "You're the only one here right now."}{" "}
-              {gestures
-                ? needsPicker
-                  ? "Set a mood, check Still Us, write a letter to one person, open the photo booth, add a memory, or tap Thinking of You — you choose who, or everyone."
-                  : "Set a mood, check Still Us, write a letter, open the photo booth, add a memory, tap Thinking of You — it goes to your partner — or add to the bucket list."
-                : "Set a mood, check Still Us, open the photo booth, add a memory, or add to the bucket list."}
-            </p>
-          )}
+                : circle.status === "pending"
+                  ? "Waiting for someone to join."
+                  : "You're the only one here right now."}
+          </p>
         </div>
 
-        {moods.ok ? (
-          <CircleMoods
-            circleId={circle.id}
-            selfId={session.userId}
-            partnerName={partner?.displayName ?? null}
-            waiting={circle.status === "pending"}
-            canShare={gestures}
-            members={circle.members.map((member) => ({
-              userId: member.userId,
-              displayName: member.displayName,
-              avatarUrl: member.avatarUrl,
-            }))}
-            moods={moods.moods}
-          />
-        ) : (
-          <p className="max-w-xl text-sm leading-6 text-foreground/70">
-            Moods aren&apos;t in the database yet. Apply{" "}
-            <code>supabase/migrations/20261123120000_current_moods.sql</code> in
-            the Supabase SQL editor, then reload this page.
-          </p>
-        )}
-
-        {stillUs.ok ? (
-          <StillUs
-            circleId={circle.id}
-            circleType={circle.circleType}
-            countdowns={stillUs.countdowns}
-            checkpoints={stillUs.checkpoints}
-          />
-        ) : (
-          <p className="max-w-xl text-sm leading-6 text-foreground/70">
-            Still Us isn&apos;t in the database yet. Apply{" "}
-            <code>supabase/migrations/20261228120000_still_us.sql</code> in the
-            Supabase SQL editor, then reload this page.
-          </p>
-        )}
-
-        {letters.ok ? (
-          <Letters
-            circleId={circle.id}
-            partnerName={partner?.displayName ?? null}
-            partnerTimeZone={partner?.timezone ?? zone}
-            canWrite={gestures}
-            people={others.map((member) => ({
-              userId: member.userId,
-              displayName: member.displayName,
-              timezone: member.timezone,
-            }))}
-            pending={circle.status === "pending"}
-            letters={letters.letters}
-            categories={letters.categories}
-          />
-        ) : (
-          <p className="max-w-xl text-sm leading-6 text-foreground/70">
-            Letters aren&apos;t in the database yet. Apply{" "}
-            <code>supabase/migrations/20261221120000_letters.sql</code> in the
-            Supabase SQL editor, then reload this page.
-          </p>
-        )}
-
-        <section className="flex flex-col gap-4">
-          <h2 className="font-serif text-3xl tracking-tight">Photo booth</h2>
-          <p className="max-w-xl text-sm leading-6 text-foreground/80">
-            Take a strip on this phone, or pass one back and forth. Nothing is
-            saved while you shoot alone. A passed booth is saved for everyone in
-            the circle once the last frame is in.
-          </p>
-          {yourTurn ? (
-            <p className="text-sm font-medium text-pine">
-              It&apos;s your turn in the photo booth.
-            </p>
-          ) : null}
-          {waitingOnPartner && waitingLabel ? (
-            <p className="text-sm text-foreground/70">
-              A booth is waiting on {waitingLabel}.
-            </p>
-          ) : null}
-          <Link
-            href={`/circles/${circle.id}/booth`}
-            className="inline-flex h-12 w-fit items-center rounded-full bg-accent px-5 text-base font-medium text-accent-ink"
-          >
-            {yourTurn ? "Take your frames" : "Open the photo booth"}
-          </Link>
-        </section>
-
-        {memories.ok ? (
-          <MemoryWall
-            circleId={circle.id}
-            memories={memories.wall.memories}
-            people={others.map((member) => ({
-              userId: member.userId,
-              displayName: member.displayName,
-            }))}
-            today={calendarDate(zone)}
-            usedBytes={memories.wall.usedBytes}
-            pending={circle.status === "pending"}
-          />
-        ) : (
-          <p className="max-w-xl text-sm leading-6 text-foreground/70">
-            The memory wall isn&apos;t in the database yet. Apply{" "}
-            <code>supabase/migrations/20261130120000_memories.sql</code> in the
-            Supabase SQL editor, then reload this page.
-          </p>
-        )}
-
-        {bucket.ok ? (
-          <BucketList
-            circleId={circle.id}
-            items={bucket.items}
-            pending={circle.status === "pending"}
-          />
-        ) : (
-          <p className="max-w-xl text-sm leading-6 text-foreground/70">
-            The bucket list isn&apos;t in the database yet. Apply{" "}
-            <code>
-              supabase/migrations/20261109120000_bucket_items_and_rate_limits.sql
-            </code>{" "}
-            in the Supabase SQL editor, then reload this page.
-          </p>
-        )}
-
-        {gestures ? (
-          <>
-            <ThinkingOfYou
-              circleId={circle.id}
-              partnerName={
-                partner?.displayName ??
-                (needsPicker ? "someone here" : "your partner")
-              }
-              people={others.map((member) => ({
-                userId: member.userId,
-                displayName: member.displayName,
-              }))}
-            />
-            <RecentPings pings={pings} selfId={session.userId} />
-          </>
-        ) : null}
+        <CircleTabs
+          initial={gestures ? "ping" : "moods"}
+          panels={{
+            ping: gestures ? (
+              <>
+                <ThinkingOfYou
+                  circleId={circle.id}
+                  partnerName={
+                    partner?.displayName ??
+                    (needsPicker ? "someone here" : "your partner")
+                  }
+                  people={others.map((member) => ({
+                    userId: member.userId,
+                    displayName: member.displayName,
+                  }))}
+                />
+                <RecentPings pings={pings} selfId={session.userId} />
+              </>
+            ) : (
+              <EmptyState
+                title="No pings yet"
+                detail="Thinking of You opens once you're both here."
+              />
+            ),
+            moods: moods.ok ? (
+              <CircleMoods
+                circleId={circle.id}
+                selfId={session.userId}
+                partnerName={partner?.displayName ?? null}
+                waiting={circle.status === "pending"}
+                canShare={gestures}
+                members={circle.members.map((member) => ({
+                  userId: member.userId,
+                  displayName: member.displayName,
+                  avatarUrl: member.avatarUrl,
+                }))}
+                moods={moods.moods}
+              />
+            ) : (
+              <p className="text-sm text-muted">
+                Moods aren&apos;t in the database yet.
+              </p>
+            ),
+            letters: letters.ok ? (
+              <Letters
+                circleId={circle.id}
+                partnerName={partner?.displayName ?? null}
+                partnerTimeZone={partner?.timezone ?? zone}
+                canWrite={gestures}
+                people={others.map((member) => ({
+                  userId: member.userId,
+                  displayName: member.displayName,
+                  timezone: member.timezone,
+                }))}
+                pending={circle.status === "pending"}
+                letters={letters.letters}
+                categories={letters.categories}
+              />
+            ) : (
+              <p className="text-sm text-muted">
+                Letters aren&apos;t in the database yet.
+              </p>
+            ),
+            bucket: bucket.ok ? (
+              <BucketList
+                circleId={circle.id}
+                items={bucket.items}
+                pending={circle.status === "pending"}
+              />
+            ) : (
+              <p className="text-sm text-muted">
+                The bucket list isn&apos;t in the database yet.
+              </p>
+            ),
+            still: stillUs.ok ? (
+              <StillUs
+                circleId={circle.id}
+                circleType={circle.circleType}
+                countdowns={stillUs.countdowns}
+                checkpoints={stillUs.checkpoints}
+              />
+            ) : (
+              <p className="text-sm text-muted">
+                Still Us isn&apos;t in the database yet.
+              </p>
+            ),
+            booth: (
+              <section className="flex flex-col gap-3">
+                <h2 className="text-xl font-bold">Photo booth</h2>
+                <p className="text-sm text-muted">
+                  A strip on this phone, or pass one back and forth.
+                </p>
+                {yourTurn ? (
+                  <p className="text-sm font-bold text-pine">
+                    It&apos;s your turn in the photo booth.
+                  </p>
+                ) : null}
+                {waitingOnPartner && waitingLabel ? (
+                  <p className="text-sm text-muted">
+                    A booth is waiting on {waitingLabel}.
+                  </p>
+                ) : null}
+                <Link
+                  href={`/circles/${circle.id}/booth`}
+                  className="btn w-fit"
+                >
+                  {yourTurn ? "Take your frames" : "Open the photo booth"}
+                </Link>
+              </section>
+            ),
+            memory: memories.ok ? (
+              <MemoryWall
+                circleId={circle.id}
+                memories={memories.wall.memories}
+                people={others.map((member) => ({
+                  userId: member.userId,
+                  displayName: member.displayName,
+                }))}
+                today={calendarDate(zone)}
+                usedBytes={memories.wall.usedBytes}
+                pending={circle.status === "pending"}
+              />
+            ) : (
+              <p className="text-sm text-muted">
+                The memory wall isn&apos;t in the database yet.
+              </p>
+            ),
+          }}
+        />
 
         {circle.circleType !== "couple" && !circle.isDemo ? (
           <CircleMute circleId={circle.id} mutedUntil={circle.mutedUntil} />
@@ -320,8 +304,8 @@ export default async function CirclePage({
                     {member.displayName}
                     {member.userId === session.userId ? " (you)" : ""}
                   </span>
-                  <span className="mt-1 block text-sm text-foreground/70">
-                    {member.timezone}
+                  <span className="mt-1 block text-sm text-muted">
+                    {friendlyZoneLabel(member.timezone)}
                   </span>
                 </span>
               </li>

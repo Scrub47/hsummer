@@ -120,28 +120,28 @@ export function MemoryWall({
       ) : null}
 
       {months.length === 0 ? (
-        <p className="text-sm leading-6 text-foreground/70">
+        <p className="text-sm text-muted">
           {memories.length === 0
             ? "Nothing on the wall yet."
             : "Nothing with that tag."}
         </p>
       ) : (
-        months.map((month) => (
-          <div key={month.key} className="flex flex-col gap-4">
-            <h3 className="font-serif text-2xl tracking-tight">
-              {month.label}
-            </h3>
-            <ul className="flex flex-col gap-4">
-              {month.memories.map((memory) => (
-                <MemoryCardView
-                  key={memory.id}
-                  circleId={circleId}
-                  memory={memory}
-                />
-              ))}
-            </ul>
-          </div>
-        ))
+        <div className="memory-scroll">
+          {months.map((month) => (
+            <div key={month.key} className="flex flex-col gap-3">
+              <h3 className="text-lg font-bold">{month.label}</h3>
+              <ul className="flex flex-col gap-3">
+                {month.memories.map((memory) => (
+                  <MemoryCardView
+                    key={memory.id}
+                    circleId={circleId}
+                    memory={memory}
+                  />
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
       )}
     </section>
   );

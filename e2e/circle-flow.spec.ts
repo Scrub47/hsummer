@@ -22,6 +22,7 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
 
   await page.goto("/circles");
   await expect(page.getByRole("heading", { name: "Circles" })).toBeVisible();
+  await page.getByRole("button", { name: "Create a circle" }).click();
   await page.getByLabel("Name").fill("Me & Summer");
   await page.getByRole("button", { name: "Create a circle" }).click();
   await expect(page).toHaveURL(/\/circles\/[0-9a-f-]{36}$/i, {
@@ -30,7 +31,7 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
   await expect(
     page.getByRole("heading", { name: "Me & Summer" }),
   ).toBeVisible();
-  await expect(page.getByText("Pending", { exact: true })).toBeVisible();
+  await expect(page.getByText("Waiting", { exact: true })).toBeVisible();
 
   const invite = page.locator('a[href*="/join/"]');
   await expect(invite).toBeVisible();
@@ -59,7 +60,7 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
       timeout: 20_000,
     });
     await expect(
-      partnerPage.getByText("Active", { exact: true }),
+      partnerPage.getByText("Together", { exact: true }),
     ).toBeVisible();
     await expect(
       partnerPage.getByRole("button", { name: "Thinking of You", exact: true }),
@@ -81,18 +82,22 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     await expect(recent(partnerPage)).toContainText("Isaac");
     await expect(recent(partnerPage)).toContainText("Thinking of you");
 
+    await openFeature(page, "Moods");
     await page.getByRole("button", { name: "Good" }).click();
     await expect(
       page.getByRole("status").filter({ hasText: /No notification was sent/ }),
     ).toBeVisible();
     await expect(moods(page)).toContainText("Good");
+    await openFeature(page, "Thinking of You");
     await expect(recent(page)).not.toContainText("Feeling");
 
     await partnerPage.reload();
+    await openFeature(partnerPage, "Moods");
     await expect(moods(partnerPage)).toContainText("Isaac");
     await expect(moods(partnerPage)).toContainText("Good");
     await expect(recent(partnerPage)).not.toContainText("Feeling");
 
+    await openFeature(page, "Moods");
     await page
       .getByRole("checkbox", { name: /Also send this as a ping/ })
       .check();
@@ -100,13 +105,17 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     await expect(
       page.getByRole("status").filter({ hasText: /shared with Summer/ }),
     ).toBeVisible();
+    await openFeature(page, "Thinking of You");
     await expect(recent(page)).toContainText("Feeling");
     await expect(recent(page)).toContainText("😌");
 
     await partnerPage.reload();
+    await openFeature(partnerPage, "Moods");
     await expect(moods(partnerPage)).toContainText("Calm");
+    await openFeature(partnerPage, "Thinking of You");
     await expect(recent(partnerPage)).toContainText("Feeling");
 
+    await openFeature(page, "Memory wall");
     const recentDay = utcDay(0);
     const olderDay = utcDay(40);
     await wall(page).getByLabel("Note").fill("Ferry to Bainbridge");
@@ -166,6 +175,7 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     await expect(wall(page).getByText("Ferry to Bainbridge")).toBeVisible();
 
     await partnerPage.reload();
+    await openFeature(partnerPage, "Memory wall");
     await expect(
       wall(partnerPage).getByText("Ferry to Bainbridge"),
     ).toBeVisible();
@@ -180,6 +190,7 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
       .click();
     await expect(wall(page).getByText("Secret dock")).toHaveCount(0);
 
+    await openFeature(page, "Letters");
     const isaacLetters = letters(page);
     await isaacLetters.getByLabel("Open when").selectOption("need-motivation");
     await isaacLetters.getByLabel("Title").fill("For the ferry");
@@ -197,6 +208,7 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     ).toBeVisible();
 
     await partnerPage.reload();
+    await openFeature(partnerPage, "Letters");
     const summerLetters = letters(partnerPage);
     await expect(
       summerLetters.getByText("The ferry is still ours."),
@@ -216,6 +228,7 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
       wall(page).getByRole("link", { name: "Read the letter" }),
     ).toBeVisible();
 
+    await openFeature(page, "Still Us");
     const still = page
       .locator("section")
       .filter({ has: page.getByRole("heading", { name: "Still Us" }) });
@@ -238,12 +251,14 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     await expect(wall(page).getByText("Flight booked")).toBeVisible();
 
     await partnerPage.reload();
+    await openFeature(partnerPage, "Still Us");
     const partnerStill = partnerPage.locator("section").filter({
       has: partnerPage.getByRole("heading", { name: "Still Us" }),
     });
     await expect(partnerStill.getByText(/\d+ days|Today/)).toBeVisible();
     await expect(wall(partnerPage).getByText("Flight booked")).toBeVisible();
 
+    await openFeature(page, "Letters");
     await isaacLetters.getByLabel("Later").check();
     await isaacLetters.getByLabel("Date").fill("2027-06-01");
     await isaacLetters.getByLabel("Time").fill("08:00");
@@ -253,6 +268,7 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
       isaacLetters.getByRole("status").filter({ hasText: /It will arrive/ }),
     ).toBeVisible();
     await partnerPage.reload();
+    await openFeature(partnerPage, "Letters");
     await expect(
       letters(partnerPage).getByText("Open this in the morning."),
     ).toHaveCount(0);
@@ -260,6 +276,10 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     await partner.close();
   }
 });
+
+async function openFeature(page: Page, name: string) {
+  await page.getByRole("tab", { name }).click();
+}
 
 function moods(page: Page) {
   return page
@@ -326,7 +346,7 @@ async function signIn(
   expect(new URL(location!).origin).toBe(new URL(page.url()).origin);
   await page.goto(location!);
   await expect(
-    page.getByRole("heading", { name: `Hello, ${input.displayName}` }),
+    page.getByRole("heading", { name: `Hi, ${input.displayName}` }),
   ).toBeVisible();
-  await expect(page.getByText("Timezone: America/Los_Angeles")).toBeVisible();
+  await expect(page.getByText("Los Angeles (PT)")).toBeVisible();
 }

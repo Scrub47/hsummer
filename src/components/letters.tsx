@@ -12,6 +12,7 @@ import {
   sendLetter,
   type LetterActionState,
 } from "@/app/circles/letter-actions";
+import { EmptyState } from "@/components/empty-state";
 import { MemberChoice } from "@/components/member-choice";
 import { useCircleLive } from "@/components/use-circle-live";
 import {
@@ -65,14 +66,12 @@ export function Letters({
         <h2 id="letters-heading" className="font-serif text-3xl tracking-tight">
           Letters
         </h2>
-        <p className="mt-3 max-w-xl text-sm leading-6 text-foreground/80">
+        <p className="mt-1 text-sm text-muted">
           {pending
-            ? "Letters open once you're both here. Share the invite link."
-            : canWrite && people.length > 1
-              ? "Write to one person. A letter is never sent to everyone. Until they break the seal, the words stay off this page."
-              : canWrite && partnerName
-                ? `Write to ${partnerName}. It opens with their name. Until they break the seal, the words stay off this page.`
-                : "Letters go to one person."}
+            ? "Letters open once you're both here."
+            : canWrite && partnerName
+              ? `For ${partnerName}.`
+              : "For one person."}
         </p>
         <p className="mt-2 text-sm text-foreground/70" role="status">
           {live === "live"
@@ -98,24 +97,35 @@ export function Letters({
       ) : null}
 
       {letters.length === 0 ? (
-        <p className="text-sm leading-6 text-foreground/70">
-          {canWrite && partnerName
-            ? `No letters yet. The first one starts Dear ${partnerName}.`
-            : "No letters yet."}
-        </p>
+        <EmptyState
+          title="No letters yet"
+          detail={
+            canWrite && partnerName
+              ? `The first one starts Dear ${partnerName}.`
+              : undefined
+          }
+        />
       ) : (
-        <ul className="flex flex-col gap-4">
-          {letters.map((letter) => (
-            <li key={letter.id}>
-              {letter.sealed ? (
-                <SealedLetter circleId={circleId} letter={letter} />
-              ) : (
-                <OpenedLetter
-                  circleId={circleId}
-                  letter={letter}
-                  partnerTimeZone={partnerTimeZone}
-                />
-              )}
+        <ul className="flex flex-col gap-3">
+          {letters.map((letter, index) => (
+            <li key={letter.id} className="letter-fold">
+              <details className="fold" open={letter.sealed || index === 0}>
+                <summary>
+                  <span>{letter.dearName}</span>
+                  <span className="text-sm font-medium text-muted">
+                    {letter.categoryLabel}
+                  </span>
+                </summary>
+                {letter.sealed ? (
+                  <SealedLetter circleId={circleId} letter={letter} />
+                ) : (
+                  <OpenedLetter
+                    circleId={circleId}
+                    letter={letter}
+                    partnerTimeZone={partnerTimeZone}
+                  />
+                )}
+              </details>
             </li>
           ))}
         </ul>
@@ -299,7 +309,7 @@ function WriteLetter({
           rows={8}
           maxLength={LETTER_BODY_MAX}
           placeholder={`Dear ${partnerName},`}
-          className="rounded-2xl border border-line bg-background px-4 py-3 text-base leading-7"
+          className="letter-body rounded-2xl border border-line bg-background px-4 py-3"
         />
       </div>
       {state.error ? (
@@ -430,16 +440,12 @@ function OpenedLetter({
       data-design={letter.design}
     >
       <p className="text-sm font-medium text-pine">{letter.categoryLabel}</p>
-      <h3 className="mt-3 font-serif text-4xl tracking-tight">
-        {letter.dearName}
-      </h3>
+      <h3 className="font-hand mt-2 text-4xl">{letter.dearName}</h3>
       {letter.title ? (
         <p className="mt-3 text-base font-medium">{letter.title}</p>
       ) : null}
       {letter.body ? (
-        <p className="mt-4 text-base leading-7 whitespace-pre-wrap">
-          {letter.body}
-        </p>
+        <p className="letter-body mt-3 whitespace-pre-wrap">{letter.body}</p>
       ) : null}
       <p className="mt-4 text-sm text-foreground/70">
         {letter.status === "cancelled"
@@ -621,9 +627,7 @@ function SealedLetter({
       data-design={letter.design}
     >
       <p className="text-sm font-medium text-pine">{letter.categoryLabel}</p>
-      <h3 className="mt-3 font-serif text-4xl tracking-tight">
-        {letter.dearName}
-      </h3>
+      <h3 className="font-hand mt-2 text-4xl">{letter.dearName}</h3>
       <p className="mt-3 max-w-md text-sm leading-6 text-foreground/70">
         From {letter.fromName}. The words are inside.
       </p>

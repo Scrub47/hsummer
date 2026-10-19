@@ -4,8 +4,8 @@ Hsummer itself is not open source. See LICENSE. The packages below keep their ow
 
 ## Fonts and icons
 
-- Fraunces and Outfit are loaded with `next/font/google` and self-hosted by the build. Both are released under the SIL Open Font License 1.1. The font files are not committed; Next downloads them at build time. https://openfontlicense.org/
-- `public/icons/icon-192.png`, `public/icons/icon-512.png`, and `public/icons/apple-touch-icon.png` are original drawings from `scripts/generate-icons.mjs` (two overlapping circles). No third-party icon font or icon set is used.
+- Nunito and Caveat are self-hosted with `next/font/local` from `src/fonts`. Both are released under the SIL Open Font License 1.1. The woff2 files are committed so the build does not call Google. https://openfontlicense.org/
+- Interface icons come from `lucide-react` (ISC). The bear and the PWA icons are drawn from the Hsummer logo in `public/brand/bear.svg` by `scripts/export-brand.py`.
 
 ## Direct dependencies
 
@@ -15,6 +15,7 @@ Hsummer itself is not open source. See LICENSE. The packages below keep their ow
 | @supabase/supabase-js  | 2.117.3 | MIT        |
 | @upstash/ratelimit     | 2.2.0   | MIT        |
 | @upstash/redis         | 1.39.0  | MIT        |
+| lucide-react           | 1.59.0  | ISC        |
 | next                   | 16.4.0  | MIT        |
 | react                  | 19.3.0  | MIT        |
 | react-dom              | 19.3.0  | MIT        |

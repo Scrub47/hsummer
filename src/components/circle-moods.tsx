@@ -74,6 +74,12 @@ export function CircleMoods({
     initialState,
   );
   const [formKey, setFormKey] = useState(0);
+  const [picked, setPicked] = useState<string | null>(null);
+  const [seenState, setSeenState] = useState(state);
+  if (state !== seenState) {
+    setSeenState(state);
+    if (state.error) setPicked(null);
+  }
   const [latest, setLatest] = useState<"set" | "clear" | null>(null);
   const seen = useRef(state);
   const seenClear = useRef(cleared);
@@ -128,8 +134,18 @@ export function CircleMoods({
 
       <ul aria-label="Circle moods" className="flex flex-col gap-3">
         {members.map((member) => {
-          const mood = moods.find((row) => row.userId === member.userId);
+          const saved = moods.find((row) => row.userId === member.userId);
           const you = member.userId === selfId;
+          const optimistic = you
+            ? MOODS.find((item) => item.emoji === picked)
+            : undefined;
+          const mood = optimistic
+            ? {
+                emoji: optimistic.emoji,
+                label: optimistic.label,
+                when: "Just now",
+              }
+            : saved;
           return (
             <li
               key={member.userId}
@@ -176,13 +192,14 @@ export function CircleMoods({
           className="flex flex-wrap gap-2"
         >
           {MOODS.map((mood) => {
-            const pressed = own?.emoji === mood.emoji;
+            const pressed = (picked ?? own?.emoji) === mood.emoji;
             return (
               <button
                 key={mood.emoji}
                 type="submit"
                 name="emoji"
                 value={mood.emoji}
+                onClick={() => setPicked(mood.emoji)}
                 aria-pressed={pressed}
                 disabled={saving || clearing}
                 className={`inline-flex h-12 items-center gap-2 rounded-full border px-4 text-sm font-medium disabled:opacity-60 ${

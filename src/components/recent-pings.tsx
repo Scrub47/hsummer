@@ -19,7 +19,7 @@ export function RecentPings({
           {pings.map((ping) => (
             <li
               key={ping.id}
-              className="flex items-baseline justify-between gap-4 rounded-3xl border border-line bg-card px-4 py-3"
+              className="flex items-baseline justify-between gap-3 rounded-2xl border border-line bg-card px-3 py-2 text-sm"
             >
               <span>
                 <span className="font-medium">

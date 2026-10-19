@@ -25,9 +25,9 @@ export default function GlobalError({
         style={{
           margin: 0,
           minHeight: "100vh",
-          background: "#f3ecdf",
-          color: "#1c1915",
-          fontFamily: "Georgia, serif",
+          background: "#f7f0e8",
+          color: "#3e1622",
+          fontFamily: "Nunito, sans-serif",
         }}
       >
         <main
@@ -50,8 +50,8 @@ export default function GlobalError({
               marginTop: "1.5rem",
               border: 0,
               borderRadius: "999px",
-              background: "#c4552a",
-              color: "#fff8f3",
+              background: "#a8243a",
+              color: "#f7f0e8",
               padding: "0.75rem 1.25rem",
             }}
           >

@@ -6,6 +6,9 @@ test-results
 coverage
 supabase/.temp
 public/icons
+public/brand/*.png
+public/brand/*.webp
+src/fonts
 src/app/icon.png
 src/app/apple-icon.png
 src/app/favicon.ico
