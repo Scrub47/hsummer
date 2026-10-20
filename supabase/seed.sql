@@ -1,2 +1,5 @@
--- No seed data yet. Later weeks can put a fake couple here.
+-- No seed data in this file. Auth users have to exist before the demo rows,
+-- and SQL here runs before those users do.
+-- The fictional couple is rebuilt by public.seed_demo_circle, called from
+-- npm run demo:reset (scripts/reset-demo.mjs) or the daily cron.
 -- Never seed real names, photos, letters, or secrets.

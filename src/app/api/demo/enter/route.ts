@@ -5,8 +5,8 @@ import { z } from "zod";
 import { consumeAuthBucket } from "@/lib/auth/attempt";
 import { decideAuthLimit } from "@/lib/auth/limit";
 import { hashIp, requestIp } from "@/lib/circles/fields";
-import { DEMO_ALEX_EMAIL, DEMO_CIRCLE_ID } from "@/lib/demo/ids";
-import { resetDemoCircle } from "@/lib/demo/reset";
+import { DEMO_ALEX_EMAIL, DEMO_ALEX_ID } from "@/lib/demo/ids";
+import { ensureDemoCircle } from "@/lib/demo/reset";
 import { enforceSharedLimit } from "@/lib/rate-limit/enforce";
 import { isSameOriginPost, redirectOrigin } from "@/lib/auth/request-origin";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -24,11 +24,14 @@ const OTP_TYPES = new Set<EmailOtpType>([
 ]);
 
 /**
- * Signs the browser in as Alex, the fictional demo account, and opens that
- * couple circle. Jordan is the other member. No real person's data is read.
- * Uploads and pushes stay off. The circle is rebuilt first so a previous
- * visitor cannot leave changes behind.
+ * Signs the browser in as Alex and opens /demo. A person who is already
+ * signed in as someone else is not switched over. The circle is created
+ * when the scheduled sample letter is missing. The nightly cron rebuilds it.
  */
+export async function GET(request: Request) {
+  return enterDemo(request);
+}
+
 export async function POST(request: Request) {
   if (!isSameOriginPost(request)) {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
@@ -42,6 +45,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
   }
 
+  return enterDemo(request);
+}
+
+async function enterDemo(request: Request) {
+  const origin = redirectOrigin(request);
   const allowed = await limitDemo(request);
   if (!allowed) {
     return NextResponse.json(
@@ -50,7 +58,18 @@ export async function POST(request: Request) {
     );
   }
 
-  const reset = await resetDemoCircle();
+  const supabase = await createClient();
+  const current = await currentUserId(supabase);
+  if (current && current !== DEMO_ALEX_ID) {
+    return NextResponse.redirect(new URL("/demo?signedin=1", origin), {
+      status: 303,
+    });
+  }
+  if (current === DEMO_ALEX_ID) {
+    return NextResponse.redirect(new URL("/demo", origin), { status: 303 });
+  }
+
+  const reset = await ensureDemoCircle();
   if (!reset.ok) {
     return NextResponse.json(
       { error: "The demo circle isn't ready." },
@@ -59,7 +78,6 @@ export async function POST(request: Request) {
   }
 
   const admin = createAdminClient();
-  const supabase = await createClient();
   if (!admin || !supabase) {
     return NextResponse.json(
       { error: "The demo circle isn't ready." },
@@ -73,7 +91,7 @@ export async function POST(request: Request) {
   });
   const tokenHash = link.data?.properties?.hashed_token;
   const otpType = link.data?.properties?.verification_type;
-  if (link.error || !tokenHash || !otpType || !isEmailOtpType(otpType)) {
+  if (link.error || !tokenHash || !otpType || !OTP_TYPES.has(otpType)) {
     console.error("Demo sign-in link was not created.");
     return NextResponse.json(
       { error: "The demo circle isn't ready." },
@@ -93,11 +111,16 @@ export async function POST(request: Request) {
     );
   }
 
-  const next = new URL(
-    `/circles/${reset.circleId || DEMO_CIRCLE_ID}`,
-    redirectOrigin(request),
-  );
-  return NextResponse.redirect(next, { status: 303 });
+  return NextResponse.redirect(new URL("/demo", origin), { status: 303 });
+}
+
+async function currentUserId(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<string | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.auth.getClaims();
+  if (error || typeof data?.claims.sub !== "string") return null;
+  return data.claims.sub;
 }
 
 async function limitDemo(request: Request): Promise<boolean> {
@@ -121,10 +144,6 @@ async function limitDemo(request: Request): Promise<boolean> {
     databaseAllowed: allowed,
     production: process.env.NODE_ENV === "production",
   }).ok;
-}
-
-function isEmailOtpType(value: string): value is EmailOtpType {
-  return OTP_TYPES.has(value);
 }
 
 function safeJson(raw: string): unknown {

@@ -19,7 +19,8 @@
     "test:e2e:local": "playwright test --config playwright.local.config.ts",
     "audit:deps": "node scripts/audit-deps.mjs",
     "generate:vapid": "node scripts/generate-vapid-keys.mjs",
-    "generate:icons": "node scripts/generate-icons.mjs"
+    "generate:icons": "node scripts/generate-icons.mjs",
+    "demo:reset": "node scripts/reset-demo.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

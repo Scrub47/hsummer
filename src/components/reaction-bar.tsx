@@ -27,11 +27,13 @@ export function ReactionBar({
   targetKind,
   targetId,
   view,
+  locked = false,
 }: {
   circleId: string;
   targetKind: "letter" | "memory";
   targetId: string;
   view?: ResponseView;
+  locked?: boolean;
 }) {
   const reactions = view?.reactions ?? [];
   const replies = view?.replies ?? [];
@@ -41,6 +43,21 @@ export function ReactionBar({
       <div className="flex flex-wrap gap-2" role="group" aria-label="Reactions">
         {REACTION_EMOJIS.map((emoji) => {
           const current = reactions.find((item) => item.emoji === emoji.code);
+          if (locked) {
+            const count = current?.count ?? 0;
+            return (
+              <span
+                key={emoji.code}
+                className="chip"
+                aria-label={
+                  count > 0 ? `${emoji.label}, ${count}` : emoji.label
+                }
+              >
+                <span aria-hidden>{emoji.glyph}</span>
+                {count > 0 ? <span>{count}</span> : null}
+              </span>
+            );
+          }
           return (
             <ReactionButton
               key={emoji.code}
@@ -66,11 +83,13 @@ export function ReactionBar({
           ))}
         </ul>
       ) : null}
-      <ReplyForm
-        circleId={circleId}
-        targetKind={targetKind}
-        targetId={targetId}
-      />
+      {locked ? null : (
+        <ReplyForm
+          circleId={circleId}
+          targetKind={targetKind}
+          targetId={targetId}
+        />
+      )}
     </div>
   );
 }

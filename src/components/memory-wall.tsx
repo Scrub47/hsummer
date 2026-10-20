@@ -64,6 +64,7 @@ export function MemoryWall({
   usedBytes,
   pending,
   responses = {},
+  locked = false,
 }: {
   circleId: string;
   memories: MemoryCard[];
@@ -72,6 +73,7 @@ export function MemoryWall({
   usedBytes: number;
   pending: boolean;
   responses?: Record<string, ResponseView>;
+  locked?: boolean;
 }) {
   const router = useRouter();
   const refresh = useCallback(() => {
@@ -110,11 +112,15 @@ export function MemoryWall({
         <LiveDot live={live} />
       </div>
 
-      <a href={`/circles/${circleId}/book`} className="btn-quiet w-fit">
-        Memory book
-      </a>
+      {locked ? null : (
+        <a href={`/circles/${circleId}/book`} className="btn-quiet w-fit">
+          Memory book
+        </a>
+      )}
 
-      <AddMemoryForm circleId={circleId} people={people} today={today} />
+      {locked ? null : (
+        <AddMemoryForm circleId={circleId} people={people} today={today} />
+      )}
 
       {tags.length > 0 ? (
         <div className="flex flex-wrap gap-2" role="group" aria-label="Tags">
@@ -152,6 +158,7 @@ export function MemoryWall({
                     circleId={circleId}
                     memory={memory}
                     responses={responses[`memory:${memory.id}`]}
+                    locked={locked}
                   />
                 ))}
               </ul>
@@ -351,10 +358,12 @@ function MemoryCardView({
   circleId,
   memory,
   responses,
+  locked = false,
 }: {
   circleId: string;
   memory: MemoryCard;
   responses?: ResponseView;
+  locked?: boolean;
 }) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState(
@@ -476,8 +485,9 @@ function MemoryCardView({
         targetKind="memory"
         targetId={memory.id}
         view={responses}
+        locked={locked}
       />
-      {memory.mine && memory.kind !== "milestone" ? (
+      {memory.mine && memory.kind !== "milestone" && !locked ? (
         <form action={formAction}>
           <input type="hidden" name="circleId" value={circleId} />
           <input type="hidden" name="id" value={memory.id} />

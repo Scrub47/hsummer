@@ -5,6 +5,17 @@ import { NextResponse, type NextRequest } from "next/server";
 import { redirectOrigin } from "@/lib/auth/request-origin";
 import { safeNextPath } from "@/lib/auth/safe-next";
 import type { Database } from "@/lib/database.types";
+import {
+  allowsDemoFraming,
+  demoFrameAncestors,
+  isDemoDocument,
+} from "@/lib/demo/frame";
+import {
+  DEMO_ALEX_ID,
+  DEMO_EMBED_COOKIE,
+  DEMO_PREVIEW_COOKIE,
+} from "@/lib/demo/ids";
+import { demoPreviewEnabled } from "@/lib/demo/preview-env";
 import { getSupabaseBrowserConfig, getTurnstileSiteKey } from "@/lib/env";
 import {
   applyDocumentSecurity,
@@ -59,36 +70,80 @@ function copySessionHeaders(
 export async function updateSession(request: NextRequest) {
   const https = isHttpsRequest(request);
   const nonce = createNonce();
-  const supabaseOrigin = supabaseOriginFromEnv();
-  const csp = buildContentSecurityPolicy({
-    nonce,
-    supabaseOrigin,
-    turnstile: getTurnstileSiteKey() !== null,
-    development: process.env.NODE_ENV === "development",
-    https,
-  });
-  // Next reads this header while rendering and stamps the nonce on its scripts.
-  request.headers.set("x-nonce", nonce);
-  request.headers.set("Content-Security-Policy", csp);
+  const pathname = request.nextUrl.pathname;
+  const iframe = request.headers.get("sec-fetch-dest") === "iframe";
+  const embedCookie = request.cookies.get(DEMO_EMBED_COOKIE)?.value === "1";
+  const previewOn = demoPreviewEnabled();
+  const previewVisit =
+    previewOn &&
+    (isDemoDocument(pathname) ||
+      request.cookies.get(DEMO_PREVIEW_COOKIE)?.value === "1");
+  if (previewVisit) {
+    request.cookies.set(DEMO_PREVIEW_COOKIE, "1");
+  }
 
-  const finish = (response: NextResponse) => {
-    applyDocumentSecurity(response.headers, { csp, https });
+  request.headers.set("x-nonce", nonce);
+
+  const finish = (response: NextResponse, userId: string | null) => {
+    const demoFrame = allowsDemoFraming({
+      pathname,
+      userId: previewVisit ? DEMO_ALEX_ID : userId,
+      preview: previewVisit,
+    });
+    const csp = buildContentSecurityPolicy({
+      nonce,
+      supabaseOrigin: supabaseOriginFromEnv(),
+      turnstile: getTurnstileSiteKey() !== null,
+      development: process.env.NODE_ENV === "development",
+      https,
+      frameAncestors: demoFrameAncestors({
+        demoFrame,
+        developmentOrigin:
+          process.env.NODE_ENV === "development"
+            ? request.nextUrl.origin
+            : null,
+      }),
+    });
+    request.headers.set("Content-Security-Policy", csp);
+    applyDocumentSecurity(response.headers, { csp, https, demoFrame });
+    if (previewVisit && pathname !== "/auth/sign-out") {
+      response.cookies.set(DEMO_PREVIEW_COOKIE, "1", {
+        path: "/",
+        sameSite: "lax",
+        httpOnly: false,
+        secure: https,
+      });
+    }
+    if (demoFrame && https && iframe) {
+      response.cookies.set(DEMO_EMBED_COOKIE, "1", {
+        path: "/",
+        sameSite: "none",
+        secure: true,
+        httpOnly: false,
+        partitioned: true,
+      });
+    }
     return response;
   };
 
   const config = getSupabaseBrowserConfig();
   if (!config) {
-    if (isProtectedPage(request.nextUrl.pathname)) {
-      return finish(NextResponse.redirect(signInRedirect(request)));
+    if (previewVisit) {
+      return finish(NextResponse.next({ request }), DEMO_ALEX_ID);
     }
-    return finish(NextResponse.next({ request }));
+    if (isProtectedPage(pathname)) {
+      return finish(NextResponse.redirect(signInRedirect(request)), null);
+    }
+    return finish(NextResponse.next({ request }), null);
   }
 
+  const embedCookies =
+    https && iframe && (isDemoDocument(pathname) || embedCookie);
   let supabaseResponse = NextResponse.next({ request });
 
   // Fluid Compute reuses isolates. Never store this client in a global.
   const supabase = createServerClient<Database>(config.url, config.key, {
-    cookieOptions: supabaseCookieOptions(https),
+    cookieOptions: supabaseCookieOptions(https, embedCookies),
     cookies: {
       getAll() {
         return request.cookies.getAll();
@@ -117,14 +172,15 @@ export async function updateSession(request: NextRequest) {
   } catch {
     // A missing project or a bad key should not take down the public pages.
     console.error("Supabase session refresh failed.");
-    return finish(NextResponse.next({ request }));
+    return finish(NextResponse.next({ request }), null);
   }
 
-  const pathname = request.nextUrl.pathname;
-
   if (!userId && isProtectedPage(pathname)) {
-    const redirect = NextResponse.redirect(signInRedirect(request));
-    return finish(copySessionHeaders(supabaseResponse, redirect));
+    const target = iframe
+      ? new URL("/demo?embed=1", redirectOrigin(request))
+      : signInRedirect(request);
+    const redirect = NextResponse.redirect(target);
+    return finish(copySessionHeaders(supabaseResponse, redirect), null);
   }
 
   if (userId && isProtectedPage(pathname)) {
@@ -137,7 +193,7 @@ export async function updateSession(request: NextRequest) {
           redirectOrigin(request),
         ),
       );
-      return finish(copySessionHeaders(supabaseResponse, redirect));
+      return finish(copySessionHeaders(supabaseResponse, redirect), userId);
     }
   }
 
@@ -149,10 +205,10 @@ export async function updateSession(request: NextRequest) {
     const redirect = NextResponse.redirect(
       new URL(nextPath, redirectOrigin(request)),
     );
-    return finish(copySessionHeaders(supabaseResponse, redirect));
+    return finish(copySessionHeaders(supabaseResponse, redirect), userId);
   }
 
-  return finish(supabaseResponse);
+  return finish(supabaseResponse, userId);
 }
 
 /**

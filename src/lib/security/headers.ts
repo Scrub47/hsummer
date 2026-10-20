@@ -17,6 +17,11 @@ export type CspOptions = {
   development: boolean;
   /** Sends upgrade-insecure-requests. Leave this off for http://127.0.0.1. */
   https: boolean;
+  /**
+   * frame-ancestors value, including the quotes around 'none' or 'self'.
+   * Defaults to 'none'. The demo document passes 'self' and the portfolio.
+   */
+  frameAncestors?: string;
 };
 
 export function createNonce(): string {
@@ -107,7 +112,7 @@ export function buildContentSecurityPolicy(options: CspOptions): string {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    "frame-ancestors 'none'",
+    `frame-ancestors ${options.frameAncestors ?? "'none'"}`,
   ];
   if (options.https) directives.push("upgrade-insecure-requests");
 
@@ -119,11 +124,6 @@ export function staticSecurityHeaders(https: boolean): Record<string, string> {
   const headers: Record<string, string> = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
-    // camera=(self) lets the Home Screen app call getUserMedia. The
-    // microphone stays off, so a request that asks for audio is refused.
-    "Permissions-Policy":
-      "camera=(self), microphone=(), geolocation=(), payment=(), usb=()",
-    "X-Frame-Options": "DENY",
   };
   if (https) {
     // Two years. includeSubDomains covers a future app. subdomain of this
@@ -135,13 +135,33 @@ export function staticSecurityHeaders(https: boolean): Record<string, string> {
   return headers;
 }
 
+/**
+ * Framing and camera are per document. Static files skip the proxy, so they
+ * do not send X-Frame-Options. HTML goes through the proxy, which denies
+ * framing except for the demo.
+ */
+export function documentPolicyHeaders(input: {
+  https: boolean;
+  demoFrame: boolean;
+}): Record<string, string> {
+  const headers = staticSecurityHeaders(input.https);
+  headers["Permissions-Policy"] = input.demoFrame
+    ? "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    : "camera=(self), microphone=(), geolocation=(), payment=(), usb=()";
+  if (!input.demoFrame) headers["X-Frame-Options"] = "DENY";
+  return headers;
+}
+
 export function applyDocumentSecurity(
   headers: { set(name: string, value: string): void },
-  input: { csp: string; https: boolean },
+  input: { csp: string; https: boolean; demoFrame?: boolean },
 ): void {
   headers.set("Content-Security-Policy", input.csp);
   for (const [name, value] of Object.entries(
-    staticSecurityHeaders(input.https),
+    documentPolicyHeaders({
+      https: input.https,
+      demoFrame: input.demoFrame === true,
+    }),
   )) {
     headers.set(name, value);
   }

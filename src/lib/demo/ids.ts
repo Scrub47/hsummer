@@ -12,6 +12,32 @@ export const DEMO_CIRCLE_ID = "a11ce000-0000-4000-8000-0000000000c3";
 export const DEMO_ALEX_EMAIL = "alex.demo@hsummer.invalid";
 export const DEMO_JORDAN_EMAIL = "jordan.demo@hsummer.invalid";
 
+/** Stable rows so a reset can recognize a circle that is already seeded. */
+export const DEMO_PHOTO_KITCHEN_ID = "a11ce000-0000-4000-8000-0000000000d4";
+export const DEMO_PHOTO_RAMEN_ID = "a11ce000-0000-4000-8000-0000000000d5";
+export const DEMO_PHOTO_TRAIN_ID = "a11ce000-0000-4000-8000-0000000000d6";
+export const DEMO_LETTER_ID = "a11ce000-0000-4000-8000-0000000000e5";
+export const DEMO_SCHEDULED_LETTER_ID = "a11ce000-0000-4000-8000-0000000000e6";
+export const DEMO_SEALED_LETTER_ID = "a11ce000-0000-4000-8000-0000000000e7";
+export const DEMO_REPLY_LETTER_ID = "a11ce000-0000-4000-8000-0000000000e8";
+export const DEMO_CHECKPOINT_HIT_ID = "a11ce000-0000-4000-8000-0000000000c7";
+export const DEMO_CHECKPOINT_NEXT_ID = "a11ce000-0000-4000-8000-0000000000c8";
+export const DEMO_COUNTDOWN_ID = "a11ce000-0000-4000-8000-0000000000c9";
+export const DEMO_BOOTH_SESSION_ID = "a11ce000-0000-4000-8000-0000000000f1";
+export const DEMO_ALEX_AVATAR =
+  "a11ce000-0000-4000-8000-0000000000a1/a11ce000-0000-4000-8000-0000000000aa.png";
+export const DEMO_JORDAN_AVATAR =
+  "a11ce000-0000-4000-8000-0000000000b2/a11ce000-0000-4000-8000-0000000000bb.png";
+
+/** Set on a local machine with no Supabase. Ignored on Vercel. */
+export const DEMO_PREVIEW_COOKIE = "hsummer-demo-preview";
+
+/**
+ * Marks a demo session that was opened inside a cross-site iframe, so later
+ * refreshes keep Partitioned cookies instead of replacing them with Lax.
+ */
+export const DEMO_EMBED_COOKIE = "hsummer-demo-embed";
+
 /** A generated 1×1 JPEG. It is not a photograph of anyone. */
 export const DEMO_JPEG = Uint8Array.from([
   0xff, 0xd8, 0xff, 0xdb, 0x00, 0x43, 0x00, 0x08, 0x06, 0x06, 0x07, 0x06, 0x05,

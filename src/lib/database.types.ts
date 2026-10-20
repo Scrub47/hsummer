@@ -1010,6 +1010,7 @@ export type Database = {
           circleId: string;
           photoPath: string;
           boothPaths: string[];
+          files: { bucket: string; path: string; name: string }[];
         };
       };
     };

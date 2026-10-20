@@ -64,11 +64,13 @@ export default async function SettingsPage() {
             account.
           </p>
           {demo ? null : <ExportButton />}
-          {circles.circles
-            .filter((circle) => circle.status !== "archived")
-            .map((circle) => (
-              <LeaveCircleForm key={circle.id} circleId={circle.id} />
-            ))}
+          {demo
+            ? null
+            : circles.circles
+                .filter((circle) => circle.status !== "archived")
+                .map((circle) => (
+                  <LeaveCircleForm key={circle.id} circleId={circle.id} />
+                ))}
           {demo ? null : <DeleteAccountForm />}
           <nav className="flex gap-4 text-sm font-bold">
             <Link href="/privacy">Privacy policy</Link>

@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/database.types";
+import { createDemoFixtureSession } from "@/lib/demo/fixture";
+import { demoDocumentOrigin, demoPreviewRequested } from "@/lib/demo/preview";
 import { createClient } from "@/lib/supabase/server";
 
 export type Session = {
@@ -17,11 +19,17 @@ export type Session = {
  */
 export async function getSession(): Promise<Session | null> {
   const supabase = await createClient();
-  if (!supabase) return null;
+  if (supabase) {
+    const { data, error } = await supabase.auth.getClaims();
+    if (!error && typeof data?.claims.sub === "string") {
+      return { supabase, userId: data.claims.sub };
+    }
+  }
 
-  const { data, error } = await supabase.auth.getClaims();
-  if (error || typeof data?.claims.sub !== "string") return null;
-  return { supabase, userId: data.claims.sub };
+  if (await demoPreviewRequested()) {
+    return createDemoFixtureSession(await demoDocumentOrigin());
+  }
+  return null;
 }
 
 export async function getUserId(): Promise<string | null> {

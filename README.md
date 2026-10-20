@@ -30,7 +30,7 @@ These slots are empty on purpose. Add a PNG under `docs/screenshots/` and drop i
 - Leave a circle. The default keeps what you added. You can remove your photos, notes, sent letters, and booth frames instead. Scheduled letters to or from you are cancelled.
 - Download a ZIP of the JSON and image files you can already see. It is not a backup of the whole database.
 - Delete your account. Your login, avatar files, and push subscriptions go with it. Shared contributions stay as Former member unless you remove them.
-- Try the demo from the landing page. Alex and Jordan are fictional. The circle resets every night and does not take uploads.
+- Try the demo from the landing page, the sign-in page, or `/demo`. Alex and Jordan are fictional. The circle resets every night and does not take uploads. A portfolio can frame `https://hsummer.vercel.app/demo`.
 
 Not in this version: group-circle screens and Live Together. See [HOW_IT_WORKS.md](./HOW_IT_WORKS.md) for how the code is put together.
 
@@ -111,6 +111,10 @@ Open [http://localhost:3000](http://localhost:3000). Sign-in, a circle, and the 
 The checked-in `supabase/config.toml` already allow-lists `http://localhost:3000/auth/callback` and `http://127.0.0.1:3000/auth/callback`. Magic-link mail from the local stack is in the Inbucket URL that `supabase start` prints (usually [http://127.0.0.1:54324](http://127.0.0.1:54324)).
 
 To stop the local stack: `npx supabase stop`.
+
+Without Docker, the demo can still be opened locally. Leave the Supabase URL and key unset, set `HSUMMER_DEMO_PREVIEW=1`, and run `npm run dev`. Open `/demo`. That flag is ignored on Vercel and whenever Supabase is configured. It never talks to a database.
+
+With a real project, apply `supabase/migrations/20271021120000_public_demo.sql`, then run `npm run demo:reset` (or open `/demo` once, or wait for the daily cron). Do not set `HSUMMER_DEMO_PREVIEW` in production. No new environment variable is required when the Supabase URL, publishable key, and secret key are already set.
 
 ### Hosted Supabase instead
 

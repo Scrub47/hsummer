@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildContentSecurityPolicy,
+  documentPolicyHeaders,
   isHttpsRequest,
   staticSecurityHeaders,
 } from "@/lib/security/headers";
@@ -30,6 +31,18 @@ describe("content security policy", () => {
     expect(csp).not.toContain("unsafe-eval");
     expect(csp).not.toContain("unsafe-inline");
     expect(csp).toContain("frame-src 'none'");
+    const framed = buildContentSecurityPolicy({
+      nonce,
+      supabaseOrigin: null,
+      turnstile: false,
+      development: false,
+      https: true,
+      frameAncestors: "'self' https://portfolio-isaac-hsu.vercel.app",
+    });
+    expect(framed).toContain(
+      "frame-ancestors 'self' https://portfolio-isaac-hsu.vercel.app",
+    );
+    expect(framed).not.toContain("frame-ancestors 'none'");
     expect(csp).toContain("https://va.vercel-scripts.com");
     expect(csp).toContain("https://vitals.vercel-insights.com");
   });
@@ -61,15 +74,17 @@ describe("static security headers", () => {
     expect(staticSecurityHeaders(true)["X-Content-Type-Options"]).toBe(
       "nosniff",
     );
-    expect(staticSecurityHeaders(true)["Permissions-Policy"]).toContain(
-      "camera=(self)",
-    );
-    expect(staticSecurityHeaders(true)["Permissions-Policy"]).toContain(
-      "microphone=()",
-    );
-    expect(staticSecurityHeaders(true)["Permissions-Policy"]).not.toContain(
-      "camera=()",
-    );
+    expect(staticSecurityHeaders(true)["X-Frame-Options"]).toBeUndefined();
+    expect(staticSecurityHeaders(true)["Permissions-Policy"]).toBeUndefined();
+
+    const locked = documentPolicyHeaders({ https: true, demoFrame: false });
+    expect(locked["X-Frame-Options"]).toBe("DENY");
+    expect(locked["Permissions-Policy"]).toMatch(/^camera=\(self\),/);
+    expect(locked["Permissions-Policy"]).toContain("microphone=()");
+
+    const demo = documentPolicyHeaders({ https: true, demoFrame: true });
+    expect(demo["X-Frame-Options"]).toBeUndefined();
+    expect(demo["Permissions-Policy"]).toMatch(/^camera=\(\),/);
     expect(
       isHttpsRequest({
         url: "http://localhost:3000/",

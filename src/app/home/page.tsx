@@ -126,6 +126,7 @@ export default async function HomePage() {
             displayName: member.displayName,
           }))}
           pending={pending.length > 0 && !canPing}
+          pingLocked={account.isDemo}
         />
         <HomeShortcuts circleId={focusDetail?.id ?? null} />
       </main>

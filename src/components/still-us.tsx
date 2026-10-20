@@ -31,11 +31,13 @@ export function StillUs({
   circleType,
   countdowns,
   checkpoints,
+  locked = false,
 }: {
   circleId: string;
   circleType: string;
   countdowns: CountdownCard[];
   checkpoints: CheckpointCard[];
+  locked?: boolean;
 }) {
   const router = useRouter();
   const live = useCircleLive(circleId, "checkpoints", () => router.refresh());
@@ -63,7 +65,11 @@ export function StillUs({
       </div>
 
       {countdowns.length === 0 ? (
-        <CountdownForm circleId={circleId} countdown={null} />
+        locked ? (
+          <p className="text-sm text-muted">No countdown in this demo yet.</p>
+        ) : (
+          <CountdownForm circleId={circleId} countdown={null} />
+        )
       ) : (
         countdowns.map((countdown) => (
           <CountdownBlock
@@ -73,11 +79,12 @@ export function StillUs({
             checkpoints={checkpoints.filter(
               (checkpoint) => checkpoint.countdownId === countdown.id,
             )}
+            locked={locked}
           />
         ))
       )}
 
-      {!couple && countdowns.length > 0 ? (
+      {!couple && countdowns.length > 0 && !locked ? (
         <CountdownForm circleId={circleId} countdown={null} />
       ) : null}
     </section>
@@ -88,10 +95,12 @@ function CountdownBlock({
   circleId,
   countdown,
   checkpoints,
+  locked = false,
 }: {
   circleId: string;
   countdown: CountdownCard;
   checkpoints: CheckpointCard[];
+  locked?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-4 rounded-3xl border border-line bg-card p-5">
@@ -112,15 +121,23 @@ function CountdownBlock({
           </p>
         )}
       </div>
-      <CountdownForm circleId={circleId} countdown={countdown} />
+      {locked ? null : (
+        <CountdownForm circleId={circleId} countdown={countdown} />
+      )}
       <ul className="flex flex-col gap-3">
         {checkpoints.map((checkpoint) => (
           <li key={checkpoint.id}>
-            <CheckpointRow circleId={circleId} checkpoint={checkpoint} />
+            <CheckpointRow
+              circleId={circleId}
+              checkpoint={checkpoint}
+              locked={locked}
+            />
           </li>
         ))}
       </ul>
-      <CheckpointForm circleId={circleId} countdownId={countdown.id} />
+      {locked ? null : (
+        <CheckpointForm circleId={circleId} countdownId={countdown.id} />
+      )}
     </div>
   );
 }
@@ -285,9 +302,11 @@ function CheckpointForm({
 function CheckpointRow({
   circleId,
   checkpoint,
+  locked = false,
 }: {
   circleId: string;
   checkpoint: CheckpointCard;
+  locked?: boolean;
 }) {
   const [hitState, hitAction, hitting] = useActionState(
     markCheckpointHit,
@@ -316,7 +335,7 @@ function CheckpointRow({
             : "Waiting for one of you to mark it."}
       </p>
       {hitState.saved ? <HeartBurst label="Still Us" /> : null}
-      {checkpoint.trigger === "manual" && !checkpoint.hitAt ? (
+      {checkpoint.trigger === "manual" && !checkpoint.hitAt && !locked ? (
         <form action={hitAction}>
           <input type="hidden" name="circleId" value={circleId} />
           <input type="hidden" name="checkpointId" value={checkpoint.id} />
@@ -334,7 +353,7 @@ function CheckpointRow({
           </button>
         </form>
       ) : null}
-      {!checkpoint.hitAt ? (
+      {!checkpoint.hitAt && !locked ? (
         <form action={removeAction}>
           <input type="hidden" name="circleId" value={circleId} />
           <input type="hidden" name="checkpointId" value={checkpoint.id} />
