@@ -12,6 +12,8 @@
  * current dashboard or from an older screenshot still works.
  */
 
+import { posthogApiHost, posthogKeyConfigured } from "@/lib/analytics/hosts";
+
 const PLACEHOLDER_SNIPPETS = [
   "your-project",
   "your-publishable",
@@ -23,6 +25,7 @@ const PLACEHOLDER_SNIPPETS = [
   "your-qstash",
   "your-redis",
   "your-turnstile",
+  "your-posthog",
   "you@example.com",
 ];
 
@@ -108,6 +111,21 @@ export function getVapidPublicKey(): string | null {
  */
 export function getTurnstileSiteKey(): string | null {
   return readPublic(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY);
+}
+
+/**
+ * PostHog project key. Public by design. When this is empty or still the
+ * example placeholder, the library is not loaded and nothing is sent.
+ * The host defaults to the US ingestion endpoint. The browser talks to
+ * `/ingest` on this app, which Next rewrites to that host.
+ */
+export function getPostHogPublicConfig(): { key: string; host: string } | null {
+  const key = readPublic(process.env.NEXT_PUBLIC_POSTHOG_KEY);
+  if (!key || !posthogKeyConfigured(key)) return null;
+  return {
+    key,
+    host: posthogApiHost(process.env.NEXT_PUBLIC_POSTHOG_HOST),
+  };
 }
 
 export function getSiteUrl(): string | null {

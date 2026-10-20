@@ -7,6 +7,7 @@ import {
   iosInstallRequired,
   useNeedsIosInstall,
 } from "@/components/install-hint";
+import { trackProductEvent } from "@/lib/analytics/client";
 import { getVapidPublicKey } from "@/lib/env";
 import { urlBase64ToUint8Array } from "@/lib/push/subscription";
 
@@ -88,6 +89,7 @@ export function PushPanel() {
         tone: "ok",
         text: "This device is subscribed. Send a test notification.",
       });
+      trackProductEvent("push_enabled");
     } catch {
       setStatus({
         tone: "error",

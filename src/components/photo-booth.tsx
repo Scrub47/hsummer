@@ -14,6 +14,7 @@ import {
   type BoothActionState,
 } from "@/app/circles/booth-actions";
 import { PhotoStrip } from "@/components/photo-strip";
+import { trackProductEvent } from "@/lib/analytics/client";
 import {
   cameraAttempts,
   cameraErrorCopy,
@@ -174,6 +175,7 @@ export function PhotoBooth({
       streamRef.current = null;
       setCountLabel(null);
       setPhase("review");
+      trackProductEvent("booth_photo_taken");
     } catch {
       setError(CAMERA_FAILED);
     } finally {
@@ -423,6 +425,12 @@ function Review({
     },
     initialState,
   );
+  const trackedStrip = useRef(false);
+  useEffect(() => {
+    if (!state.saved || trackedStrip.current) return;
+    trackedStrip.current = true;
+    trackProductEvent("strip_completed", { mode: "solo" });
+  }, [state.saved]);
   const bundle = themeBundle(theme);
 
   return (

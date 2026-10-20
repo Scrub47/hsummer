@@ -17,6 +17,7 @@ import { firstName } from "@/lib/profile/first-name";
 import { AVATAR_SIGNED_URL_SECONDS } from "@/lib/profile/fields";
 import { loadAccountFlags } from "@/lib/account/load";
 import { loadOwnProfile } from "@/lib/profile/load";
+import { releaseDuePings } from "@/lib/settings/release";
 import { getSession } from "@/lib/supabase/session";
 
 export const metadata: Metadata = {
@@ -33,6 +34,7 @@ export default async function HomePage() {
     loadAccountFlags(session),
   ]);
   const origin = pushOrigin(await headers());
+  await releaseDuePings(origin);
   await Promise.all(
     circles.circles
       .filter((circle) => circle.status !== "archived")

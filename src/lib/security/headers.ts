@@ -50,6 +50,10 @@ export function buildContentSecurityPolicy(options: CspOptions): string {
   if (options.turnstile) {
     scriptSrc.push("https://challenges.cloudflare.com");
   }
+  // Vercel Web Analytics and Speed Insights inject their scripts from here
+  // in development. Production uses /_vercel on this origin, which 'self'
+  // and the nonce already allow. The host stays listed for the dev script.
+  scriptSrc.push("https://va.vercel-scripts.com");
 
   const connectSrc = ["'self'"];
   if (options.supabaseOrigin) {
@@ -63,6 +67,11 @@ export function buildContentSecurityPolicy(options: CspOptions): string {
     }
   }
   if (options.turnstile) connectSrc.push("https://challenges.cloudflare.com");
+  // Page views and vitals. PostHog stays on /ingest, so it needs no extra host.
+  connectSrc.push(
+    "https://va.vercel-scripts.com",
+    "https://vitals.vercel-insights.com",
+  );
 
   const imgSrc = [
     "'self'",

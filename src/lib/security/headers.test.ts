@@ -30,6 +30,8 @@ describe("content security policy", () => {
     expect(csp).not.toContain("unsafe-eval");
     expect(csp).not.toContain("unsafe-inline");
     expect(csp).toContain("frame-src 'none'");
+    expect(csp).toContain("https://va.vercel-scripts.com");
+    expect(csp).toContain("https://vitals.vercel-insights.com");
   });
 
   it("allows the dev overlay and Turnstile only when those are on", () => {

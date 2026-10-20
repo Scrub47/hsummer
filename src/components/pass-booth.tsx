@@ -16,6 +16,7 @@ import {
   type PassActionState,
 } from "@/app/circles/booth-actions";
 import { PhotoStrip } from "@/components/photo-strip";
+import { trackProductEvent } from "@/lib/analytics/client";
 import {
   cameraAttempts,
   cameraErrorCopy,
@@ -26,6 +27,7 @@ import {
   BOOTH_FILTERS,
   BOOTH_LAYOUTS,
   BOOTH_THEMES,
+  PASS_FINISHED,
   PASS_GROUP,
   PASS_PENDING,
   PASS_UNAVAILABLE,
@@ -110,7 +112,16 @@ export function PassBooth({
         </p>
       ) : null}
       {yours ? (
-        <TurnShoot circleId={circleId} turn={yours} onSettled={setTurnResult} />
+        <TurnShoot
+          circleId={circleId}
+          turn={yours}
+          onSettled={(result) => {
+            setTurnResult(result);
+            if (result.notice === PASS_FINISHED) {
+              trackProductEvent("strip_completed", { mode: "pass" });
+            }
+          }}
+        />
       ) : null}
       {waiting.map((turn) => (
         <WaitingCard key={turn.sessionId} circleId={circleId} turn={turn} />
@@ -478,6 +489,7 @@ function Capture({
       streamRef.current = null;
       setCountLabel(null);
       setPhase("review");
+      trackProductEvent("booth_photo_taken");
     } catch {
       setError(CAMERA_FAILED);
     } finally {

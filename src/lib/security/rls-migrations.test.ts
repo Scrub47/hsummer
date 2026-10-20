@@ -14,7 +14,9 @@ describe("migration RLS", () => {
       .join("\n");
 
     const tables = [
-      ...sql.matchAll(/create table (public|private)\.([a-z_]+)/g),
+      ...sql.matchAll(
+        /create table(?: if not exists)? (public|private)\.([a-z_]+)/g,
+      ),
     ];
     expect(tables.length).toBeGreaterThan(0);
 

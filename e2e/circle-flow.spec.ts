@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 /**
  * Sign in, create a couple circle, invite, join, and send Thinking of You.
@@ -30,7 +30,7 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
   await expect(
     page.getByRole("button", { name: "Send test notification" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Back" }).click();
+  await page.getByRole("button", { name: "Back", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Hi, Isaac" })).toBeVisible();
 
   await page.goto("/circles");
@@ -264,7 +264,7 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
     await expect(openedEnvelope).toHaveAttribute("data-scene", "open");
     await expect(
       summerLetters.getByText("The ferry is still ours."),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15_000 });
     await expect(
       summerLetters.getByRole("heading", { name: "Dear Summer" }),
     ).toBeVisible();
@@ -308,12 +308,25 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
 
     await openFeature(page, "Letters");
     await isaacLetters.getByRole("button", { name: "Write a letter" }).click();
-    // The Later choice is a pill. Its radio is visually hidden, so click the pill.
-    await isaacLetters.getByTestId("letter-when-later").click();
-    await isaacLetters.getByLabel("Date").fill("2027-06-01");
-    await isaacLetters.getByLabel("Time").fill("08:00");
-    await isaacLetters.getByLabel("Letter").fill("Open this in the morning.");
-    await isaacLetters.getByRole("button", { name: "Send the letter" }).click();
+    // The Later choice is a pill. Its radio is visually hidden, and the fixed
+    // tab bar covers a control scrolled to the bottom edge.
+    const later = isaacLetters.getByTestId("letter-when-later");
+    await scrollClearOfTabBar(later);
+    await later.click();
+    const deliverDate = isaacLetters.getByLabel("Date");
+    await scrollClearOfTabBar(deliverDate);
+    await deliverDate.fill("2027-06-01");
+    const deliverTime = isaacLetters.getByLabel("Time");
+    await scrollClearOfTabBar(deliverTime);
+    await deliverTime.fill("08:00");
+    const letterBody = isaacLetters.getByRole("textbox", { name: "Letter" });
+    await scrollClearOfTabBar(letterBody);
+    await letterBody.fill("Open this in the morning.");
+    const sendLetter = isaacLetters.getByRole("button", {
+      name: "Send the letter",
+    });
+    await scrollClearOfTabBar(sendLetter);
+    await sendLetter.click();
     await expect(
       isaacLetters.getByRole("status").filter({ hasText: /It will arrive/ }),
     ).toBeVisible();
@@ -329,6 +342,12 @@ test("sign in, create a couple circle, invite, join, ping, set a mood, add a mem
 
 async function openFeature(page: Page, name: string) {
   await page.getByRole("tab", { name }).click();
+}
+
+async function scrollClearOfTabBar(locator: Locator) {
+  await locator.evaluate((node) => {
+    node.scrollIntoView({ block: "center", inline: "nearest" });
+  });
 }
 
 function moods(page: Page) {

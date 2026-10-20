@@ -27,6 +27,8 @@ import { loadCircle } from "@/lib/circles/load";
 import { loadStillUs } from "@/lib/countdowns/load";
 import { pushOrigin } from "@/lib/auth/request-origin";
 import { loadLetters } from "@/lib/letters/load";
+import { loadPinnedLetterIds } from "@/lib/letters/pins";
+import { loadResponses } from "@/lib/responses/load";
 import { calendarDate } from "@/lib/memories/fields";
 import { loadMemories } from "@/lib/memories/load";
 import { loadCurrentMoods } from "@/lib/moods/load";
@@ -66,18 +68,29 @@ export default async function CirclePage({
   if (circle.status !== "archived") {
     await prepareCircle(session, circle.id, pushOrigin(await headers()));
   }
-  const [pings, bucket, moods, memories, letters, stillUs, pass] =
-    await Promise.all([
-      gestures
-        ? loadRecentPings(session, circle.id, names, zone)
-        : Promise.resolve([]),
-      loadBucketItems(session, circle.id, names),
-      loadCurrentMoods(session, circle.id, zone),
-      loadMemories(session, circle.id, names),
-      loadLetters(session, circle.id, names),
-      loadStillUs(session, circle.id, zone),
-      loadPassBooth(session, circle.id, names, zone),
-    ]);
+  const [
+    pings,
+    bucket,
+    moods,
+    memories,
+    letters,
+    stillUs,
+    pass,
+    pinnedIds,
+    responses,
+  ] = await Promise.all([
+    gestures
+      ? loadRecentPings(session, circle.id, names, zone)
+      : Promise.resolve([]),
+    loadBucketItems(session, circle.id, names),
+    loadCurrentMoods(session, circle.id, zone),
+    loadMemories(session, circle.id, names),
+    loadLetters(session, circle.id, names),
+    loadStillUs(session, circle.id, zone),
+    loadPassBooth(session, circle.id, names, zone),
+    loadPinnedLetterIds(session, circle.id),
+    loadResponses(session, circle.id, names),
+  ]);
   const yourTurn =
     pass.ok &&
     pass.turns.some((turn) => turn.waitingOnYou && turn.status === "open");
@@ -216,6 +229,8 @@ export default async function CirclePage({
                 pending={circle.status === "pending"}
                 letters={letters.letters}
                 categories={letters.categories}
+                pinnedIds={pinnedIds}
+                responses={Object.fromEntries(responses)}
               />
             ) : (
               <p className="text-sm text-muted">
@@ -280,6 +295,7 @@ export default async function CirclePage({
                 today={calendarDate(zone)}
                 usedBytes={memories.wall.usedBytes}
                 pending={circle.status === "pending"}
+                responses={Object.fromEntries(responses)}
               />
             ) : (
               <p className="text-sm text-muted">

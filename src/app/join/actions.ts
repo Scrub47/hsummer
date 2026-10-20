@@ -1,7 +1,12 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+
+import {
+  ANALYTICS_SIGNAL_COOKIE,
+  analyticsSignalCookie,
+} from "@/lib/analytics/signal";
 
 import { demoWriteMessage } from "@/lib/account/copy";
 import {
@@ -67,7 +72,18 @@ export async function redeemInvite(formData: FormData): Promise<void> {
 
   const state = data[0].invite_state;
   const circleId = data[0].circle_id;
-  if ((state === "joined" || state === "already_member") && circleId) {
+  if (state === "joined" && circleId) {
+    const https =
+      headerList.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https";
+    const store = await cookies();
+    store.set(
+      ANALYTICS_SIGNAL_COOKIE,
+      "partner_joined",
+      analyticsSignalCookie(https),
+    );
+    redirect(`/circles/${circleId}`);
+  }
+  if (state === "already_member" && circleId) {
     redirect(`/circles/${circleId}`);
   }
 
