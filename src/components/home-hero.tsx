@@ -25,6 +25,7 @@ export function HomeHero({
   pingName,
   pingPeople,
   pending,
+  pingLocked = false,
 }: {
   greeting: string;
   selfZone: string | null;
@@ -37,6 +38,7 @@ export function HomeHero({
   pingName: string;
   pingPeople: { userId: string; displayName: string }[];
   pending: boolean;
+  pingLocked?: boolean;
 }) {
   const clocks = [
     ...(selfZone ? [{ name: "You", timeZone: selfZone }] : []),
@@ -115,6 +117,7 @@ export function HomeHero({
           partnerName={pingName}
           people={pingPeople}
           hero
+          readOnly={pingLocked}
         />
       ) : (
         <Link href={circleHref} className="btn">

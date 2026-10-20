@@ -48,6 +48,13 @@ export default async function SignInPage({
         <div className="mt-8">
           <SignInForm errorCode={errorCode} nextPath={nextPath} />
         </div>
+        <p className="mt-8 text-sm leading-6 text-foreground/80">
+          Looking around first?{" "}
+          <Link href="/demo" className="font-bold text-pine">
+            Try the demo
+          </Link>
+          . It is a fictional couple, and it does not need Google.
+        </p>
       </main>
     </div>
   );

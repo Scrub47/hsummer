@@ -26,9 +26,11 @@ const initialState: BucketActionState = { error: null, saved: false };
 export function BucketItem({
   circleId,
   item,
+  locked = false,
 }: {
   circleId: string;
   item: BucketItemView;
+  locked?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(
     updateBucketItem,
@@ -41,6 +43,30 @@ export function BucketItem({
   const [confirming, setConfirming] = useState(false);
   const titleId = `bucket-title-${item.id}`;
   const done = item.status === "done";
+
+  if (locked) {
+    return (
+      <li className="rounded-3xl border border-line bg-card px-4 py-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className={done ? "font-medium line-through" : "font-medium"}>
+            {item.title}
+          </p>
+          <p className="text-sm font-medium text-muted">
+            {item.status === "done"
+              ? "Done"
+              : item.status === "planned"
+                ? "Planned"
+                : "Idea"}
+          </p>
+        </div>
+        <p className="mt-2 text-sm text-foreground/70">
+          {categoryLabel(item.category)}
+          {item.plannedDate ? ` · ${formatPlannedDate(item.plannedDate)}` : ""}
+          {item.notes ? ` · ${item.notes}` : ""}
+        </p>
+      </li>
+    );
+  }
 
   return (
     <li className="overflow-hidden rounded-3xl border border-line bg-card">

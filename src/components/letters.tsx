@@ -65,6 +65,7 @@ export function Letters({
   people = [],
   pinnedIds = [],
   responses = {},
+  locked = false,
 }: {
   circleId: string;
   partnerName: string | null;
@@ -76,6 +77,7 @@ export function Letters({
   people?: { userId: string; displayName: string; timezone: string }[];
   pinnedIds?: string[];
   responses?: Record<string, ResponseView>;
+  locked?: boolean;
 }) {
   const router = useRouter();
   const refresh = () => router.refresh();
@@ -120,6 +122,7 @@ export function Letters({
                   partnerTimeZone={partnerTimeZone}
                   pinned
                   responses={responses[`letter:${letter.id}`]}
+                  locked={locked}
                 />
               </li>
             ))}
@@ -147,6 +150,7 @@ export function Letters({
                 pinned={pinned.has(letter.id)}
                 responses={responses[`letter:${letter.id}`]}
                 startOpen={letter.sealed || index === 0}
+                locked={locked}
               />
             </li>
           ))}
@@ -185,6 +189,7 @@ function LetterFold({
   pinned,
   responses,
   startOpen = true,
+  locked = false,
 }: {
   circleId: string;
   letter: LetterCard;
@@ -192,6 +197,7 @@ function LetterFold({
   pinned: boolean;
   responses?: ResponseView;
   startOpen?: boolean;
+  locked?: boolean;
 }) {
   return (
     <details className="fold" open={startOpen}>
@@ -210,6 +216,7 @@ function LetterFold({
           letter={letter}
           pinned={pinned}
           responses={responses}
+          locked={locked}
         />
       ) : (
         <OpenedLetter
@@ -218,6 +225,7 @@ function LetterFold({
           partnerTimeZone={partnerTimeZone}
           pinned={pinned}
           responses={responses}
+          locked={locked}
         />
       )}
     </details>
@@ -559,12 +567,14 @@ function OpenedLetter({
   partnerTimeZone,
   pinned = false,
   responses,
+  locked = false,
 }: {
   circleId: string;
   letter: LetterCard;
   partnerTimeZone: string;
   pinned?: boolean;
   responses?: ResponseView;
+  locked?: boolean;
 }) {
   const arrival =
     letter.status === "scheduled" && letter.scheduledFor
@@ -598,16 +608,19 @@ function OpenedLetter({
                 : "You wrote this. The seal is still on it."
               : `From ${letter.fromName}.`}
       </p>
-      {letter.mine && letter.status === "scheduled" ? (
+      {letter.mine && letter.status === "scheduled" && !locked ? (
         <ScheduledControls circleId={circleId} letterId={letter.id} />
       ) : null}
-      <PinButton circleId={circleId} letterId={letter.id} pinned={pinned} />
+      {locked ? null : (
+        <PinButton circleId={circleId} letterId={letter.id} pinned={pinned} />
+      )}
       {letter.status === "delivered" ? (
         <ReactionBar
           circleId={circleId}
           targetKind="letter"
           targetId={letter.id}
           view={responses}
+          locked={locked}
         />
       ) : null}
     </article>
@@ -744,11 +757,13 @@ function SealedLetter({
   letter,
   pinned = false,
   responses,
+  locked = false,
 }: {
   circleId: string;
   letter: LetterCard;
   pinned?: boolean;
   responses?: ResponseView;
+  locked?: boolean;
 }) {
   const router = useRouter();
   const { ms } = useEnvelopeMotion();
@@ -765,7 +780,7 @@ function SealedLetter({
   }, []);
 
   function onOpen() {
-    if (phase !== "sealed") return;
+    if (locked || phase !== "sealed") return;
     setError(null);
     setPhase("opening");
     timer.current = window.setTimeout(() => {
@@ -816,15 +831,21 @@ function SealedLetter({
       </p>
       {phase === "opening" ? <LetterEnvelope scene="open" /> : null}
       <div className="mt-6 flex flex-col items-start gap-3">
-        <button
-          type="button"
-          className="letter-seal"
-          aria-label="Open letter"
-          aria-busy={phase === "opening"}
-          onClick={onOpen}
-        >
-          <span aria-hidden>{phase === "opening" ? "…" : "Open"}</span>
-        </button>
+        {locked ? (
+          <p className="text-sm leading-6 text-foreground/70">
+            The seal stays on in the demo.
+          </p>
+        ) : (
+          <button
+            type="button"
+            className="letter-seal"
+            aria-label="Open letter"
+            aria-busy={phase === "opening"}
+            onClick={onOpen}
+          >
+            <span aria-hidden>{phase === "opening" ? "…" : "Open"}</span>
+          </button>
+        )}
         {error ? (
           <p className="text-sm text-accent" role="alert">
             {error}

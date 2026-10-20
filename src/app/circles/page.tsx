@@ -3,9 +3,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { CircleCreateForm } from "@/components/circle-create-form";
+import { DemoBanner } from "@/components/demo-banner";
 import { EmptyState } from "@/components/empty-state";
 import { InfoTip } from "@/components/info-tip";
 import { SignedInHeader } from "@/components/signed-in-header";
+import { loadAccountFlags } from "@/lib/account/load";
 import { loadCircles } from "@/lib/circles/load";
 import { circleStatusLabel } from "@/lib/circles/status";
 import { getSession } from "@/lib/supabase/session";
@@ -18,12 +20,16 @@ export default async function CirclesPage() {
   const session = await getSession();
   if (!session) redirect("/sign-in?next=/circles");
 
-  const loaded = await loadCircles(session);
+  const [loaded, account] = await Promise.all([
+    loadCircles(session),
+    loadAccountFlags(session),
+  ]);
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-6 py-10">
       <SignedInHeader current="circles" gear />
       <main className="flex flex-1 flex-col gap-10 py-16">
+        {account.isDemo ? <DemoBanner /> : null}
         <div className="flex items-center gap-1">
           <h1 className="text-2xl font-bold tracking-tight">Circles</h1>
           <InfoTip label="About circles">
@@ -69,7 +75,7 @@ export default async function CirclesPage() {
             </code>{" "}
             in the Supabase SQL editor, then reload this page.
           </p>
-        ) : (
+        ) : account.isDemo ? null : (
           <CircleCreateForm />
         )}
       </main>

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Heart } from "lucide-react";
 
 import { pushToast } from "@/components/toast-host";
+import { DEMO_READONLY_MESSAGE } from "@/lib/account/copy";
 import { trackProductEvent } from "@/lib/analytics/client";
 import { tapFeedback } from "@/lib/feel/feedback";
 import { missingName } from "@/lib/pings/fields";
@@ -26,11 +27,13 @@ export function ThinkingOfYou({
   partnerName,
   people = [],
   hero = false,
+  readOnly = false,
 }: {
   circleId: string;
   partnerName: string;
   people?: { userId: string; displayName: string }[];
   hero?: boolean;
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -59,6 +62,10 @@ export function ThinkingOfYou({
 
   async function send(secretVariant: boolean) {
     if (inflight.current) return;
+    if (readOnly) {
+      setStatus({ tone: "error", text: DEMO_READONLY_MESSAGE });
+      return;
+    }
     inflight.current = true;
     setPending(true);
     setPulse(true);
@@ -195,7 +202,7 @@ export function ThinkingOfYou({
           {status.text}
         </p>
       ) : null}
-      {status?.tone === "error" ? (
+      {status?.tone === "error" && !readOnly ? (
         <button
           type="button"
           className="btn-quiet"

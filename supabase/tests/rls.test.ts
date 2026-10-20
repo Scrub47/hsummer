@@ -3733,6 +3733,15 @@ describe("leaving, deletion, export storage, and the demo circle", () => {
     });
     expect(write.error?.message).toContain("hsummer_demo_readonly");
 
+    const alexCircles = await alexClient.from("circles").select("id");
+    expect(alexCircles.error).toBeNull();
+    expect(alexCircles.data?.map((row) => row.id).sort()).toEqual([circleId]);
+    const foreign = await alexClient
+      .from("memories")
+      .select("id")
+      .neq("circle_id", circleId);
+    expect(foreign.data ?? []).toEqual([]);
+
     const purge = await owner.rpc("purge_archived_circles");
     expect(purge.error).not.toBeNull();
     const seedAsUser = await owner.rpc("seed_demo_circle", { photo_bytes: 8 });

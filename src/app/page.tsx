@@ -45,17 +45,15 @@ export default async function LandingPage({
           >
             Sign in
           </Link>
-          <form action="/api/demo/enter" method="post">
-            <button
-              type="submit"
-              className="inline-flex h-12 items-center justify-center rounded-full border border-line bg-card px-6 text-sm font-medium"
-            >
-              Try demo
-            </button>
-          </form>
+          <Link
+            href="/demo"
+            className="inline-flex h-12 items-center justify-center rounded-full border border-line bg-card px-6 text-sm font-medium"
+          >
+            Try the demo
+          </Link>
           <p className="text-sm text-foreground/70">
             Google or an email link. No password. The demo is a fictional
-            couple.
+            couple, and it does not need a Google account.
           </p>
         </div>
         <div className="mt-10 max-w-xl">

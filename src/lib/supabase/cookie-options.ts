@@ -17,7 +17,19 @@ import type { CookieOptions } from "@supabase/ssr";
  * cannot drop it. Lax sends the cookie on top-level navigations (the magic
  * link and the Google return) and withholds it from cross-site POSTs.
  */
-export function supabaseCookieOptions(secure: boolean): CookieOptions {
+export function supabaseCookieOptions(
+  secure: boolean,
+  embed = false,
+): CookieOptions {
+  if (embed && secure) {
+    return {
+      path: "/",
+      sameSite: "none",
+      secure: true,
+      httpOnly: false,
+      partitioned: true,
+    };
+  }
   return {
     path: "/",
     sameSite: "lax",

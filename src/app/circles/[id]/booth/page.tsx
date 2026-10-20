@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { BoothModes } from "@/components/booth-modes";
+import { DemoBanner } from "@/components/demo-banner";
 import { SignedInHeader } from "@/components/signed-in-header";
 import { loadPassBooth, loadTogetherBooth } from "@/lib/booth/load";
 import { circleNeedsPicker } from "@/lib/circles/fields";
@@ -65,21 +66,37 @@ export default async function BoothPage({
             Back to {circle.title}
           </Link>
         </p>
-        <BoothModes
-          circleId={circle.id}
-          circleTitle={circle.title}
-          canStart={canStart}
-          blocked={blocked}
-          people={others.map((member) => ({
-            userId: member.userId,
-            displayName: member.displayName,
-          }))}
-          needsPicker={circleNeedsPicker(others.length)}
-          selfId={session.userId}
-          turns={pass.ok ? pass.turns : []}
-          lobby={lobby}
-          unavailable={!pass.ok}
-        />
+        {circle.isDemo ? (
+          <>
+            <DemoBanner />
+            <p className="max-w-xl text-sm leading-6">
+              The camera stays off in the demo. The sample strip is on the
+              memory wall.
+            </p>
+            <Link
+              href={`/circles/${circle.id}#memory-heading`}
+              className="btn w-fit"
+            >
+              See the sample strip
+            </Link>
+          </>
+        ) : (
+          <BoothModes
+            circleId={circle.id}
+            circleTitle={circle.title}
+            canStart={canStart}
+            blocked={blocked}
+            people={others.map((member) => ({
+              userId: member.userId,
+              displayName: member.displayName,
+            }))}
+            needsPicker={circleNeedsPicker(others.length)}
+            selfId={session.userId}
+            turns={pass.ok ? pass.turns : []}
+            lobby={lobby}
+            unavailable={!pass.ok}
+          />
+        )}
       </main>
     </div>
   );
