@@ -8,6 +8,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import { X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -17,6 +18,7 @@ import {
 } from "@/app/circles/memory-actions";
 import { LiveDot } from "@/components/live-dot";
 import { trackProductEvent } from "@/lib/analytics/client";
+import { vibrate } from "@/lib/feel/feedback";
 import { PhotoStrip } from "@/components/photo-strip";
 import { ReactionBar } from "@/components/reaction-bar";
 import { RefreshSignedUrls } from "@/components/refresh-signed-urls";
@@ -176,28 +178,103 @@ function AddMemoryForm({
     addMemory,
     initialState,
   );
-  const [preparing, startPreparing] = useTransition();
-  const [localError, setLocalError] = useState<string | null>(null);
   const [formKey, setFormKey] = useState(0);
-  const [selected, setSelected] = useState(false);
-  const seen = useRef(state);
+  const [hideServer, setHideServer] = useState(false);
+  const [seen, setSeen] = useState(state);
+  const tracked = useRef(state);
+
+  if (state !== seen) {
+    setSeen(state);
+    setHideServer(false);
+    if (state.saved) setFormKey((key) => key + 1);
+  }
 
   useEffect(() => {
-    if (state.saved && state !== seen.current) {
-      seen.current = state;
-      setFormKey((key) => key + 1);
-      setSelected(false);
-      setLocalError(null);
-      trackProductEvent("memory_added");
-    }
+    if (!state.saved || tracked.current === state) return;
+    tracked.current = state;
+    trackProductEvent("memory_added");
   }, [state]);
 
+  return (
+    <MemoryDraft
+      key={formKey}
+      circleId={circleId}
+      people={people}
+      today={today}
+      formAction={formAction}
+      pendingSave={pendingSave}
+      serverError={hideServer ? null : state.error}
+      saved={Boolean(!hideServer && state.saved && !state.error)}
+      onCancel={() => {
+        vibrate(12);
+        setHideServer(true);
+        setFormKey((key) => key + 1);
+      }}
+    />
+  );
+}
+
+function MemoryDraft({
+  circleId,
+  people,
+  today,
+  formAction,
+  pendingSave,
+  serverError,
+  saved,
+  onCancel,
+}: {
+  circleId: string;
+  people: { userId: string; displayName: string }[];
+  today: string;
+  formAction: (data: FormData) => void;
+  pendingSave: boolean;
+  serverError: string | null;
+  saved: boolean;
+  onCancel: () => void;
+}) {
+  const [preparing, startPreparing] = useTransition();
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [selected, setSelected] = useState(false);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const previewRef = useRef<string | null>(null);
+
+  function replacePreview(next: string | null) {
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    previewRef.current = next;
+    setPreviewUrl(next);
+  }
+
+  function clearPhoto() {
+    if (fileRef.current) fileRef.current.value = "";
+    replacePreview(null);
+    setFileName(null);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    };
+  }, []);
+
+  function onPhotoChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || file.size === 0) {
+      clearPhoto();
+      return;
+    }
+    setFileName(file.name);
+    const canPreview = file.type === "" || file.type.startsWith("image/");
+    replacePreview(canPreview ? URL.createObjectURL(file) : null);
+  }
+
   const busy = pendingSave || preparing;
-  const error = localError ?? state.error;
+  const error = localError ?? serverError;
 
   return (
     <form
-      key={formKey}
       className="flex flex-col gap-4 rounded-3xl border border-line bg-card p-5"
       onSubmit={(event) => {
         event.preventDefault();
@@ -252,12 +329,37 @@ function AddMemoryForm({
           Photo
         </label>
         <input
+          ref={fileRef}
           id="memory-photo"
           name="photo"
           type="file"
           accept="image/jpeg,image/png,image/webp"
           className="text-base"
+          onChange={onPhotoChange}
         />
+        {fileName ? (
+          <div className="attachment-preview">
+            {previewUrl ? (
+              // Local preview of the file still sitting in the input.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={previewUrl} alt="" />
+            ) : (
+              <p className="attachment-name">{fileName}</p>
+            )}
+            <button
+              type="button"
+              className="icon-button attachment-remove"
+              aria-label="Remove attachment"
+              disabled={busy}
+              onClick={() => {
+                vibrate(12);
+                clearPhoto();
+              }}
+            >
+              <X aria-hidden="true" size={18} />
+            </button>
+          </div>
+        ) : null}
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-2">
@@ -331,18 +433,28 @@ function AddMemoryForm({
           {error}
         </p>
       ) : null}
-      {state.saved && !error ? (
+      {saved && !error ? (
         <p className="text-sm text-pine" role="status">
           Saved on the wall.
         </p>
       ) : null}
-      <button
-        type="submit"
-        disabled={busy}
-        className="h-12 rounded-full bg-accent px-5 text-base font-medium text-accent-ink disabled:opacity-60"
-      >
-        {busy ? "Saving…" : "Add to the wall"}
-      </button>
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="submit"
+          disabled={busy}
+          className="h-12 rounded-full bg-accent px-5 text-base font-medium text-accent-ink disabled:opacity-60"
+        >
+          {busy ? "Saving…" : "Add to the wall"}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onCancel}
+          className="h-12 rounded-full px-5 text-base font-medium text-foreground/70 disabled:opacity-60"
+        >
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }

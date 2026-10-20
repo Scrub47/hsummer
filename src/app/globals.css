@@ -432,6 +432,49 @@ input.sr-only {
   color: var(--muted);
 }
 
+.bear-mark {
+  background: transparent;
+  object-fit: contain;
+}
+
+.attachment-preview {
+  position: relative;
+  width: fit-content;
+  max-width: min(100%, 16rem);
+}
+
+.attachment-preview img,
+.attachment-name {
+  display: block;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--background);
+}
+
+.attachment-preview img {
+  max-height: 12rem;
+  object-fit: cover;
+}
+
+.attachment-name {
+  max-width: 16rem;
+  padding: 0.9rem 3rem 0.9rem 0.9rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.attachment-remove {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  z-index: 1;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: var(--shadow);
+}
+
 .avatar-button {
   position: relative;
   display: inline-flex;

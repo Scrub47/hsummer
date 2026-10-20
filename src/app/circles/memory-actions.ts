@@ -6,9 +6,11 @@ import { redirect } from "next/navigation";
 import { isCircleId } from "@/lib/bucket/fields";
 import {
   MEMORY_LIMIT,
+  MEMORY_MAX_BYTES,
   MEMORY_QUOTA_MESSAGE,
   MEMORY_RATE_LIMIT_MESSAGE,
   MEMORY_WINDOW_MINUTES,
+  PHOTO_ERROR,
   MEMORIES_BUCKET,
   memoryPhotoPath,
   memoryWriteFailure,
@@ -45,6 +47,9 @@ export async function addMemory(
   }
 
   const attachment = formData.get("photo");
+  if (attachment instanceof File && attachment.size > MEMORY_MAX_BYTES) {
+    return { error: PHOTO_ERROR, saved: false };
+  }
   const file =
     attachment instanceof File && attachment.size > 0
       ? new Uint8Array(await attachment.arrayBuffer())

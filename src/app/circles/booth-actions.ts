@@ -118,6 +118,9 @@ export async function saveSoloBooth(
   const shots: Uint8Array[] = [];
   let total = 0;
   for (const file of files) {
+    if (file.size > MEMORY_MAX_BYTES) {
+      return { error: BOOTH_JPEG_ERROR, saved: false };
+    }
     const sniffed = sniffMemoryPhoto(new Uint8Array(await file.arrayBuffer()));
     if (!sniffed.ok || sniffed.value.contentType !== "image/jpeg") {
       return { error: BOOTH_JPEG_ERROR, saved: false };
@@ -863,6 +866,9 @@ async function readShots(
   const shots: Uint8Array[] = [];
   let total = 0;
   for (const file of files) {
+    if (file.size > MEMORY_MAX_BYTES) {
+      return { ok: false, error: BOOTH_JPEG_ERROR };
+    }
     const sniffed = sniffMemoryPhoto(new Uint8Array(await file.arrayBuffer()));
     if (!sniffed.ok || sniffed.value.contentType !== "image/jpeg") {
       return { ok: false, error: BOOTH_JPEG_ERROR };

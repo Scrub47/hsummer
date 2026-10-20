@@ -9,6 +9,7 @@ import {
   appleTouchIcon,
   favicon32,
   icon192,
+  logoMark,
 } from "@/lib/brand/icons";
 
 function pngSize(file: string) {
@@ -79,8 +80,9 @@ describe("logo icons", () => {
     expect(manifest).toContain("icon512Maskable");
     expect(manifest).not.toContain('"/icons/icon-192.png"');
     expect(worker).toContain(icon192);
-    expect(bear).toContain("logoMarkLarge");
-    expect(bear).toContain("logoMarkSmall");
+    expect(bear).toContain("logoMark");
+    expect(bear).not.toContain("logo-512-");
+    expect(bear).not.toContain("logoMarkLarge");
     expect(favicon32.endsWith("-v2.png")).toBe(true);
     expect(appleTouchIcon.endsWith("-v2.png")).toBe(true);
     for (const image of appleStartupImages) {
@@ -89,5 +91,31 @@ describe("logo icons", () => {
       expect(size.width).toBeGreaterThan(1000);
       expect(size.height).toBeGreaterThan(size.width);
     }
+  });
+
+  it("drops the square behind the in-app bear and keeps the artwork", async () => {
+    const sourcePath = path.join(root, "public/brand/logo-source.png");
+    const markPath = path.join(root, "public", logoMark.replace(/^\//, ""));
+    const sourceMeta = await sharp(sourcePath).metadata();
+    const markMeta = await sharp(markPath).metadata();
+    expect(markMeta.width).toBe(sourceMeta.width);
+    expect(markMeta.height).toBe(sourceMeta.height);
+    expect(markMeta.hasAlpha).toBe(true);
+
+    const source = await sharp(sourcePath).ensureAlpha().raw().toBuffer();
+    const mark = await sharp(markPath).ensureAlpha().raw().toBuffer();
+    expect(mark.length).toBe(source.length);
+    expect(mark[3]).toBe(0);
+
+    let opaque = 0;
+    for (let index = 0; index < mark.length; index += 4) {
+      if (mark[index + 3] === 0) continue;
+      opaque += 1;
+      expect(mark.subarray(index, index + 3)).toEqual(
+        source.subarray(index, index + 3),
+      );
+    }
+    expect(opaque).toBeGreaterThan(10_000);
+    expect(opaque).toBeLessThan(source.length / 8);
   });
 });

@@ -52,7 +52,7 @@ export function useCircleLive(
           return;
         }
         await supabase.realtime.setAuth(token);
-        if (!active) return;
+        if (!active || !isCircleId(circleId)) return;
 
         channel = supabase
           .channel(`${table}:${circleId}`, { config: { private: true } })
