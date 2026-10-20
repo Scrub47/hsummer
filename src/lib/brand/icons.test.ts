@@ -108,13 +108,20 @@ describe("logo icons", () => {
     expect(mark[3]).toBe(0);
 
     let opaque = 0;
+    let mismatch = -1;
     for (let index = 0; index < mark.length; index += 4) {
       if (mark[index + 3] === 0) continue;
       opaque += 1;
-      expect(mark.subarray(index, index + 3)).toEqual(
-        source.subarray(index, index + 3),
-      );
+      if (
+        mark[index] !== source[index] ||
+        mark[index + 1] !== source[index + 1] ||
+        mark[index + 2] !== source[index + 2]
+      ) {
+        mismatch = index;
+        break;
+      }
     }
+    expect(mismatch).toBe(-1);
     expect(opaque).toBeGreaterThan(10_000);
     expect(opaque).toBeLessThan(source.length / 8);
   });
