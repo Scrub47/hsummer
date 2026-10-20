@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import {
+  AVATAR_ERROR,
+  AVATAR_MAX_BYTES,
   AVATARS_BUCKET,
   isOwnAvatarObjectPath,
   newAvatarObjectPath,
@@ -36,6 +38,9 @@ export async function updateProfile(
   if (!session) redirect("/sign-in");
 
   const attachment = formData.get("avatar");
+  if (attachment instanceof File && attachment.size > AVATAR_MAX_BYTES) {
+    return { error: AVATAR_ERROR, savedAt: null };
+  }
   const file =
     attachment instanceof File && attachment.size > 0
       ? new Uint8Array(await attachment.arrayBuffer())

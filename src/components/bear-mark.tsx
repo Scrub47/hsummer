@@ -1,8 +1,10 @@
-import { logoMarkLarge, logoMarkSmall } from "@/lib/brand/icons";
+import { logoMark } from "@/lib/brand/icons";
 
 /**
- * The committed logo, scaled. A plain img keeps the CSP happy:
- * next/image writes an inline style, and style-src does not allow that.
+ * The in-app bear. logo-mark.png is the source artwork with the square
+ * field removed, so the bear sits on the page instead of a tile.
+ * A plain img keeps the CSP happy: next/image writes an inline style,
+ * and style-src does not allow that.
  */
 export function BearMark({
   size = 96,
@@ -13,11 +15,10 @@ export function BearMark({
   alt?: string;
   priority?: boolean;
 }) {
-  const src = size > 256 ? logoMarkLarge : logoMarkSmall;
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={src}
+      src={logoMark}
       alt={alt}
       width={size}
       height={size}

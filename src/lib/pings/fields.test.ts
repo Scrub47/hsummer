@@ -32,6 +32,10 @@ describe("Thinking of You retention", () => {
     expect(visiblePingsOr(cutoff)).toBe(
       'ping_type.neq.thinking-of-you,sent_at.gte."2026-10-16T19:00:00.000Z"',
     );
+    expect(visiblePingsOr(`${cutoff}",id.eq.1`)).toBe(
+      "ping_type.neq.thinking-of-you",
+    );
+    expect(visiblePingsOr("not-a-date")).toBe("ping_type.neq.thinking-of-you");
     expect(thinkingOfYouStillVisible("thinking-of-you", cutoff, now)).toBe(
       true,
     );

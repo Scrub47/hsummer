@@ -11,6 +11,8 @@ export const faviconIco = `/icons/favicon-${ICON_VERSION}.ico`;
 export const logoMarkLarge = `/brand/logo-512-${ICON_VERSION}.webp`;
 export const logoMarkSmall = `/brand/logo-256-${ICON_VERSION}.webp`;
 export const logoPng = `/brand/logo-512-${ICON_VERSION}.png`;
+/** In-app bear. The square field is gone. Home Screen icons stay square. */
+export const logoMark = "/brand/logo-mark.png";
 
 export const appleStartupImages = [
   {

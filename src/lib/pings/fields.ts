@@ -58,8 +58,15 @@ export function thinkingOfYouStillVisible(
 /**
  * PostgREST `or` filter. The timestamp is quoted because `:` would otherwise
  * end the value. Mood shares stay; Thinking of You rows must be new enough.
+ * Anything that is not a UTC timestamp is dropped, so a caller cannot splice
+ * extra filters into the string.
  */
+const POSTGREST_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
 export function visiblePingsOr(cutoffIso: string): string {
+  if (!POSTGREST_TIMESTAMP.test(cutoffIso)) {
+    return "ping_type.neq.thinking-of-you";
+  }
   return `ping_type.neq.thinking-of-you,sent_at.gte."${cutoffIso}"`;
 }
 

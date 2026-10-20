@@ -229,6 +229,8 @@ The server action sniffs the magic bytes, refuses anything that is not a JPEG, P
 
 Inserts are limited to 10 per person per 10 minutes. The trigger takes an advisory lock per author, the same shape as pings. Upstash, when both of its variables are set, checks `memory:{user id}` first and returns the same sentence. A direct insert never reaches Upstash.
 
+The add form shows a preview as soon as a photo is chosen. The × on that preview clears the file and resets the file input, so the next save does not upload it. Cancel throws away the note, the tags, the date, and the photo and puts the form back to an empty draft. Both controls are buttons, so they use the same press (the control scales as soon as the finger goes down).
+
 The page asks Storage for a signed URL that lasts five minutes (`MEMORY_SIGNED_URL_SECONDS`). Creating that URL requires the select policy, so the user's own JWT is enough. The service-role key is not used. The loader refuses a URL that is not a displayable http(s) address. An `<img>` is used on purpose: the image optimizer would fetch and cache the signed URL. After five minutes Storage rejects the link. Reloading the page asks for a new one. A member who can already see the photo can ask Storage for a longer link from their own session, because the select policy is what allows signing. The page itself always asks for five minutes.
 
 `public.circle_memory_bytes(circle id)` returns the sum for an active member and null for anyone else, so the usage line is the whole circle and not only the photos this person can see. Realtime on `memories` refreshes the page. Adding a viewer bumps `updated_at` so that change is included.
@@ -337,16 +339,19 @@ The migration is `supabase/migrations/20270318120000_part_two.sql`. It is idempo
 
 ## PWA files
 
-| File                                         | Role                                           |
-| -------------------------------------------- | ---------------------------------------------- |
-| `src/app/manifest.ts`                        | Name, standalone display, icons                |
-| `public/sw.js`                               | `push` and `notificationclick`                 |
-| `public/icons/`                              | Versioned icon, favicon, and splash URLs       |
-| `public/brand/logo-source.png`               | Isaac's logo. Icons are resized from this file |
-| `src/components/service-worker-register.tsx` | Registers `/sw.js` after the page loads        |
-| `src/components/install-hint.tsx`            | iOS Home Screen instructions                   |
+| File                                         | Role                                            |
+| -------------------------------------------- | ----------------------------------------------- |
+| `src/app/manifest.ts`                        | Name, standalone display, icons                 |
+| `public/sw.js`                               | `push` and `notificationclick`                  |
+| `public/icons/`                              | Versioned icon, favicon, and splash URLs        |
+| `public/brand/logo-source.png`               | Isaac's logo. Icons are resized from this file  |
+| `public/brand/logo-mark.png`                 | Same bear, square field removed, for in-app use |
+| `src/components/service-worker-register.tsx` | Registers `/sw.js` after the page loads         |
+| `src/components/install-hint.tsx`            | iOS Home Screen instructions                    |
 
-`npm run generate:icons` only resizes `public/brand/logo-source.png`. The apple touch icon is 180. The manifest lists 192 and 512, plus maskable copies with padding on the logo's burgundy. Filenames end in `-v2` so a Home Screen install does not keep the previous artwork. The in-app bear and the loading splash use the same file.
+`npm run generate:icons` only resizes `public/brand/logo-source.png`. The apple touch icon is 180. The manifest lists 192 and 512, plus maskable copies with padding on the logo's burgundy. Filenames end in `-v2` so a Home Screen install does not keep the previous artwork. Those icon files keep the square field.
+
+`node scripts/generate-logo-mark.mjs` writes `public/brand/logo-mark.png` from that same source. It clears the burgundy field that touches the edge and leaves every other pixel's red, green, and blue alone. `BearMark` (Home, the loading splash, empty states, and the header) uses that file, so the bear sits on the cream or burgundy page with no square tile.
 
 ## Tests and CI
 
