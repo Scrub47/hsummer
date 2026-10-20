@@ -8,7 +8,7 @@
  * - Reactions and replies on letters, photos, and memories.
  * - Memory book: a keepsake export beside the existing ZIP.
  * - Haptics and sound on ping, seal, and mood.
- * - Letter-into-envelope: the seal animation in globals.css is the start.
+ * The letter envelope (fold, seal, fly / arrive, unseal, slide) already plays.
  */
 export const partTwo = {
   settingsRoute: "/profile/settings",
